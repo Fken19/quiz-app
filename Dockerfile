@@ -11,8 +11,8 @@ WORKDIR /app
 COPY requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 認証ファイルを配置（Firestore用）
-COPY english_firestore_key.json /app/english_firestore_key.json
+# 認証ファイルを配置（Firestore用）(本番環境ではアップロードしない)
+# COPY english_firestore_key.json /app/english_firestore_key.json
 
 # アプリケーションの全コードをコピー
 COPY . .
