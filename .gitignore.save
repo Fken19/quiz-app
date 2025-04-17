@@ -1,0 +1,14 @@
+# 機密ファイル
+.env
+english_firestore_key.json
+flask_session/
+
+# Pythonキャッシュ
+__pycache__/
+*.pyc
+
+# macOS特有のファイル
+.DS_Store
+
+# 仮想環境
+venv/

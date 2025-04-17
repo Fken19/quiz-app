@@ -1,0 +1,2 @@
+974259457412-  # Google OAuth Client ID の先頭部分
+GOCSPX-        # Google OAuth Client Secret の先頭部分

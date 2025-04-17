@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}セグメント選択 - レベル {{ level }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mt-3">レベル {{ level }} のセグメント選択</h1>
+    <p>10問ごとのセグメントを選択してください。</p>
+    <div class="list-group">
+        {% for seg in segments %}
+            <a href="{{ url_for('quiz_segment', level=level, segment=seg.segment) }}" class="list-group-item list-group-item-action">
+                セグメント {{ seg.segment }} (問題 {{ seg.start }} ～ {{ seg.end }})
+            </a>
+        {% endfor %}
+    </div>
+    <div class="mt-3">
+        <a href="{{ url_for('quiz_all_shuffled', level=level) }}" class="btn btn-info">全50問をシャッフルして出題</a>
+    </div>
+    <div class="mt-5">
+        <button class="btn btn-secondary" onclick="history.back()">戻る</button>
+    </div>
+</div>
+{% endblock %}
