@@ -33,7 +33,6 @@
             </thead>
             <tbody id="result-details"></tbody>
         </table>
-        <a href="{{ url_for('levels') }}" class="btn btn-secondary mt-3">レベル選択に戻る</a>
     </div>
 </div>
 
@@ -78,6 +77,16 @@
   .option-btn {
     height: 64px;
     font-size: 1.2rem;
+  }
+
+  .answer-correct {
+    color: red;
+    font-weight: bold;
+  }
+
+  .answer-incorrect {
+    color: blue;
+    font-weight: bold;
   }
 </style>
 {% endblock %}

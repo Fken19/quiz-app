@@ -205,6 +205,11 @@ function displayResults() {
 
         const cellUserAnswer = document.createElement('td');
         cellUserAnswer.innerText = result.userAnswer;
+        if (result.userAnswer === result.correctAnswer) {
+            cellUserAnswer.classList.add('answer-correct');
+        } else {
+            cellUserAnswer.classList.add('answer-incorrect');
+        }
         row.appendChild(cellUserAnswer);
 
         const cellCorrect = document.createElement('td');
@@ -230,7 +235,7 @@ function displayResults() {
         let backBtn = document.createElement('button');
         backBtn.id = 'back-to-segments';
         backBtn.className = 'btn btn-secondary';
-        backBtn.innerText = 'セグメント選択に戻る';
+        backBtn.innerText = '戻る';
         backBtn.onclick = function() {
             window.location.href = '/segments/' + currentLevel;
         };
@@ -243,7 +248,7 @@ function displayResults() {
             let continueBtn = document.createElement('button');
             continueBtn.id = 'continue-btn';
             continueBtn.className = 'btn btn-primary';
-            continueBtn.innerText = '次の10問で進む';
+            continueBtn.innerText = '次へ進む';
             continueBtn.onclick = continueQuiz;
             buttonContainer.appendChild(continueBtn);
         }

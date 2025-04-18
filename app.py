@@ -469,7 +469,9 @@ def dashboard():
             if key in daily_agg:
                 daily_agg[key]["correct"] += r.get("score", 0)
                 daily_agg[key]["incorrect"] += r.get("total", 0) - r.get("score", 0)
-    day_graph_labels = sorted(daily_agg.keys())[-8:]
+    # 確実に日付順（datetime）でソートし、当日を含む8日分を取得
+    sorted_day_keys = sorted(daily_agg.keys(), key=lambda x: datetime.strptime(x, "%Y-%m-%d"))
+    day_graph_labels = sorted_day_keys[-8:]
     day_graph_correct = [daily_agg[k]["correct"] for k in day_graph_labels]
     day_graph_incorrect = [daily_agg[k]["incorrect"] for k in day_graph_labels]
 
