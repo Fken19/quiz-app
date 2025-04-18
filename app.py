@@ -458,18 +458,16 @@ def dashboard():
 
     # (A) 日別（直近40日）
     daily_agg = {}
-    daily_lookback = now_jst - timedelta(days=40)
-    for i in range(40):  # 初期化
+    daily_lookback = now_jst - timedelta(days=39)  # 今日を含めた40日分
+    for i in range(40):
         day = (daily_lookback + timedelta(days=i)).strftime("%Y-%m-%d")
         daily_agg[day] = {"correct": 0, "incorrect": 0}
     for r in all_results:
         dt = r["dt_jst"]
-        if dt >= daily_lookback:
-            key = dt.strftime("%Y-%m-%d")
-            if key in daily_agg:
-                daily_agg[key]["correct"] += r.get("score", 0)
-                daily_agg[key]["incorrect"] += r.get("total", 0) - r.get("score", 0)
-    # 確実に日付順（datetime）でソートし、当日を含む8日分を取得
+        key = dt.strftime("%Y-%m-%d")
+        if key in daily_agg:
+            daily_agg[key]["correct"] += r.get("score", 0)
+            daily_agg[key]["incorrect"] += r.get("total", 0) - r.get("score", 0)
     sorted_day_keys = sorted(daily_agg.keys(), key=lambda x: datetime.strptime(x, "%Y-%m-%d"))
     day_graph_labels = sorted_day_keys[-8:]
     day_graph_correct = [daily_agg[k]["correct"] for k in day_graph_labels]
