@@ -1,5 +1,4 @@
 import os
-os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"  # Dockerfileでも設定可能
 
 import pytz
 JST = pytz.timezone("Asia/Tokyo")
@@ -31,7 +30,8 @@ google_bp = make_google_blueprint(
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/userinfo.profile"
     ],
-    redirect_to="levels"  # ログイン後にレベル選択画面へリダイレクト
+    redirect_to="levels",  # ログイン後にレベル選択画面へリダイレクト
+    redirect_url="https://quiz-app-m22t.onrender.com/login/google/authorized"  # Google側と一致させる
 )
 app.register_blueprint(google_bp, url_prefix="/login")
 
@@ -241,6 +241,7 @@ def submit_score():
             'created_at': firestore.SERVER_TIMESTAMP
         }
         quiz_result_ref = db.collection('quiz_results').add(quiz_result_data)
+        write_result = quiz_result_ref[1]  # FirestoreWriteResult を受け取る（保存完了を待つ）
         quiz_result_id = quiz_result_ref[0].id
         app.logger.info("QuizResult保存完了: id=%s", quiz_result_id)
         
