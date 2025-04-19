@@ -30,10 +30,9 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your_secret_key')  # セキュ�
 
 # Render環境でHTTPSが使えない場合に一時的にhttp許容
 if os.environ.get("RENDER") == "true":
-    app.config['PREFERRED_URL_SCHEME'] = 'http'
-    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+    app.config['PREFERRED_URL_SCHEME'] = 'https'
 else:
-    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # ローカル開発時もHTTP許容
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # ローカル開発時のみHTTP許容
 
 @app.before_request
 def debug_session():
