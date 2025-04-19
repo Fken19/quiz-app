@@ -10,4 +10,5 @@ google-cloud-firestore==2.7.0
 pytz==2023.3
 python-dateutil
 python-dotenv
-Flask-Session==0.4.0
+Flask-Session
+redis
