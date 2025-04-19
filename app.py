@@ -24,7 +24,7 @@ app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_USE_SIGNER'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
-# app.config['SESSION_COOKIE_DOMAIN'] = '.onrender.com'
+app.config['SESSION_COOKIE_DOMAIN'] = '.onrender.com'
 Session(app)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your_secret_key')  # セキュアな環境変数から取得
 
@@ -52,7 +52,7 @@ google_bp = make_google_blueprint(
         "https://www.googleapis.com/auth/userinfo.profile"
     ],
     redirect_to="levels",  # ログイン後にレベル選択画面へリダイレクト
-    redirect_url="https://quiz-app-m22t.onrender.com/login/google/authorized"  # Google側と一致させる
+    redirect_url=url_for("google.authorized", _external=True, _scheme="https")
 )
 app.register_blueprint(google_bp, url_prefix="/login")
 
