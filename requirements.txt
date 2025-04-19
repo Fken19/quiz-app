@@ -8,6 +8,6 @@ Flask-SQLAlchemy==2.5.1
 SQLAlchemy==1.4.46
 google-cloud-firestore==2.7.0
 pytz==2023.3
-Flask-Session
 python-dateutil
 python-dotenv
+Flask-Session==0.4.0

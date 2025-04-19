@@ -1,6 +1,7 @@
 import os
 
 import pytz
+from flask_session import Session
 JST = pytz.timezone("Asia/Tokyo")
 
 from flask import Flask, render_template, jsonify, redirect, url_for, session, request
@@ -16,6 +17,13 @@ load_dotenv()
 logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
+app.config['SESSION_TYPE'] = 'filesystem'  # ローカルファイルに保存（Redisも選択可）
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_USE_SIGNER'] = True
+app.config['SESSION_FILE_DIR'] = './flask_session'
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
+Session(app)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your_secret_key')  # セキュアな環境変数から取得
 
 # 環境変数からGoogle OAuthの認証情報を取得
