@@ -28,6 +28,13 @@ app.config['SESSION_COOKIE_SECURE'] = True
 Session(app)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your_secret_key')  # セキュアな環境変数から取得
 
+# Render環境でHTTPSが使えない場合に一時的にhttp許容
+if os.environ.get("RENDER") == "true":
+    app.config['PREFERRED_URL_SCHEME'] = 'http'
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+else:
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # ローカル開発時もHTTP許容
+
 @app.before_request
 def debug_session():
     app.logger.debug("SESSION DATA: %s", dict(session))
