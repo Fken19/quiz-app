@@ -22,8 +22,9 @@ app.config['SESSION_TYPE'] = 'redis'
 app.config['SESSION_REDIS'] = redis.from_url(os.environ.get("REDIS_URL"))
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_USE_SIGNER'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
+# app.config['SESSION_COOKIE_DOMAIN'] = '.onrender.com'
 Session(app)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your_secret_key')  # セキュアな環境変数から取得
 
@@ -556,6 +557,17 @@ def dashboard():
         day_graph_incorrect=day_graph_incorrect,
         total_quizzes=len(all_results)
     )
+
+@app.route("/login/google/authorized/debug")
+def google_authorized_debug():
+    app.logger.debug("AUTHORIZED HIT: session keys = %s", list(session.keys()))
+    if not google.authorized:
+        return redirect(url_for("google.login"))
+    resp = google.get("/oauth2/v2/userinfo")
+    if not resp.ok:
+        return redirect(url_for("home"))
+    user_info = resp.json()
+    return jsonify(user_info)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)
