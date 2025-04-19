@@ -52,7 +52,7 @@ google_bp = make_google_blueprint(
         "https://www.googleapis.com/auth/userinfo.profile"
     ],
     redirect_to="levels",  # ログイン後にレベル選択画面へリダイレクト
-    redirect_url=url_for("google.authorized", _external=True, _scheme="https")
+    redirect_url=os.getenv("GOOGLE_REDIRECT_URL")
 )
 app.register_blueprint(google_bp, url_prefix="/login")
 
