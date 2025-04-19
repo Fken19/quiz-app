@@ -1,4 +1,5 @@
 import os
+import redis
 
 import pytz
 from flask_session import Session
@@ -17,14 +18,18 @@ load_dotenv()
 logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
-app.config['SESSION_TYPE'] = 'filesystem'  # ローカルファイルに保存（Redisも選択可）
+app.config['SESSION_TYPE'] = 'redis'
+app.config['SESSION_REDIS'] = redis.from_url(os.environ.get("REDIS_URL"))
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_USE_SIGNER'] = True
-app.config['SESSION_FILE_DIR'] = './flask_session'
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = True
 Session(app)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your_secret_key')  # セキュアな環境変数から取得
+
+@app.before_request
+def debug_session():
+    app.logger.debug("SESSION DATA: %s", dict(session))
 
 # 環境変数からGoogle OAuthの認証情報を取得
 google_client_id = os.getenv("GOOGLE_CLIENT_ID")
