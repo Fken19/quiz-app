@@ -83,13 +83,3 @@ quiz-app/
 - Memorystore 導入やPub/Subによるスケーラブルな非同期処理
 
 ---
-
-## 📝 ライセンス
-MIT License
-
----
-
-## 👨‍💻 作者・連絡先
-- 開発者: TBLK
-- ご意見・バグ報告等は GitHub Issues またはメールにてご連絡ください
-
