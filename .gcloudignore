@@ -1,0 +1,8 @@
+# 任意の除外ルール（なくてもOK）
+__pycache__/
+*.pyc
+*.log
+.env
+
+# 明示的に Firestore キーを含める
+!english_firestore_key.json

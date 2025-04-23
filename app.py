@@ -1,12 +1,10 @@
 import os
-import redis
-
 import pytz
-from flask_session import Session
+from urllib.parse import urlparse
 JST = pytz.timezone("Asia/Tokyo")
 
 from flask import Flask, render_template, jsonify, redirect, url_for, session, request
-from flask_dance.contrib.google import make_google_blueprint, google
+ 
 import json
 import logging
 from dateutil import parser
@@ -14,19 +12,32 @@ from dateutil.relativedelta import relativedelta
 from dotenv import load_dotenv
 load_dotenv()
 
+import logging
+
 # ロギング設定（DEBUGレベルで出力）
 logging.basicConfig(level=logging.DEBUG)
 
+
+def get_logged_in_user():
+    if "user_email" in session:
+        return {
+            "email": session["user_email"],
+            "name": session.get("user_name", ""),
+            "picture": session.get("user_picture", "")
+        }
+    return None
+
 app = Flask(__name__)
-app.config['SESSION_TYPE'] = 'redis'
-app.config['SESSION_REDIS'] = redis.from_url(os.environ.get("REDIS_URL"))
+app.config['SESSION_COOKIE_NAME'] = '__session'
 app.config['SESSION_PERMANENT'] = False
-app.config['SESSION_USE_SIGNER'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-app.config['SESSION_COOKIE_SECURE'] = True
-app.config['SESSION_COOKIE_DOMAIN'] = '.onrender.com'
-Session(app)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your_secret_key')  # セキュアな環境変数から取得
+## Production session configuration: cookie-based sessions only (cookie-based sessions, no Redis)
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+# SESSION_COOKIE_DOMAIN is intentionally omitted for Cloud Run
+
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
 
 # Render環境でHTTPSが使えない場合に一時的にhttp許容
 if os.environ.get("RENDER") == "true":
@@ -38,42 +49,27 @@ else:
 def debug_session():
     app.logger.debug("SESSION DATA: %s", dict(session))
 
-# 環境変数からGoogle OAuthの認証情報を取得
+@app.before_request
+def log_request_scheme():
+    app.logger.debug("【確認】Request scheme: %s", request.scheme)
+    app.logger.debug("【確認】Request headers: %s", dict(request.headers))
+
 google_client_id = os.getenv("GOOGLE_CLIENT_ID")
 google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+redirect_uri = os.getenv("GOOGLE_REDIRECT_URL")
 
-google_bp = make_google_blueprint(
-    client_id=google_client_id,
-    client_secret=google_client_secret,
-    scope=[
-        "openid",
-        "https://www.googleapis.com/auth/userinfo.email",
-        "https://www.googleapis.com/auth/userinfo.profile"
-    ],
-    redirect_to="levels",  # ログイン後にレベル選択画面へリダイレクト
-    redirect_url=os.getenv("GOOGLE_REDIRECT_URL")
-)
-app.register_blueprint(google_bp, url_prefix="/login")
+ 
 
 
-from firestore_client import db  # Firestore クライアントを利用
-from google.cloud import firestore  # Firestore のタイムスタンプなどを使うため
+import os
+if not os.getenv("FLASK_TESTING"):
+    from firestore_client import db
+    from google.cloud import firestore
+else:
+    db = None
+    firestore = None
 
-# 英単語クイズ用データの読み込み関数
-def load_quiz_data():
-    data = []
-    try:
-        with open('data.jsonl', 'r', encoding='utf-8') as f:
-            for line in f:
-                data.append(json.loads(line))
-    except Exception as e:
-        logging.error("Quizデータの読み込みに失敗: %s", e)
-    return data
-
-quiz_data = load_quiz_data()
-
-from firestore_client import db  # Firestore クライアントを利用
-from google.cloud import firestore  # Firestore のタイムスタンプなどを使うため
+app.db = db
 
 # 英単語クイズ用データの読み込み関数
 def load_quiz_data():
@@ -90,125 +86,85 @@ quiz_data = load_quiz_data()
 
 @app.route('/levels')
 def levels():
-    if not google.authorized:
-         return redirect(url_for('google.login'))
-    try:
-         resp = google.get("/oauth2/v2/userinfo")
-         if not resp.ok:
-              return redirect(url_for('home'))
-         user_info = resp.json()
-    except Exception as e:
-         app.logger.exception("ユーザー情報取得エラー: %s", e)
-         return redirect(url_for('home'))
-    
+    user = get_logged_in_user()
+    if not user:
+        return redirect(url_for('login'))
+
     total_questions = len(quiz_data)
     segment_size = 50
-    total_levels = (total_questions + segment_size - 1) // segment_size  # 切り上げ
+    total_levels = (total_questions + segment_size - 1) // segment_size
     levels_list = [
         {'level': i+1,
          'start': i * segment_size + 1,
          'end': min((i+1) * segment_size, total_questions)}
         for i in range(total_levels)
     ]
-    return render_template('level_selection.html', levels=levels_list, user=user_info)
+    return render_template('level_selection.html', levels=levels_list, user=user)
+
+# Route for /level-selection that redirects to /levels
+@app.route('/level-selection')
+def level_selection_redirect():
+    return redirect(url_for('levels'))
 
 
 @app.route('/')
 def home():
-    user_info = None
-    if google.authorized:
-        try:
-            resp = google.get("/oauth2/v2/userinfo")
-            if resp.ok:
-                user_info = resp.json()
-        except Exception as e:
-            app.logger.exception("Googleユーザー情報取得中にエラー発生: %s", e)
-    return render_template('home.html', user=user_info)
+    user = get_logged_in_user()
+    return render_template('home.html', user=user)
 
 @app.route('/quiz/<int:level>')
-# This route renders index.html with context: quiz_data, user, level
 def quiz_level(level):
-    if not google.authorized:
-         return redirect(url_for('google.login'))
-    try:
-         resp = google.get("/oauth2/v2/userinfo")
-         if not resp.ok:
-              return redirect(url_for('home'))
-         user_info = resp.json()
-    except Exception as e:
-         app.logger.exception("ユーザー情報取得エラー: %s", e)
-         return redirect(url_for('home'))
-    
+    user = get_logged_in_user()
+    if not user:
+        return redirect(url_for('login'))
+
     segment_size = 50
     start_index = (level - 1) * segment_size
     end_index = start_index + segment_size
     level_quiz_data = quiz_data[start_index:end_index]
-    return render_template('index.html', quiz_data=level_quiz_data, user=user_info, level=level)
+    return render_template('index.html', quiz_data=level_quiz_data, user=user, level=level)
 
 @app.route('/segments/<int:level>')
 def segments(level):
-    if not google.authorized:
-         return redirect(url_for('google.login'))
-    try:
-         resp = google.get("/oauth2/v2/userinfo")
-         if not resp.ok:
-              return redirect(url_for('home'))
-         user_info = resp.json()
-    except Exception as e:
-         app.logger.exception("ユーザー情報取得エラー: %s", e)
-         return redirect(url_for('home'))
+    user = get_logged_in_user()
+    if not user:
+        return redirect(url_for('login'))
 
     segment_size = 10
     total_segments = 5
-    segments_list = []
-    for i in range(total_segments):
-        segments_list.append({
-            'segment': i + 1,
-            'start': i * segment_size + 1,
-            'end': (i + 1) * segment_size
-        })
-    return render_template('segment_selection.html', level=level, segments=segments_list, user=user_info)
+    segments_list = [
+        {'segment': i + 1,
+         'start': i * segment_size + 1,
+         'end': (i + 1) * segment_size}
+        for i in range(total_segments)
+    ]
+    return render_template('segment_selection.html', level=level, segments=segments_list, user=user)
 
 @app.route('/quiz/<int:level>/<int:segment>')
-# This route renders index.html with context: quiz_data, user, level, segment, is_shuffled=False
 def quiz_segment(level, segment):
-    if not google.authorized:
-         return redirect(url_for('google.login'))
-    try:
-         resp = google.get("/oauth2/v2/userinfo")
-         if not resp.ok:
-              return redirect(url_for('home'))
-         user_info = resp.json()
-    except Exception as e:
-         app.logger.exception("ユーザー情報取得エラー: %s", e)
-         return redirect(url_for('home'))
-    
+    user = get_logged_in_user()
+    if not user:
+        return redirect(url_for('login'))
+
     level_segment_size = 50
     level_start = (level - 1) * level_segment_size
     level_end = level_start + level_segment_size
     level_questions = quiz_data[level_start:level_end]
-    
+
     segment_size = 10
     seg_start = (segment - 1) * segment_size
     seg_end = seg_start + segment_size
     segment_quiz_data = level_questions[seg_start:seg_end]
-    
-    return render_template('index.html', quiz_data=segment_quiz_data, user=user_info, level=level, segment=segment, is_shuffled=False)
+
+    return render_template('index.html', quiz_data=segment_quiz_data, user=user, level=level, segment=segment, is_shuffled=False)
 
 
 @app.route('/quiz/<int:level>/all_shuffled')
 # This route renders index.html with context: quiz_data, user, level, is_shuffled=True
 def quiz_all_shuffled(level):
-    if not google.authorized:
-         return redirect(url_for('google.login'))
-    try:
-         resp = google.get("/oauth2/v2/userinfo")
-         if not resp.ok:
-              return redirect(url_for('home'))
-         user_info = resp.json()
-    except Exception as e:
-         app.logger.exception("ユーザー情報取得エラー: %s", e)
-         return redirect(url_for('home'))
+    user = get_logged_in_user()
+    if not user:
+         return redirect(url_for('login'))
     
     level_segment_size = 50
     level_start = (level - 1) * level_segment_size
@@ -219,52 +175,47 @@ def quiz_all_shuffled(level):
     questions_copy = level_questions.copy()
     random.shuffle(questions_copy)
     
-    return render_template('index.html', quiz_data=questions_copy, user=user_info, level=level, is_shuffled=True)
+    return render_template('index.html', quiz_data=questions_copy, user=user, level=level, is_shuffled=True)
 
 
-# ログアウト後はホーム画面に戻す
 @app.route('/logout')
 def logout():
+    session.pop('google_oauth_token', None)
     session.clear()
-    return redirect(url_for('home'))
+    response = redirect(url_for('home'))
+    response.set_cookie('session', '', expires=0, path='/', secure=True, httponly=True, samesite='None')
+    return response
 
 
 @app.route('/submit', methods=['POST'])
 def submit_score():
     data = request.get_json()
     app.logger.info("Received data: %s", data)
+
+    user = get_logged_in_user()
+    if not user:
+        return jsonify({"status": "error", "message": "ログインしていません"}), 401
+
     try:
-        user_info = None
-        if google.authorized:
-            resp = google.get("/oauth2/v2/userinfo")
-            if resp.ok:
-                user_info = resp.json()
-                app.logger.debug("取得したユーザー情報: %s", user_info)
-            else:
-                app.logger.error("ユーザー情報取得に失敗: %s", resp.text)
-        else:
-            app.logger.warning("Google認証されていません")
-        
-        if user_info:
-            user_email = user_info.get("email")
-            user_ref = db.collection('users').document(user_email)
-            if not user_ref.get().exists:
-                user_ref.set({'email': user_email})
-                app.logger.info("新規ユーザー作成: %s", user_email)
-        
+        user_email = user["email"]
+        user_ref = app.db.collection('users').document(user_email)
+        if not user_ref.get().exists:
+            user_ref.set({'email': user_email})
+            app.logger.info("新規ユーザー作成: %s", user_email)
+
         quiz_result_data = {
-            'user_email': user_info.get("email") if user_info else None,
+            'user_email': user_email,
             'score': data.get("score"),
             'total': data.get("total"),
             'total_time': data.get("time"),
-            'timestamp': firestore.SERVER_TIMESTAMP,
-            'created_at': firestore.SERVER_TIMESTAMP
+            'timestamp': app.firestore.SERVER_TIMESTAMP,
+            'created_at': app.firestore.SERVER_TIMESTAMP
         }
-        quiz_result_ref = db.collection('quiz_results').add(quiz_result_data)
-        write_result = quiz_result_ref[1]  # FirestoreWriteResult を受け取る（保存完了を待つ）
+        quiz_result_ref = app.db.collection('quiz_results').add(quiz_result_data)
+        write_result = quiz_result_ref[1]
         quiz_result_id = quiz_result_ref[0].id
         app.logger.info("QuizResult保存完了: id=%s", quiz_result_id)
-        
+
         for detail in data.get("results", []):
             detail_data = {
                 'question': detail.get("question"),
@@ -272,26 +223,25 @@ def submit_score():
                 'correct_answer': detail.get("correctAnswer"),
                 'answer_time': detail.get("time")
             }
-            db.collection('quiz_results').document(quiz_result_id).collection('details').add(detail_data)
+            app.db.collection('quiz_results').document(quiz_result_id).collection('details').add(detail_data)
+
         app.logger.info("全てのQuizDetail保存完了")
-    
+
     except Exception as e:
         app.logger.exception("Error saving quiz result: %s", e)
         return jsonify({"status": "error", "message": "データ保存に失敗しました"}), 500
-    
+
     return jsonify({"status": "success"}), 200
 
 @app.route('/results')
 def results():
-    if not google.authorized:
-        return redirect(url_for("google.login"))
-    resp = google.get("/oauth2/v2/userinfo")
-    if not resp.ok:
-        return redirect(url_for("index"))
-    user_info = resp.json()
-    user_email = user_info.get("email")
-    
-    quiz_results_query = db.collection('quiz_results').where('user_email', '==', user_email).stream()
+    user = get_logged_in_user()
+    if not user:
+        return redirect(url_for("login"))
+
+    user_email = user.get("email")
+
+    quiz_results_query = app.db.collection('quiz_results').where('user_email', '==', user_email).stream()
     quiz_results = []
     for doc in quiz_results_query:
         result = doc.to_dict()
@@ -317,17 +267,15 @@ def results():
         else:
             result["timestamp_jst_str"] = "不明"
 
-        # 合計解答時間を1桁にフォーマット
         result['total_time_display'] = f"{float(result.get('total_time', 0)):.1f}"
-
         quiz_results.append(result)
-    
-    return render_template('results.html', quiz_results=quiz_results, user=user_info)
+
+    return render_template('results.html', quiz_results=quiz_results, user=user)
 
 
 @app.route('/results/<result_id>')
 def result_detail(result_id):
-    result_doc = db.collection('quiz_results').document(result_id).get()
+    result_doc = app.db.collection('quiz_results').document(result_id).get()
     if not result_doc.exists:
         return "結果が見つかりません", 404
     result = result_doc.to_dict()
@@ -336,7 +284,7 @@ def result_detail(result_id):
             result['timestamp'] = result['timestamp'].to_datetime()
         except Exception as e:
             app.logger.exception("Timestamp conversion error: %s", e)
-    details_query = db.collection('quiz_results').document(result_id).collection('details').stream()
+    details_query = app.db.collection('quiz_results').document(result_id).collection('details').stream()
     details = [doc.to_dict() for doc in details_query]
     return render_template('result_detail.html', result=result, details=details)
 
@@ -345,7 +293,6 @@ def result_detail(result_id):
 from datetime import datetime, timedelta, timezone
 import pytz
 from oauthlib.oauth2.rfc6749.errors import TokenExpiredError
-from google.cloud import firestore
 
 # タイム補正関数（文字列が不正な場合も考慮）
 def convert_to_float(val):
@@ -361,19 +308,12 @@ def convert_to_float(val):
 
 @app.route('/dashboard')
 def dashboard():
-    if not google.authorized:
-        return redirect(url_for("google.login"))
-    try:
-        resp = google.get("/oauth2/v2/userinfo")
-    except TokenExpiredError:
-        session.clear()
-        return redirect(url_for("google.login"))
-    if not resp.ok:
-        return redirect(url_for("home"))
-    user_info = resp.json()
-    user_email = user_info.get("email")
+    user = get_logged_in_user()
+    if not user:
+        return redirect(url_for("login"))
+    user_email = user.get("email")
 
-    quiz_results_query = db.collection('quiz_results')\
+    quiz_results_query = app.db.collection('quiz_results')\
         .where('user_email', '==', user_email)\
         .order_by('created_at').get()
 
@@ -539,7 +479,7 @@ def dashboard():
 
     return render_template(
         'dashboard.html',
-        user=user_info,
+        user=user,
         total_words=total_words,
         overall_accuracy=overall_accuracy,
         overall_avg_time=overall_avg_time,
@@ -564,16 +504,72 @@ def dashboard():
         total_quizzes=len(all_results)
     )
 
-@app.route("/login/google/authorized/debug")
-def google_authorized_debug():
-    app.logger.debug("AUTHORIZED HIT: session keys = %s", list(session.keys()))
-    if not google.authorized:
-        return redirect(url_for("google.login"))
-    resp = google.get("/oauth2/v2/userinfo")
-    if not resp.ok:
-        return redirect(url_for("home"))
-    user_info = resp.json()
-    return jsonify(user_info)
+@app.route("/session/debug")
+def session_debug():
+    app.logger.debug("SESSION DEBUG: %s", dict(session))
+    return jsonify(dict(session))
+
+ 
+
+from google_auth_oauthlib.flow import Flow
+from google.oauth2 import id_token
+import google.auth.transport.requests
+
+@app.route("/login")
+def login():
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": google_client_id,
+                "client_secret": google_client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [redirect_uri]
+            }
+        },
+        scopes=["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"],
+        redirect_uri=redirect_uri
+    )
+    auth_url, state = flow.authorization_url()
+    session["oauth_state"] = state
+    return redirect(auth_url)
+
+@app.route("/callback")
+def callback():
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": google_client_id,
+                "client_secret": google_client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [redirect_uri]
+            }
+        },
+        scopes=["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"],
+        state=session["oauth_state"],
+        redirect_uri=redirect_uri
+    )
+    flow.fetch_token(authorization_response=request.url)
+
+    credentials = flow.credentials
+    idinfo = id_token.verify_oauth2_token(
+        credentials.id_token,
+        google.auth.transport.requests.Request(),
+        google_client_id
+    )
+
+    session["user_email"] = idinfo["email"]
+    session["user_name"] = idinfo.get("name", "")
+    session["user_picture"] = idinfo.get("picture", "")
+    return redirect(url_for("levels"))
+
+
+# テスト用に app を取得する関数
+def create_app():
+    app.testing = True
+    return app
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port, debug=True)

@@ -12,7 +12,7 @@ COPY requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 認証ファイルを配置（Firestore用）(本番環境ではアップロードしない)
-# COPY english_firestore_key.json /app/english_firestore_key.json
+COPY english_firestore_key.json /app/english_firestore_key.json
 
 # アプリケーションの全コードをコピー
 COPY . .
@@ -26,4 +26,4 @@ ENV OAUTHLIB_INSECURE_TRANSPORT=1
 
 EXPOSE 5000
 
-CMD ["python", "app.py"]
+CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app"]

@@ -6,7 +6,7 @@
 <div class="text-center mt-5">
     <h1>英単語クイズ</h1>
     {% if not user %}
-        <a href="{{ url_for('google.login') }}" class="btn btn-primary mt-3">Googleでログイン</a>
+        <a href="{{ url_for('login') }}" class="btn btn-primary mt-3">Googleでログイン</a>
     {% else %}
         <a href="{{ url_for('levels') }}" class="btn btn-success mt-3">クイズを始める</a>
     {% endif %}
