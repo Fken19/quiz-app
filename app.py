@@ -208,8 +208,8 @@ def submit_score():
             'score': data.get("score"),
             'total': data.get("total"),
             'total_time': data.get("time"),
-            'timestamp': app.firestore.SERVER_TIMESTAMP,
-            'created_at': app.firestore.SERVER_TIMESTAMP
+            'timestamp': firestore.SERVER_TIMESTAMP,
+            'created_at': firestore.SERVER_TIMESTAMP
         }
         quiz_result_ref = app.db.collection('quiz_results').add(quiz_result_data)
         write_result = quiz_result_ref[1]
