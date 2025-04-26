@@ -102,3 +102,19 @@ def test_results_authenticated(client, monkeypatch):
     response = client.get('/results')
     assert response.status_code == 200
     assert b"結果" in response.data  # "結果" などがHTML内にあるか検証
+
+    def test_login_redirect(client):
+    response = client.get('/login')
+    assert response.status_code in [302, 401, 200]  # Google認証リダイレクトを許容
+
+def test_logout_clears_session(client):
+    # まず仮のログイン状態にする
+    with client.session_transaction() as sess:
+        sess['user_email'] = 'test@example.com'
+
+    # ログアウトリクエストを送る
+    response = client.get('/logout')
+
+    # セッションが空になったことを確認
+    with client.session_transaction() as sess_after:
+        assert 'user_email' not in sess_after
