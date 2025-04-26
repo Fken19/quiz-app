@@ -211,16 +211,15 @@ def submit_score():
             'timestamp': firestore.SERVER_TIMESTAMP,
             'created_at': firestore.SERVER_TIMESTAMP
         }
-        quiz_result_ref = app.db.collection('quiz_results').add(quiz_result_data)
-        write_result = quiz_result_ref[1]
-        quiz_result_id = quiz_result_ref[0].id
+        _, quiz_result_doc_ref = app.db.collection('quiz_results').add(quiz_result_data)
+        quiz_result_id = quiz_result_doc_ref.id
         app.logger.info("QuizResult保存完了: id=%s", quiz_result_id)
 
         for detail in data.get("results", []):
             detail_data = {
                 'question': detail.get("question"),
-                'user_answer': detail.get("userAnswer"),
-                'correct_answer': detail.get("correctAnswer"),
+                'user_answer': detail.get("userAnswer"),  # キー名を修正
+                'correct_answer': detail.get("correctAnswer"),  # キー名を修正
                 'answer_time': detail.get("time")
             }
             app.db.collection('quiz_results').document(quiz_result_id).collection('details').add(detail_data)

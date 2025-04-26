@@ -323,6 +323,7 @@ function sendResults(score, total, totalTime) {
         score: score,
         total: total,
         time: totalTime,
+        results: results,
         user: window.userEmail || "anonymous"  
     };
 
