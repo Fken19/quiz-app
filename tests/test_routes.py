@@ -66,6 +66,86 @@ def test_submit_quiz_result(client):
     mock_db.collection.assert_called_with("quiz_results")
     mock_db.collection().add.assert_called()
 
+def test_submit_missing_fields(client):
+    login_session(client)
+
+    response = client.post('/submit', json={})
+    assert response.status_code == 400  # 例：400 Bad Request を想定
+    assert b"error" in response.data
+
+def test_submit_invalid_score_type(client):
+    login_session(client)
+
+    response = client.post('/submit', json={
+        "score": "invalid",  # スコアが文字列
+        "total": 10,
+        "total_time": 45.3
+    })
+    assert response.status_code == 400
+    assert b"error" in response.data
+
+def test_submit_unauthenticated(client):
+    response = client.post('/submit', json={
+        "score": 8,
+        "total": 10,
+        "total_time": 45.3
+    })
+    assert response.status_code in [302, 401]
+
+def test_submit_quiz_result_invalid_data(client):
+    login_session(client)
+
+    mock_db = MagicMock()
+    mock_collection = mock_db.collection.return_value
+    mock_doc_ref = MagicMock()
+    mock_doc_ref.id = "fake_id"
+    mock_collection.add.return_value = (mock_doc_ref, {})
+    client.application.db = mock_db
+
+    mock_firestore = MagicMock()
+    mock_firestore.SERVER_TIMESTAMP = "MOCKED_TIMESTAMP"
+    client.application.firestore = mock_firestore
+
+    # 1. スコアが文字列
+    response = client.post('/submit', json={
+        "score": "abc",
+        "total": 10,
+        "total_time": 45.3
+    })
+    assert response.status_code in [400, 422]
+
+    # 2. total_time が文字列
+    response = client.post('/submit', json={
+        "score": 8,
+        "total": 10,
+        "total_time": "hello"
+    })
+    assert response.status_code in [400, 422]
+
+    # 3. total がマイナス
+    response = client.post('/submit', json={
+        "score": 8,
+        "total": -5,
+        "total_time": 45.3
+    })
+    assert response.status_code in [400, 422]
+
+    # 4. totalが0（問題数0問）
+    response = client.post('/submit', json={
+        "score": 0,
+        "total": 0,
+        "total_time": 10.0
+    })
+    assert response.status_code in [400, 422]
+
+    # 5. 正常ケース（scoreが0でもOK）
+    response = client.post('/submit', json={
+        "score": 0,
+        "total": 10,
+        "total_time": 20.0
+    })
+    assert response.status_code == 200
+
 def test_results_authenticated(client, monkeypatch):
     # モックユーザーセッションをセット
     with client.session_transaction() as sess:
