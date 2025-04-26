@@ -65,3 +65,40 @@ def test_submit_quiz_result(client):
     assert b"success" in response.data or b"result_id" in response.data
     mock_db.collection.assert_called_with("quiz_results")
     mock_db.collection().add.assert_called()
+
+def test_results_authenticated(client, monkeypatch):
+    # モックユーザーセッションをセット
+    with client.session_transaction() as sess:
+        sess['user_email'] = 'test@example.com'
+        sess['user_name'] = 'Test User'
+        sess['user_picture'] = 'https://example.com/image.jpg'
+
+    # Firestore のモック
+    class MockDoc:
+        def __init__(self, id):
+            self.id = id
+        def to_dict(self):
+            return {
+                "user_email": "test@example.com",
+                "score": 8,
+                "total": 10,
+                "total_time": 5.5,
+                "created_at": datetime.utcnow()
+            }
+        @property
+        def exists(self):
+            return True
+
+    class MockCollection:
+        def where(self, *args, **kwargs):
+            return self
+        def stream(self):
+            return [MockDoc("result1")]
+
+    monkeypatch.setattr("app.app.db", type("MockDB", (), {
+        "collection": lambda self, name: MockCollection()
+    })())
+
+    response = client.get('/results')
+    assert response.status_code == 200
+    assert b"結果" in response.data  # "結果" などがHTML内にあるか検証
