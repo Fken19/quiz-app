@@ -14,10 +14,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Create english_firestore_key.json from GitHub Secret
+        run: |
+          echo '${{ secrets.ENGLISH_FIRESTORE_KEY }}' > english_firestore_key.json
+
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          credentials_json: ${{ secrets.ENGLISH_FIRESTORE_KEY }}
 
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
