@@ -14,8 +14,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker build -t quiz-app .
+      - name: Build Docker image for testing
+        run: docker build -f Dockerfile.test -t quiz-app-test .
 
       - name: Run tests
         run: docker run --rm quiz-app pytest

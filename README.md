@@ -1,6 +1,6 @@
 ![Tests](https://github.com/Fken19/quiz-app/actions/workflows/test.yml/badge.svg)
 
-# クイズアプリ README
+# クイズアプリ README/
 
 ## 📌 プロジェクト概要
 このプロジェクトは、Flask + Google OAuth 認証 + Firestore を用いた英単語クイズアプリです。生徒が Google アカウントでログインし、自分のクイズ結果を記録・可視化できるよう設計されています。将来的には塾などの教育現場での使用を想定し、管理者（教師）機能の追加も視野に入れています。
