@@ -1,10 +1,11 @@
 import sys
-sys.modules['firestore_client'] = MagicMock()
-
-from unittest.mock import MagicMock, PropertyMock
 import pytest
-from app import create_app
+from unittest.mock import MagicMock, PropertyMock
 from datetime import datetime
+from app import create_app
+
+# firestore_client をモック化
+sys.modules['firestore_client'] = MagicMock()
 
 # Flaskのテストクライアント用fixture
 @pytest.fixture
