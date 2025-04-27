@@ -3,6 +3,19 @@ import pytz
 from urllib.parse import urlparse
 JST = pytz.timezone("Asia/Tokyo")
 
+# --- Firestore timestamp safe conversion helper ---
+from google.cloud.firestore_v1 import _helpers
+from datetime import datetime, timedelta, timezone
+
+def safe_convert_to_datetime(value):
+    """FirestoreのDatetimeWithNanoseconds型を安全にdatetimeに変換する"""
+    if hasattr(value, 'to_rfc3339'):
+        return _helpers._from_rfc3339(value.to_rfc3339())
+    elif isinstance(value, datetime):
+        return value
+    else:
+        raise ValueError(f"Unsupported timestamp type: {type(value)}")
+
 from flask import Flask, render_template, jsonify, redirect, url_for, session, request
  
 import json
@@ -190,6 +203,11 @@ def logout():
 @app.route('/submit', methods=['POST'])
 def submit_score():
     data = request.get_json()
+    # バリデーションチェックを追加
+    if not isinstance(data.get("score"), int) or not isinstance(data.get("total"), int) or not isinstance(data.get("time"), (int, float)):
+        return jsonify({"status": "error", "message": "Invalid input types"}), 400
+    if data.get("total", 0) <= 0:
+        return jsonify({"status": "error", "message": "Total must be positive"}), 400
     app.logger.info("Received data: %s", data)
 
     user = get_logged_in_user()
@@ -250,15 +268,10 @@ def results():
         ts = result.get("timestamp") or result.get("created_at")
         if ts:
             try:
-                if hasattr(ts, "to_datetime"):
-                    dt_utc = ts.to_datetime()
-                elif isinstance(ts, str):
-                    dt_utc = parser.parse(ts)
-                elif isinstance(ts, datetime):
-                    dt_utc = ts
-                else:
-                    dt_utc = datetime.utcnow()
-                ts_jst = dt_utc + timedelta(hours=9)
+                dt_utc = safe_convert_to_datetime(ts)
+                if dt_utc.tzinfo is None:
+                    dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+                ts_jst = dt_utc.astimezone(JST)
                 result["timestamp_jst_str"] = ts_jst.strftime("%Y-%m-%d %H:%M")
             except Exception as e:
                 app.logger.exception("timestamp JST 変換に失敗: %s", e)
@@ -280,7 +293,7 @@ def result_detail(result_id):
     result = result_doc.to_dict()
     if 'timestamp' in result and result['timestamp'] is not None:
         try:
-            result['timestamp'] = result['timestamp'].to_datetime()
+            result['timestamp'] = safe_convert_to_datetime(result['timestamp'])
         except Exception as e:
             app.logger.exception("Timestamp conversion error: %s", e)
     details_query = app.db.collection('quiz_results').document(result_id).collection('details').stream()
