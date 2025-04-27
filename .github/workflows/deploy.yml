@@ -18,7 +18,7 @@ jobs:
         run: docker build -f Dockerfile.test -t quiz-app-test .
 
       - name: Run tests
-        run: docker run --rm quiz-app pytest
+        run: docker run --rm quiz-app-test pytest
 
   deploy:
     name: Build and Deploy to Cloud Run
