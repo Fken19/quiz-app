@@ -1,3 +1,5 @@
+![Tests](https://github.com/Fken19/quiz-app/actions/workflows/test.yml/badge.svg)
+
 # クイズアプリ README
 
 ## 📌 プロジェクト概要
