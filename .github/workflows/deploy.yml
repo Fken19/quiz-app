@@ -1,4 +1,4 @@
-name: Deploy to Cloud Run
+name: Test and Deploy to Cloud Run
 
 on:
   push:
@@ -6,15 +6,31 @@ on:
       - main
 
 jobs:
-  deploy:
-    name: Build and Deploy to Cloud Run
+  test:
+    name: Run tests in Docker
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create english_firestore_key.json from GitHub Secret
+      - name: Build Docker image
+        run: docker build -t quiz-app .
+
+      - name: Run tests
+        run: docker run --rm quiz-app pytest
+
+  deploy:
+    name: Build and Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    needs: test   # ← ここが超重要！！
+    if: ${{ success() }}  # ← テストが成功したときだけ実行！！
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create firestore key file
         run: |
           echo '${{ secrets.ENGLISH_FIRESTORE_KEY }}' > english_firestore_key.json
 
@@ -28,9 +44,14 @@ jobs:
         with:
           project_id: data-dragon-453015-t2
 
-      - name: Build and Push Docker image
-        run: |
-          gcloud builds submit --tag gcr.io/data-dragon-453015-t2/quiz-app
+      - name: Build Docker image
+        run: docker build -t gcr.io/data-dragon-453015-t2/quiz-app .
+
+      - name: Configure Docker to use gcloud as a credential helper
+        run: gcloud auth configure-docker --quiet
+
+      - name: Push Docker image
+        run: docker push gcr.io/data-dragon-453015-t2/quiz-app
 
       - name: Deploy to Cloud Run
         run: |
