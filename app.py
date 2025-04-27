@@ -1,4 +1,9 @@
 import os
+if os.getenv('FLASK_TESTING') == '1':
+    import sys
+    from unittest.mock import MagicMock
+    sys.modules['firestore_client'] = MagicMock()
+import os
 import pytz
 from urllib.parse import urlparse
 JST = pytz.timezone("Asia/Tokyo")
