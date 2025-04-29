@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="container mt-4">
-    <h1>結果詳細</h1>
+    <h1>ユーザー名 : {{ session.get('user_info', {}).get('name') or session.get('user_info', {}).get('email', 'あなた') }}</h1>
     <p>スコア: {{ result.score }} / {{ result.total }}</p>
     <p>合計解答時間: {{ result.total_time }}秒</p>
     <div class="table-responsive">

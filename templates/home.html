@@ -5,7 +5,7 @@
 {% block content %}
 <div class="text-center mt-5">
     <h1>英単語クイズ</h1>
-    {% if not user %}
+    {% if not user_info or not user_info.get('user_email') %}
         <a href="{{ url_for('login') }}" class="btn btn-primary mt-3">Googleでログイン</a>
     {% else %}
         <a href="{{ url_for('levels') }}" class="btn btn-success mt-3">クイズを始める</a>

@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="container mt-4">
-    <h1 class="mb-4">{{ current_user_name }}のクイズ結果</h1>
+    <h1 class="mb-4">ユーザー名 : {{ user_info.nickname if user_info.nickname else user_info.name if user_info.name else user_info.email }}</h1>
 
     <div class="table-responsive">
         <table class="table table-striped">

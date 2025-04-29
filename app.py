@@ -37,13 +37,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 def get_logged_in_user():
-    if "user_email" in session:
-        return {
-            "email": session["user_email"],
-            "name": session.get("user_name", ""),
-            "picture": session.get("user_picture", "")
-        }
-    return None
+    return session.get("user_info")
 
 app = Flask(__name__)
 app.config['SESSION_COOKIE_NAME'] = '__session'
@@ -57,14 +51,11 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 # --- Context processor to inject user profile info into all templates ---
 @app.context_processor
 def inject_user_profile():
-    """すべてのテンプレートで user_name, user_picture, nickname を使えるようにする"""
-    user_name = session.get('user_name', '')
-    user_picture = session.get('user_picture', '')
-    user_nickname = session.get('user_nickname', '')  # nickname もセッションから取得
+    user_info = session.get("user_info", {})
     return dict(
-        current_user_name=user_name,
-        current_user_picture=user_picture,
-        current_user_nickname=user_nickname
+        current_user_name=user_info.get("name", ""),
+        current_user_picture=user_info.get("picture", ""),
+        current_user_nickname=user_info.get("nickname", "")
     )
 
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -322,15 +313,13 @@ def profile():
         # Firestore更新
         if update_data:
             if "nickname" in update_data:
-                session["user_nickname"] = update_data["nickname"]
+                session["user_info"]["nickname"] = update_data["nickname"]
             update_user_doc(user_email, update_data)
-            # セッションの画像URLも更新（テンプレート反映のため）
             if "custom_icon_url" in update_data:
-                session["user_picture"] = update_data["custom_icon_url"] + "?v=" + datetime.utcnow().strftime("%Y%m%d%H%M%S")
+                updated_url = update_data["custom_icon_url"] + "?v=" + datetime.utcnow().strftime("%Y%m%d%H%M%S")
+                session["user_info"]["picture"] = updated_url
+                session["user_info"]["custom_icon_url"] = updated_url
                 session.modified = True
-                # Immediately update the in-memory user object for rendering
-                user["picture"] = session["user_picture"]
-                user["custom_icon_url"] = session["user_picture"]
             flash("プロフィールを更新しました", "success")
 
         return redirect(url_for('profile'))
@@ -338,17 +327,17 @@ def profile():
     # ② nicknameがNoneのときのフォーム初期表示値を修正（テンプレートではなくルートで処理）
     if not user_doc.get("nickname"):
         user_doc["nickname"] = user_email
-        session["user_nickname"] = user_doc["nickname"]
-
     # ③ custom_icon_urlが未設定ならGoogle画像を代用（user_docにセット）
     if not user_doc.get("custom_icon_url") and user.get("picture"):
         user_doc["custom_icon_url"] = user["picture"]
-
     # セッションの画像URLもGET時にも必ず反映
     if user_doc.get("custom_icon_url"):
-        session["user_picture"] = user_doc["custom_icon_url"] + "?v=" + datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        updated_url = user_doc["custom_icon_url"] + "?v=" + datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        session["user_info"]["picture"] = updated_url
+        session["user_info"]["custom_icon_url"] = updated_url
         session.modified = True
-
+    if user_doc.get("nickname"):
+        session["user_info"]["nickname"] = user_doc["nickname"]
     return render_template('profile.html', user=user_doc)
 
 
@@ -676,11 +665,18 @@ def callback():
         google_client_id
     )
 
-    session["user_email"] = idinfo["email"]
-    session["user_name"] = idinfo.get("name", "")
-    # Prefer Firestore custom_icon_url if available
-    user_doc = get_user_doc(session["user_email"])
-    session["user_picture"] = user_doc.get("custom_icon_url") or idinfo.get("picture", "")
+    email = idinfo["email"]
+    name = idinfo.get("name", "")
+    picture = idinfo.get("picture", "")
+
+    user_doc = get_user_doc(email)
+    icon_url = user_doc.get("custom_icon_url") or picture
+
+    session["user_info"] = {
+        "email": email,
+        "name": name,
+        "picture": icon_url
+    }
     return redirect(url_for("levels"))
 
 
