@@ -57,9 +57,9 @@
     <button class="hamburger me-2" onclick="toggleMenu()">&#9776;</button>
     {% endif %}
     <a class="navbar-brand mx-auto text-center" href="/" style="font-size: 1.5rem;">クイズアプリ</a>
-    {% if user and user.picture %}
+    {% if user and (user.custom_icon_url or user.picture) %}
     <div class="d-flex align-items-center">
-      <img src="{{ user.picture }}" alt="Account Icon"
+      <img src="{{ user.custom_icon_url or user.picture }}" alt="Account Icon"
            style="width:40px; height:40px; border-radius:50%; cursor:pointer;"
            onclick="logoutConfirm('{{ user.email }}')">
     </div>

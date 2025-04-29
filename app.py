@@ -309,6 +309,9 @@ def profile():
         # Firestore更新
         if update_data:
             update_user_doc(user_email, update_data)
+            # セッションの画像URLも更新（テンプレート反映のため）
+            if "custom_icon_url" in update_data:
+                session["user_picture"] = update_data["custom_icon_url"]
             flash("プロフィールを更新しました", "success")
 
         return redirect(url_for('profile'))
