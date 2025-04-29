@@ -3,8 +3,11 @@
 {% block title %}結果詳細{% endblock %}
 
 {% block content %}
+<div class="dashboard-header d-flex align-items-center gap-3">
+    {% set user_info = session.get('user_info', {}) %}
+    <p>ユーザー名 : {{ user_info.nickname or user_info.name or user_info.email }}</p>
+</div>
 <div class="container mt-4">
-    <h1>ユーザー名 : {{ session.get('user_info', {}).get('name') or session.get('user_info', {}).get('email', 'あなた') }}</h1>
     <p>スコア: {{ result.score }} / {{ result.total }}</p>
     <p>合計解答時間: {{ result.total_time }}秒</p>
     <div class="table-responsive">
