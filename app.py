@@ -54,6 +54,14 @@ app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 # SESSION_COOKIE_DOMAIN is intentionally omitted for Cloud Run
 
+# --- Context processor to inject user profile info into all templates ---
+@app.context_processor
+def inject_user_profile():
+    """すべてのテンプレートで user_name, user_picture を使えるようにする"""
+    user_name = session.get('user_name', '')
+    user_picture = session.get('user_picture', '')
+    return dict(current_user_name=user_name, current_user_picture=user_picture)
+
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
 
@@ -359,7 +367,7 @@ def results():
         result['total_time_display'] = f"{float(result.get('total_time', 0)):.1f}"
         quiz_results.append(result)
 
-    return render_template('results.html', quiz_results=quiz_results, user=user)
+    return render_template('results.html', quiz_results=quiz_results, user=user, current_user_name=session.get("user_name"), current_user_picture=session.get("user_picture"))
 
 
 @app.route('/results/<result_id>')
@@ -590,7 +598,9 @@ def dashboard():
         day_graph_labels=day_graph_labels,
         day_graph_correct=day_graph_correct,
         day_graph_incorrect=day_graph_incorrect,
-        total_quizzes=len(all_results)
+        total_quizzes=len(all_results),
+        current_user_name=session.get("user_name"),
+        current_user_picture=session.get("user_picture")
     )
 
 @app.route("/session/debug")

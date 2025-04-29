@@ -3,8 +3,11 @@
 {% block title %}ダッシュボード{% endblock %}
 
 {% block content %}
-<div class="dashboard-header">
-    <p>ユーザー: {{ user.email }}</p>
+<div class="dashboard-header d-flex align-items-center gap-3">
+    {% if current_user_picture %}
+      <img src="{{ current_user_picture }}" alt="User Icon" style="width: 48px; height: 48px; border-radius: 50%;">
+    {% endif %}
+    <p>{{ current_user_name }}のクイズ結果</p>
 </div>
 <div class="table-responsive my-4">
     <table class="table table-bordered text-center">
