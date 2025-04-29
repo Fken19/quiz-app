@@ -328,6 +328,9 @@ def profile():
             if "custom_icon_url" in update_data:
                 session["user_picture"] = update_data["custom_icon_url"] + "?v=" + datetime.utcnow().strftime("%Y%m%d%H%M%S")
                 session.modified = True
+                # Immediately update the in-memory user object for rendering
+                user["picture"] = session["user_picture"]
+                user["custom_icon_url"] = session["user_picture"]
             flash("プロフィールを更新しました", "success")
 
         return redirect(url_for('profile'))

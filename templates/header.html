@@ -57,17 +57,12 @@
     <button class="hamburger me-2" onclick="toggleMenu()">&#9776;</button>
     {% endif %}
     <a class="navbar-brand mx-auto text-center" href="/" style="font-size: 1.5rem;">クイズアプリ</a>
-    {% if current_user_picture %}
+    {% if session.user_email %}
     <div class="d-flex align-items-center">
-      <img src="{{ current_user_picture }}" alt="Account Icon"
+      <img src="{{ current_user_picture if current_user_picture else session.user_picture }}"
+           alt="User Icon"
            style="width:40px; height:40px; border-radius:50%; cursor:pointer;"
-           onclick="logoutConfirm('{{ user_email }}')">
-    </div>
-    {% else %}
-    <div class="d-flex align-items-center">
-      <img src="{{ url_for('static', filename='default_icon.png') }}" alt="Default Icon"
-           style="width:40px; height:40px; border-radius:50%; cursor:pointer;"
-           onclick="logoutConfirm('{{ user_email }}')">
+           onclick="logoutConfirm('{{ session.user_email }}')">
     </div>
     {% endif %}
   </div>
