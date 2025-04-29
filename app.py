@@ -286,15 +286,21 @@ def profile():
         if nickname:
             update_data["nickname"] = nickname
 
-        # ③ ファイルアップロードのバリデーション強化
+        # ③ ファイルアップロードのバリデーション強化＋try-exceptでエラーをログ出力
         if file and file.filename:
             if file.filename.lower().endswith((".png", ".jpg", ".jpeg")):
-                filename = secure_filename(file.filename)
-                extension = filename.rsplit('.', 1)[1].lower()
-                blob = storage_client.bucket().blob(f"user-icons/{user_doc['user_id']}.{extension}")
-                blob.upload_from_file(file, content_type=file.content_type)
-                blob.make_public()
-                update_data["custom_icon_url"] = blob.public_url
+                try:
+                    filename = secure_filename(file.filename)
+                    extension = filename.rsplit('.', 1)[1].lower()
+                    blob = storage_client.bucket().blob(f"user-icons/{user_doc['user_id']}.{extension}")
+                    blob.upload_from_file(file, content_type=file.content_type)
+                    blob.make_public()
+                    update_data["custom_icon_url"] = blob.public_url
+                    app.logger.info(f"アイコン画像アップロード完了: {blob.public_url}")
+                except Exception as e:
+                    app.logger.exception("画像アップロードエラー")
+                    flash("画像アップロードに失敗しました", "error")
+                    return redirect(url_for('profile'))
             else:
                 flash("画像はjpg/pngのみアップロード可能です", "error")
                 return redirect(url_for('profile'))
@@ -309,6 +315,10 @@ def profile():
     # ② nicknameがNoneのときのフォーム初期表示値を修正（テンプレートではなくルートで処理）
     if not user_doc.get("nickname"):
         user_doc["nickname"] = user_email
+
+    # ③ custom_icon_urlが未設定ならGoogle画像を代用（user_docにセット）
+    if not user_doc.get("custom_icon_url") and user.get("picture"):
+        user_doc["custom_icon_url"] = user["picture"]
 
     return render_template('profile.html', user=user_doc)
 
