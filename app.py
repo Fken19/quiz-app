@@ -255,6 +255,54 @@ def submit_score():
 
     return jsonify({"status": "success"}), 200
 
+
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    user = get_logged_in_user()
+    if not user:
+        return redirect(url_for('login'))
+
+    from firestore_client import get_user_doc, update_user_doc
+    from extensions import storage_client
+    from werkzeug.utils import secure_filename
+    import random
+    import string
+
+    user_email = user["email"]
+    user_doc = get_user_doc(user_email)
+
+    if request.method == 'POST':
+        nickname = request.form.get('nickname', "").strip()
+        file = request.files.get('icon')
+        update_data = {}
+
+        # ニックネームが入力されていれば更新
+        if nickname:
+            update_data["nickname"] = nickname
+
+        # アイコン画像アップロード処理
+        if file and file.filename != "":
+            if file.filename.lower().endswith((".png", ".jpg", ".jpeg")):
+                filename = secure_filename(file.filename)
+                extension = filename.rsplit('.', 1)[1].lower()
+                blob = storage_client.bucket().blob(f"user-icons/{user_doc['user_id']}.{extension}")
+                blob.upload_from_file(file, content_type=file.content_type)
+                blob.make_public()
+                update_data["custom_icon_url"] = blob.public_url
+            else:
+                flash("画像はjpg/pngのみアップロード可能です", "error")
+                return redirect(url_for('profile'))
+
+        # Firestore更新
+        if update_data:
+            update_user_doc(user_email, update_data)
+            flash("プロフィールを更新しました", "success")
+
+        return redirect(url_for('profile'))
+
+    return render_template('profile.html', user=user_doc)
+
+
 @app.route('/results')
 def results():
     user = get_logged_in_user()

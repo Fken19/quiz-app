@@ -56,4 +56,27 @@ def callback():
     session["user_email"] = id_info["email"]
     session["user_name"] = id_info.get("name", "")
     session["user_picture"] = id_info.get("picture", "")
+
+    from firestore_client import get_user_doc, create_user_doc
+    import random
+    import string
+
+    user_email = session["user_email"]
+    user_name = session["user_name"]
+    user_picture = session["user_picture"]
+
+    user_doc = get_user_doc(user_email)
+
+    if not user_doc:
+        # 初回ログインなら、nickname, user_id, custom_icon_url をセット
+        user_data = {
+            "email": user_email,
+            "name": user_name,
+            "picture": user_picture,
+            "nickname": None,  # プロフィール編集画面で設定させる
+            "user_id": ''.join(random.choices(string.ascii_letters + string.digits, k=8)),
+            "custom_icon_url": None
+        }
+        create_user_doc(user_email, user_data)
+        
     return redirect(url_for("home"))
