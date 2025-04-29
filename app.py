@@ -373,7 +373,14 @@ def results():
         result['total_time_display'] = f"{float(result.get('total_time', 0)):.1f}"
         quiz_results.append(result)
 
-    return render_template('results.html', quiz_results=quiz_results, user=user, current_user_name=session.get("user_name"), current_user_picture=session.get("user_picture"))
+    return render_template(
+        'results.html',
+        quiz_results=quiz_results,
+        user=user,
+        current_user_name=session.get("user_name"),
+        current_user_picture=session.get("user_picture"),
+        user_info=session.get("user_info")  # ← add this line
+    )
 
 
 @app.route('/results/<result_id>')
