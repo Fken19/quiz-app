@@ -53,18 +53,18 @@
 </style>
 <nav class="navbar navbar-expand-md navbar-light bg-light">
   <div class="container-fluid d-flex justify-content-between align-items-center">
-    {% if user %}
+    {% if user_info %}
     <button class="hamburger me-2" onclick="toggleMenu()">&#9776;</button>
     {% endif %}
     <a class="navbar-brand mx-auto text-center" href="/" style="font-size: 1.5rem;">クイズアプリ</a>
-    {% if session.user_info and session.user_info.user_email %}
-    <div class="d-flex align-items-center">
-      <img src="{{ session.user_info.custom_icon_url if session.user_info.custom_icon_url else session.user_info.user_picture }}"
-           alt="User Icon"
-           style="width:40px; height:40px; border-radius:50%; cursor:pointer;"
-           onclick="logoutConfirm('{{ session.user_info.user_email }}')">
-    </div>
-    {% endif %}
+    {% if user_info and user_info.email %}
+      <div class="d-flex align-items-center">
+        <img src="{{ (user_info.custom_icon_url if user_info.custom_icon_url else user_info.picture) }}?v=1"
+            alt="User Icon"
+            style="width:40px; height:40px; border-radius:50%; cursor:pointer;"
+            onclick="logoutConfirm('{{ user_info.email }}')">
+      </div>
+{% endif %}
   </div>
 </nav>
 

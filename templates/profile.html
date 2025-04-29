@@ -19,7 +19,7 @@
 <form method="POST" enctype="multipart/form-data">
     <div class="form-group">
         <label>現在のアイコン</label><br>
-        <img src="{{ user_info.get('custom_icon_url') or user_info.get('user_picture') }}" alt="icon" style="width:100px; height:100px; border-radius:50%;">
+        <img src="{{ (user_info.get('custom_icon_url') or user_info.get('user_picture')) + '?v=' + current_time|string }}" alt="icon" style="width:100px; height:100px; border-radius:50%;">
     </div>
 
     <div class="form-group mt-3">
@@ -29,13 +29,13 @@
 
     <div class="form-group mt-3">
         <label>ニックネーム</label>
-        <input type="text" name="nickname" value="{{ user.get('nickname') or user.get('email') }}" class="form-control">
+        <input type="text" name="nickname" value="{{ user_info.get('nickname') or user_info.get('email') }}" class="form-control">
     </div>
 
     <div class="form-group mt-3">
         <label>ユーザーID</label>
         <div class="input-group">
-            <input type="text" readonly class="form-control" id="userIdInput" value="{{ user.get('user_id', '') }}">
+            <input type="text" readonly class="form-control" id="userIdInput" value="{{ user_info.get('user_id', '') }}">
             <div class="input-group-append">
                 <button class="btn btn-outline-secondary" type="button" onclick="copyUserId()">コピー</button>
             </div>

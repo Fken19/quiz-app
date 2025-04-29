@@ -53,6 +53,7 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 def inject_user_profile():
     user_info = session.get("user_info", {})
     return dict(
+        user_info=user_info,
         current_user_name=user_info.get("name", ""),
         current_user_picture=user_info.get("picture", ""),
         current_user_nickname=user_info.get("nickname", "")
@@ -274,6 +275,8 @@ def profile():
 
     user_email = user["email"]
     user_doc = get_user_doc(user_email)
+    # Always update user_id in session after fetching user_doc
+    session["user_info"]["user_id"] = user_doc.get("user_id", "")
 
     # ① user_idが存在しない場合は生成する（GET/POST共通で先に行う）
     if not user_doc.get("user_id"):
@@ -338,7 +341,9 @@ def profile():
         session.modified = True
     if user_doc.get("nickname"):
         session["user_info"]["nickname"] = user_doc["nickname"]
-    return render_template('profile.html', user=user_doc)
+        # After updating nickname, also update user_id in session to latest
+        session["user_info"]["user_id"] = user_doc.get("user_id", "")
+    return render_template('profile.html', user=user_doc, user_info=session.get("user_info"))
 
 
 @app.route('/results')
@@ -678,11 +683,16 @@ def callback():
 
     user_doc = get_user_doc(email)
     icon_url = user_doc.get("custom_icon_url") or picture
+    nickname = user_doc.get("nickname", email)
+    user_id = user_doc.get("user_id", "")
 
     session["user_info"] = {
         "email": email,
         "name": name,
-        "picture": icon_url
+        "picture": icon_url,
+        "custom_icon_url": icon_url,
+        "nickname": nickname,
+        "user_id": user_id
     }
     return redirect(url_for("levels"))
 
