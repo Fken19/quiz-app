@@ -57,10 +57,15 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 # --- Context processor to inject user profile info into all templates ---
 @app.context_processor
 def inject_user_profile():
-    """すべてのテンプレートで user_name, user_picture を使えるようにする"""
+    """すべてのテンプレートで user_name, user_picture, nickname を使えるようにする"""
     user_name = session.get('user_name', '')
     user_picture = session.get('user_picture', '')
-    return dict(current_user_name=user_name, current_user_picture=user_picture)
+    user_nickname = session.get('user_nickname', session.get('user_name', ''))  # fallback to user_name
+    return dict(
+        current_user_name=user_name,
+        current_user_picture=user_picture,
+        current_user_nickname=user_nickname
+    )
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
@@ -293,6 +298,7 @@ def profile():
         # ニックネームが入力されていれば更新
         if nickname:
             update_data["nickname"] = nickname
+            session["user_nickname"] = nickname  # セッションにもニックネームを反映
 
         # ③ ファイルアップロードのバリデーション強化＋try-exceptでエラーをログ出力
         if file and file.filename:
