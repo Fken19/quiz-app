@@ -21,7 +21,7 @@ def safe_convert_to_datetime(value):
     else:
         raise ValueError(f"Unsupported timestamp type: {type(value)}")
 
-from flask import Flask, render_template, jsonify, redirect, url_for, session, request
+from flask import Flask, render_template, jsonify, redirect, url_for, session, request, flash
  
 import json
 import logging
@@ -292,7 +292,8 @@ def profile():
                 try:
                     filename = secure_filename(file.filename)
                     extension = filename.rsplit('.', 1)[1].lower()
-                    blob = storage_client.bucket().blob(f"user-icons/{user_doc['user_id']}.{extension}")
+                    bucket_name = os.environ.get("GCS_BUCKET_NAME")
+                    blob = storage_client.bucket(bucket_name).blob(f"user-icons/{user_doc['user_id']}.{extension}")
                     blob.upload_from_file(file, content_type=file.content_type)
                     blob.make_public()
                     update_data["custom_icon_url"] = blob.public_url
