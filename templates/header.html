@@ -57,9 +57,9 @@
     <button class="hamburger me-2" onclick="toggleMenu()">&#9776;</button>
     {% endif %}
     <a class="navbar-brand mx-auto text-center" href="/" style="font-size: 1.5rem;">クイズアプリ</a>
-    {% if current_user_profile_url %}
+    {% if current_user_picture %}
     <div class="d-flex align-items-center">
-      <img src="{{ current_user_profile_url }}" alt="Account Icon"
+      <img src="{{ current_user_picture }}" alt="Account Icon"
            style="width:40px; height:40px; border-radius:50%; cursor:pointer;"
            onclick="logoutConfirm('{{ user_email }}')">
     </div>
