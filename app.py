@@ -326,7 +326,8 @@ def profile():
             update_user_doc(user_email, update_data)
             # セッションの画像URLも更新（テンプレート反映のため）
             if "custom_icon_url" in update_data:
-                session["user_picture"] = update_data["custom_icon_url"]
+                session["user_picture"] = update_data["custom_icon_url"] + "?v=" + datetime.utcnow().strftime("%Y%m%d%H%M%S")
+                session.modified = True
             flash("プロフィールを更新しました", "success")
 
         return redirect(url_for('profile'))
@@ -339,6 +340,11 @@ def profile():
     # ③ custom_icon_urlが未設定ならGoogle画像を代用（user_docにセット）
     if not user_doc.get("custom_icon_url") and user.get("picture"):
         user_doc["custom_icon_url"] = user["picture"]
+
+    # セッションの画像URLもGET時にも必ず反映
+    if user_doc.get("custom_icon_url"):
+        session["user_picture"] = user_doc["custom_icon_url"] + "?v=" + datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        session.modified = True
 
     return render_template('profile.html', user=user_doc)
 
