@@ -271,6 +271,12 @@ def profile():
     user_email = user["email"]
     user_doc = get_user_doc(user_email)
 
+    # ① user_idが存在しない場合は生成する（GET/POST共通で先に行う）
+    if not user_doc.get("user_id"):
+        user_id = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+        update_user_doc(user_email, {"user_id": user_id})
+        user_doc["user_id"] = user_id  # テンプレートに渡す値も更新
+
     if request.method == 'POST':
         nickname = request.form.get('nickname', "").strip()
         file = request.files.get('icon')
@@ -280,8 +286,8 @@ def profile():
         if nickname:
             update_data["nickname"] = nickname
 
-        # アイコン画像アップロード処理
-        if file and file.filename != "":
+        # ③ ファイルアップロードのバリデーション強化
+        if file and file.filename:
             if file.filename.lower().endswith((".png", ".jpg", ".jpeg")):
                 filename = secure_filename(file.filename)
                 extension = filename.rsplit('.', 1)[1].lower()
@@ -299,6 +305,10 @@ def profile():
             flash("プロフィールを更新しました", "success")
 
         return redirect(url_for('profile'))
+
+    # ② nicknameがNoneのときのフォーム初期表示値を修正（テンプレートではなくルートで処理）
+    if not user_doc.get("nickname"):
+        user_doc["nickname"] = user_email
 
     return render_template('profile.html', user=user_doc)
 
