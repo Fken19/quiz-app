@@ -60,7 +60,7 @@ def inject_user_profile():
     """すべてのテンプレートで user_name, user_picture, nickname を使えるようにする"""
     user_name = session.get('user_name', '')
     user_picture = session.get('user_picture', '')
-    user_nickname = session.get('user_nickname', session.get('user_name', ''))  # fallback to user_name
+    user_nickname = session.get('user_nickname', '')  # nickname もセッションから取得
     return dict(
         current_user_name=user_name,
         current_user_picture=user_picture,
@@ -298,7 +298,6 @@ def profile():
         # ニックネームが入力されていれば更新
         if nickname:
             update_data["nickname"] = nickname
-            session["user_nickname"] = nickname  # セッションにもニックネームを反映
 
         # ③ ファイルアップロードのバリデーション強化＋try-exceptでエラーをログ出力
         if file and file.filename:
@@ -322,6 +321,8 @@ def profile():
 
         # Firestore更新
         if update_data:
+            if "nickname" in update_data:
+                session["user_nickname"] = update_data["nickname"]
             update_user_doc(user_email, update_data)
             # セッションの画像URLも更新（テンプレート反映のため）
             if "custom_icon_url" in update_data:
@@ -333,6 +334,7 @@ def profile():
     # ② nicknameがNoneのときのフォーム初期表示値を修正（テンプレートではなくルートで処理）
     if not user_doc.get("nickname"):
         user_doc["nickname"] = user_email
+        session["user_nickname"] = user_doc["nickname"]
 
     # ③ custom_icon_urlが未設定ならGoogle画像を代用（user_docにセット）
     if not user_doc.get("custom_icon_url") and user.get("picture"):
@@ -619,6 +621,7 @@ def session_debug():
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
 import google.auth.transport.requests
+from firestore_client import get_user_doc
 
 @app.route("/login")
 def login():
@@ -666,7 +669,9 @@ def callback():
 
     session["user_email"] = idinfo["email"]
     session["user_name"] = idinfo.get("name", "")
-    session["user_picture"] = idinfo.get("picture", "")
+    # Prefer Firestore custom_icon_url if available
+    user_doc = get_user_doc(session["user_email"])
+    session["user_picture"] = user_doc.get("custom_icon_url") or idinfo.get("picture", "")
     return redirect(url_for("levels"))
 
 
