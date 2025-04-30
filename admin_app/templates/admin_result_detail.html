@@ -1,0 +1,39 @@
+{% extends "admin_base.html" %}
+
+{% block title %}結果詳細{% endblock %}
+
+{% block content %}
+<div class="dashboard-header d-flex align-items-center gap-3">
+    {% set user_info = session.get('user_info', {}) %}
+    <p>ユーザー名 : {{ user_info.nickname or user_info.name or user_info.email }}</p>
+</div>
+<div class="container mt-4">
+    <p>スコア: {{ result.score }} / {{ result.total }}</p>
+    <p>合計解答時間: {{ result.total_time }}秒</p>
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover">
+            <thead class="thead-light">
+                <tr>
+                    <th>#</th>
+                    <th>問題</th>
+                    <th>あなたの解答</th>
+                    <th>正解</th>
+                    <th>解答時間（秒）</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for detail in details %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ detail.question }}</td>
+                    <td>{{ detail.user_answer }}</td>
+                    <td>{{ detail.correct_answer }}</td>
+                    <td>{{ detail.answer_time }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <a href="{{ url_for('results') }}" class="btn btn-primary">戻る</a>
+</div>
+{% endblock %}

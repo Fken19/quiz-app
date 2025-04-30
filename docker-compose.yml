@@ -11,3 +11,15 @@ services:
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/english_firestore_key.json
       - OAUTHLIB_INSECURE_TRANSPORT=1
+
+  admin_app:
+    build:
+      context: .
+      dockerfile: admin_app/Dockerfile
+    ports:
+      - "8081:8080"
+    env_file:
+      - ./admin_app/.env
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/english_firestore_key.json
+      - OAUTHLIB_INSECURE_TRANSPORT=1

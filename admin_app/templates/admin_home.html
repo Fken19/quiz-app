@@ -1,0 +1,14 @@
+{% extends "admin_base.html" %}
+
+{% block title %}英単語クイズ - 管理者用{% endblock %}
+
+{% block content %}
+<div class="text-center mt-5">
+    <h1>英単語クイズ（管理者）</h1>
+    {% if not session.get('user_info', {}).get('email') %}
+        <a href="{{ url_for('login') }}" class="btn btn-primary mt-3">Googleでログイン</a>
+    {% else %}
+        <a href="{{ url_for('dashboard') }}" class="btn btn-success mt-3">管理ダッシュボードへ</a>
+    {% endif %}
+</div>
+{% endblock %}

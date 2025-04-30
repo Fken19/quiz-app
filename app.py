@@ -231,8 +231,10 @@ def submit_score():
             user_ref.set({'email': user_email})
             app.logger.info("新規ユーザー作成: %s", user_email)
 
+        user_id = user.get("user_id")  # ← セッションからuser_idを取得
         quiz_result_data = {
             'user_email': user_email,
+            'user_id': user_id,
             'score': data.get("score"),
             'total': data.get("total"),
             'total_time': data.get("time"),

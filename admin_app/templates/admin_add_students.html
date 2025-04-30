@@ -1,0 +1,32 @@
+{% extends "admin_base.html" %}
+
+{% block title %}生徒追加{% endblock %}
+
+{% block content %}
+<h1 class="mt-4">生徒追加</h1>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="close" data-dismiss="alert">&times;</button>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<form method="POST">
+    <div class="form-group">
+        <label for="studentEmail">生徒のメールアドレス</label>
+        <input type="email" name="student_email" id="studentEmail" class="form-control" placeholder="student@example.com" required>
+    </div>
+
+    <div class="form-group">
+        <label for="groupId">追加先のグループID</label>
+        <input type="text" name="group_id" id="groupId" class="form-control" placeholder="自動生成されたグループID" required>
+    </div>
+
+    <button type="submit" class="btn btn-primary mt-3">生徒を追加</button>
+</form>
+{% endblock %}
