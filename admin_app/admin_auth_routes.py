@@ -1,5 +1,5 @@
 # auth_routes.py
-from flask import Blueprint, session, redirect, request, url_for
+from flask import Blueprint, session, redirect, request, url_for, render_template
 from google_auth_oauthlib.flow import Flow
 import google.auth.transport.requests
 from google.oauth2 import id_token
@@ -77,6 +77,14 @@ def callback():
     else:
         user_data = user_doc
 
+    from flask import flash
+    from admin_extensions import db
+
+    admin_doc = db.collection("admin_accounts").document(user_email).get()
+    if not admin_doc.exists:
+        flash("このアカウントには管理者権限がありません。", "error")
+        return redirect(url_for("admin_auth.login"))
+
     session["user_info"] = {
         "user_email": user_email,
         "user_name": user_name,
@@ -86,3 +94,17 @@ def callback():
         "custom_icon_url": user_data.get("custom_icon_url") or user_picture
     }
     return redirect(url_for("select_group"))
+
+
+# ログアウトルート
+@admin_auth_bp.route("/logout")
+def logout():
+    session.clear()
+    from flask import make_response
+    response = make_response(redirect(url_for("admin_auth.logged_out")))
+    response.delete_cookie('__session', path='/', secure=True, httponly=True, samesite='None')
+    return response
+
+@admin_auth_bp.route("/logged-out")
+def logged_out():
+    return render_template("admin_logged_out.html")

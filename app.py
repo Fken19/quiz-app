@@ -86,8 +86,8 @@ redirect_uri = os.getenv("GOOGLE_REDIRECT_URL")
 
 import os
 if not os.getenv("FLASK_TESTING"):
-    from firestore_client import db
-    from google.cloud import firestore
+    from shared.firestore_client import db
+    from shared.firestore_client import get_user_doc
 else:
     db = None
     firestore = None
@@ -269,8 +269,8 @@ def profile():
     if not user:
         return redirect(url_for('login'))
 
-    from firestore_client import get_user_doc, update_user_doc
-    from extensions import storage_client
+    from shared.firestore_client import get_user_doc, update_user_doc
+    from shared.extensions import storage_client
     from werkzeug.utils import secure_filename
     import random
     import string
@@ -633,7 +633,7 @@ def session_debug():
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
 import google.auth.transport.requests
-from firestore_client import get_user_doc
+from shared.firestore_client import get_user_doc
 
 @app.route("/login")
 def login():

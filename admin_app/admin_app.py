@@ -1,8 +1,14 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from firestore_client import get_user_doc
-from flask import Flask, render_template, jsonify, redirect, url_for, session, request, flash
+print("=== admin_app.py 起動開始 ===")
+
+try:
+    from firestore_client import get_user_doc
+except Exception as e:
+    print("firestore_client import 失敗:", e)
+    raise
+from flask import Flask, render_template, jsonify, redirect, url_for, session, request, flash, make_response
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
 import logging
@@ -10,7 +16,7 @@ from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
 import google.auth.transport.requests
 from datetime import datetime, timezone
-from admin_app.admin_auth_routes import admin_auth_bp
+from admin_auth_routes import admin_auth_bp
 
 from admin_extensions import db
 
@@ -75,10 +81,12 @@ def login():
     )
     auth_url, state = flow.authorization_url()
     session["oauth_state"] = state
-    return redirect(auth_url)
+    return redirect(auth_url, user_info=session.get("user_info"))
 
 @app.route("/callback")
 def callback():
+    app.logger.debug("=== [CALLBACK発火] === URL: %s", request.url)
+    app.logger.debug("=== CALLBACK REFERER: %s", request.headers.get("Referer"))
     flow = Flow.from_client_config(
         {
             "web": {
@@ -107,10 +115,12 @@ def callback():
     picture = idinfo.get("picture", "")
 
     user_doc = get_user_doc(email)
-    icon_url = user_doc.get("custom_icon_url") or picture
+    custom_icon = user_doc.get("custom_icon_url", None)
+    icon_url = custom_icon if custom_icon else picture
     nickname = user_doc.get("nickname", email)
     user_id = user_doc.get("user_id", "")
 
+    # 先に user_info を session に格納する
     session["user_info"] = {
         "email": email,
         "name": name,
@@ -119,21 +129,31 @@ def callback():
         "nickname": nickname,
         "user_id": user_id
     }
+
+    # その後に admin アカウントかどうかをチェック
+    admin_doc = app.db.collection("admin_accounts").document(email).get()
+    if not admin_doc.exists:
+        flash("このアカウントには管理者権限がありません", "error")
+        return redirect(url_for("login"))
+
     return redirect(url_for("select_group"))
 
 @app.route("/logout")
 def logout():
-    session.pop('google_oauth_token', None)
     session.clear()
-    response = redirect(url_for('login'))
-    response.set_cookie('session', '', expires=0, path='/', secure=True, httponly=True, samesite='None')
+    response = make_response(redirect(url_for("logged_out")))
+    response.delete_cookie("__session", path="/")
     return response
+
+@app.route("/logged-out")
+def logged_out():
+    return render_template("admin_logged_out.html")
 
 
 @app.route("/")
 def home():
     user = session.get("user_info")
-    return render_template("admin_home.html", user=user)
+    return render_template("admin_home.html", user_info=session.get("user_info"))
 
 
 # グループ作成用ルート
@@ -156,7 +176,7 @@ def create_group():
         else:
             flash("グループ名を入力してください", "danger")
 
-    return render_template("admin_create_group.html")
+    return render_template("admin_create_group.html", user_info=session.get("user_info"))
 
 @app.route("/select-group")
 def select_group():
@@ -166,7 +186,7 @@ def select_group():
 
     groups_ref = app.db.collection("admin_groups")
     groups = [doc.to_dict() | {"id": doc.id} for doc in groups_ref.stream() if doc.get("created_by") == user["email"]]
-    return render_template("admin_group_selection.html", groups=groups)
+    return render_template("admin_group_selection.html", user_info=session.get("user_info"))
 
 @app.route("/add-student", methods=["GET", "POST"])
 def add_student():
@@ -186,7 +206,7 @@ def add_student():
         group_doc = group_ref.get()
         if not group_doc.exists:
             flash("指定されたグループが存在しません", "danger")
-            return redirect(url_for("add_student"))
+            return redirect(url_for("add_student"), user_info=session.get("user_info"))
 
         group_data = group_doc.to_dict()
         students = group_data.get("students", [])
@@ -199,11 +219,8 @@ def add_student():
 
         return redirect(url_for("select_group"))
 
-    return render_template("admin_add_students.html")
+    return render_template("admin_add_students.html", user_info=session.get("user_info"))
 
-def create_app():
-    app.testing = True
-    return app
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8081))

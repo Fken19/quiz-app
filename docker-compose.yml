@@ -3,7 +3,7 @@ services:
   quiz-app:
     build: .
     ports:
-      - "5001:5001"
+      - "5001:8080"
     volumes:
       - .:/app
     env_file:
@@ -11,6 +11,7 @@ services:
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/english_firestore_key.json
       - OAUTHLIB_INSECURE_TRANSPORT=1
+
 
   admin_app:
     build:

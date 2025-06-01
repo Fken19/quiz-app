@@ -1,18 +1,18 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <title>{% block title %}{% endblock %}</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-</head>
+  <head>
+    <meta charset="UTF-8">
+    <title>{% block title %}{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    {% if session.get('user_info') and session['user_info'].get('custom_icon_url') %}
+      <link rel="icon" type="image/png" href="{{ session['user_info']['custom_icon_url'] }}">
+    {% endif %}
+  </head>
 <body>
   {% include 'admin_header.html' %}
   <div class="container mt-4">
     {% block content %}{% endblock %}
   </div>
 </body>
-  {% if session.get('user_info') and session['user_info'].get('custom_icon_url') %}
-    <link rel="icon" type="image/png" href="{{ session['user_info']['custom_icon_url'] }}">
-  {% endif %}
 </html>
