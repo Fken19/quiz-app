@@ -1,14 +1,67 @@
-# 機密ファイル
-.env
-english_firestore_key.json
-flask_session/
-
-# Pythonキャッシュ
-__pycache__/
+# Django
+*.log
+*.pot
 *.pyc
+__pycache__/
+db.sqlite3
+media/
 
-# macOS特有のファイル
-.DS_Store
+# 環境変数
+.env
+.env.local
+.env.production
 
-# 仮想環境
+# Python
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
 venv/
+env/
+ENV/
+
+# Docker
+.dockerignore
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Node.js (Next.jsフロントエンド用)
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

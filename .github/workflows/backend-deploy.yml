@@ -1,0 +1,55 @@
+name: Deploy Backend to Cloud Run
+
+on:
+  push:
+    branches: [ main ]
+    paths: ['backend/**']
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE: quiz-api
+  REGION: asia-northeast1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - id: 'auth'
+      name: 'Authenticate to Google Cloud'
+      uses: 'google-github-actions/auth@v1'
+      with:
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+    - name: 'Set up Cloud SDK'
+      uses: 'google-github-actions/setup-gcloud@v1'
+
+    - name: 'Configure Docker'
+      run: gcloud auth configure-docker
+
+    - name: 'Build and Push Container'
+      working-directory: ./backend
+      run: |
+        docker build -t gcr.io/$PROJECT_ID/$SERVICE:$GITHUB_SHA .
+        docker push gcr.io/$PROJECT_ID/$SERVICE:$GITHUB_SHA
+
+    - name: 'Deploy to Cloud Run'
+      run: |
+        gcloud run deploy $SERVICE \
+          --image gcr.io/$PROJECT_ID/$SERVICE:$GITHUB_SHA \
+          --platform managed \
+          --region $REGION \
+          --allow-unauthenticated \
+          --set-env-vars="DATABASE_URL=${{ secrets.DATABASE_URL }}" \
+          --set-env-vars="SECRET_KEY=${{ secrets.DJANGO_SECRET_KEY }}" \
+          --set-env-vars="GOOGLE_OAUTH_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}" \
+          --set-env-vars="GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}" \
+          --set-env-vars="CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}" \
+          --set-env-vars="CSRF_TRUSTED_ORIGINS=${{ secrets.CSRF_TRUSTED_ORIGINS }}" \
+          --memory 512Mi \
+          --cpu 1 \
+          --max-instances 10 \
+          --port 8080

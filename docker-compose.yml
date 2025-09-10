@@ -1,13 +1,19 @@
-version: '3'
+version: '3.8'
+
 services:
-  quiz-app:
-    build: .
+  backend:
+    build: ./backend
+    container_name: quiz-backend
     ports:
-      - "5001:5001"
-    volumes:
-      - .:/app
+      - "8080:8080"
     env_file:
-      - .env
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+    working_dir: /app
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8080"
     environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/english_firestore_key.json
-      - OAUTHLIB_INSECURE_TRANSPORT=1
+      - PYTHONPATH=/app
+      - DJANGO_SETTINGS_MODULE=quiz_backend.settings

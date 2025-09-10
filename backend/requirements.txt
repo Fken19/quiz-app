@@ -1,0 +1,15 @@
+## Core
+Django>=4.2,<5.0
+djangorestframework>=3.14
+django-allauth>=0.57
+psycopg2-binary>=2.9
+django-cors-headers>=4.0
+python-decouple>=3.8
+gunicorn>=21.0
+whitenoise>=6.5
+
+## 必須依存
+requests>=2.31
+pyjwt>=2.8
+requests>=2.31
+cryptography>=41.0
