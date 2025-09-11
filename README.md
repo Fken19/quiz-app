@@ -2,14 +2,51 @@
 
 # 英単語クイズアプリ
 
+![Tests](https://github.com/Fken19/quiz-app/actions/workflows/test.yml/badge.svg)
+
 ---
-## 🐳 開発環境セットアップ手順（Docker推奨）
+
+## 🚀 プロジェクト概要
+
+このプロジェクトは、**Django REST Framework + Next.js + PostgreSQL + Google認証** を用いた英単語クイズアプリです。生徒がGoogleアカウントでログインし、クイズ結果を記録・可視化できます。塾や教育現場での利用を想定し、管理者（教師）機能も含みます。
+
+---
+
+## 🏗️ 技術スタック
+
+- **バックエンド**: Django REST Framework + PostgreSQL
+- **フロントエンド**: Next.js 15 (App Router, TypeScript, TanStack Query, Tailwind CSS)
+- **認証**: Google OAuth2（NextAuth.js + Django連携）
+- **インフラ**: Docker Compose（開発用）
+
+---
+
+## 📁 ディレクトリ構成
+
+```
+quiz-app/
+├── backend/                    # Django REST API
+│   ├── quiz_backend/          # Django設定
+│   ├── quiz/                  # メインアプリ
+│   ├── manage.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/                  # Next.jsフロントエンド
+│   ├── src/
+│   ├── package.json
+│   └── Dockerfile
+├── docker-compose.yml         # 開発用コンテナ定義
+├── Makefile                   # 開発補助コマンド
+└── README.md
+```
+
+---
+
+## 🐳 開発環境セットアップ（Docker推奨）
 
 ### 1. 必要なツール
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [VSCode拡張: Docker](https://marketplace.visualstudio.com/items?itemName=ms-azuretools.vscode-docker)（推奨）
-
----
+- [Node.js 18+](https://nodejs.org/)（フロント単体開発時のみ）
 
 ### 2. リポジトリのクローン
 ```sh
@@ -17,68 +54,132 @@ git clone <このリポジトリのURL>
 cd quiz-app
 ```
 
----
-
 ### 3. 環境変数ファイルの準備
 - `backend/.env` および `frontend/.env.local` を編集
 	- Google認証やDB接続情報を正しく設定
+	- サンプル:
+		- `frontend/.env.local`
+			```env
+			NEXT_PUBLIC_API_URL=http://localhost:8080
+			NEXT_PUBLIC_API_URL_BROWSER=http://localhost:8080
+			NEXTAUTH_URL=http://localhost:3000
+			GOOGLE_CLIENT_ID=xxx
+			GOOGLE_CLIENT_SECRET=xxx
+			```
+		- `backend/.env`
+			```env
+			DJANGO_SECRET_KEY=xxx
+			DJANGO_ALLOWED_HOSTS=*
+			POSTGRES_DB=quiz_db
+			POSTGRES_USER=postgres
+			POSTGRES_PASSWORD=postgres
+			GOOGLE_CLIENT_ID=xxx
+			GOOGLE_CLIENT_SECRET=xxx
+			```
+
+### 4. Dockerコンテナのビルド＆起動
+```sh
+make dev    # または docker-compose up -d
+```
+
+### 5. マイグレーション・管理ユーザー作成
+```sh
+docker-compose exec backend python manage.py migrate
+docker-compose exec backend python manage.py createsuperuser
+```
+
+### 6. 動作確認
+- **フロントエンド**: http://localhost:3000
+- **バックエンド API**: http://localhost:8080
+- **管理画面**: http://localhost:8080/admin/
 
 ---
 
-### 4. Dockerコンテナのビルド＆起動（開発環境）
+## 🔑 Google認証の流れ
 
-#### 推奨方法：Makeコマンドを使用
-```sh
-make dev    # 開発環境の自動セットアップ
-```
+1. ユーザーがNext.jsフロントでGoogleログイン
+2. NextAuth.jsがGoogle OAuthで認証し、Django APIにIDトークンを送信
+3. Django側でIDトークンを検証し、独自アクセストークンを発行
+4. フロントエンドは以降、Django APIにアクセストークン付きでリクエスト
 
-#### または手動でDocker Composeを使用
+---
+
+## 🌐 主なAPIエンドポイント
+
+- `GET /api/words/` ... 単語リスト取得（認証必須）
+- `GET /api/quiz-sets/` ... クイズセット一覧
+- `POST /api/quiz-sets/{id}/start_quiz/` ... クイズ開始
+- `POST /api/quiz-sets/{id}/submit_answer/` ... 回答送信
+- `GET /api/dashboard/stats/` ... ダッシュボード統計
+- `GET /api/quiz/history/` ... ユーザー履歴
+- `GET /api/user/profile/` ... プロフィール取得
+
+---
+
+## 🧑‍💻 開発・ビルド・テスト
+
+### 開発サーバー起動
 ```sh
+make dev
+# または
 docker-compose up -d
 ```
 
-#### 利用可能なMakeコマンド
+### フロントエンド単体開発
 ```sh
-make help          # 全コマンドのヘルプを表示
-make build         # Dockerイメージをビルド
-make up            # 環境を起動
-make down          # 環境を停止
-make logs          # 全サービスのログを表示
-make logs-frontend # フロントエンドのログを表示
-make logs-backend  # バックエンドのログを表示
-make clean         # 全てを削除してリセット
+cd frontend
+npm install
+npm run dev
+# http://localhost:3000 で確認
 ```
 
-#### アクセス先
-- **フロントエンド**: http://localhost:3000
-- **バックエンド API**: http://localhost:8080
-- **データベース**: localhost:5432
+### バックエンド単体開発
+```sh
+cd backend
+pip install -r requirements.txt
+python manage.py runserver
+# http://localhost:8080 で確認
+```
 
-- これで**3つのコンテナ**が起動します
-	- `backend`（Django APIサーバー）
-	- `frontend`（Next.jsフロントエンド）
-	- `db`（PostgreSQL）
+### ビルド（本番用）
+```sh
+make build
+# または
+docker-compose build
+```
 
-> ⚠️ `docker-compose up -d` や `make dev` だけで **Django/Next.jsサーバーも自動で起動** します。通常はこのコマンドだけで http://localhost:8080 (API) と http://localhost:3000 (フロント) にアクセスできます。
-> 
-> コードを修正・保存すると**自動的にホットリロードで反映**されます（DjangoもNext.jsもdevサーバーはホットリロード対応）。
-> 
-> サーバーを手動で再起動したい場合は `docker-compose restart backend` や `make restart` を使ってください。
-> 
-> **手動でrunserverやnpm run devを実行しないでください。** すでにサーバーが起動しているため、ポート競合エラーになります。
-
----
-
-
-# 英単語クイズアプリ
-
-![Tests](https://github.com/Fken19/quiz-app/actions/workflows/test.yml/badge.svg)
+### テスト
+```sh
+docker-compose exec backend python manage.py test
+```
 
 ---
 
-## 🚀 プロジェクト概要
+## ⚠️ よくあるトラブル・FAQ
 
-このプロジェクトは、**Django REST Framework + Next.js + Supabase(PostgreSQL)** を用いた英単語クイズアプリです。生徒がGoogleアカウントでログインし、クイズ結果を記録・可視化できるよう設計されています。塾などの教育現場での使用を想定し、管理者（教師）機能も含みます。
+- **APIが401/403になる**
+	- Google認証が正しく完了しているか、Django側でIDトークン検証が通っているか確認
+	- `.env`のAPI URLやGoogle認証情報が正しいか再確認
+- **ポート競合エラー**
+	- 既にサーバーが起動している場合は`docker-compose down`で一度全て停止
+- **DBに接続できない**
+	- `.env`のDB設定、`docker-compose.yml`の`db`サービス設定を確認
+- **フロントエンドの型エラーでビルド失敗**
+	- `any`型を使わず型安全に修正。`npm run build`でエラー内容を確認
+
+---
+
+## 🤝 コントリビューション
+
+1. `migrate/django` ブランチで開発
+2. 機能追加・修正はプルリクエスト
+3. テスト通過を確認してマージ
+
+---
+
+## � サポート
+
+質問や問題がある場合は、GitHubのIssueを作成してください。
 
 ---
 
