@@ -1,33 +1,32 @@
+
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from rest_framework.authtoken.views import obtain_auth_token
+from django.http import JsonResponse
 from . import views
 
+# APIルーター
 router = DefaultRouter()
-router.register(r'questions', views.QuestionViewSet)
-router.register(r'sessions', views.QuizSessionViewSet)
+router.register(r'words', views.WordViewSet)
+router.register(r'quiz-sets', views.QuizSetViewSet, basename='quiz-set')
+
+def test_view(request):
+    return JsonResponse({'message': 'New URL pattern is working!'})
 
 urlpatterns = [
+    # Test URL
+    path('test/', test_view, name='test'),
+
+    # Token認証エンドポイント
+    path('auth/token/', obtain_auth_token, name='api_token_auth'),
+
+    # Router URLs
     path('', include(router.urls)),
-    path('health/', views.HealthCheckView.as_view(), name='health-check'),
-    path('auth/me/', views.CurrentUserView.as_view(), name='current-user'),
-    path('me/results/', views.UserResultsView.as_view(), name='user-results'),
-    path('me/dashboard/', views.UserDashboardView.as_view(), name='user-dashboard'),
-    path('me/profile/', views.UserProfileView.as_view(), name='user-profile'),
-    path('submit/', views.QuizSubmitView.as_view(), name='quiz-submit'),
-    
-    # レベル・セグメント機能
-    path('levels/', views.QuizLevelsView.as_view(), name='quiz-levels'),
-    path('levels/<int:level>/segments/', views.QuizSegmentsView.as_view(), name='quiz-segments'),
-    path('levels/<int:level>/', views.QuizLevelQuestionsView.as_view(), name='quiz-level-questions'),
-    path('levels/<int:level>/segments/<int:segment>/', views.QuizLevelQuestionsView.as_view(), name='quiz-segment-questions'),
-    
-    # 認証機能
-    path('auth/status/', views.AuthStatusView.as_view(), name='auth-status'),
-    path('auth/logout/', views.LogoutView.as_view(), name='auth-logout'),
-    path('auth/google/', views.GoogleAuthView.as_view(), name='auth-google'),
-    path('admin/', include([
-        path('users/', views.AdminUserListView.as_view(), name='admin-users'),
-        path('groups/', views.AdminGroupListView.as_view(), name='admin-groups'),
-        path('stats/daily/', views.AdminDailyStatsView.as_view(), name='admin-daily-stats'),
-    ])),
+
+    # 個別API エンドポイント
+    path('auth/google/', views.google_auth, name='google_auth'),
+    path('dashboard/stats/', views.dashboard_stats, name='dashboard_stats'),
+    path('quiz/history/', views.quiz_history, name='quiz_history'),
+    path('user/profile/', views.user_profile, name='user_profile'),
+    path('quiz/generate/', views.generate_quiz_set, name='generate_quiz_set'),
 ]

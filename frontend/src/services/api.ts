@@ -1,94 +1,61 @@
 import apiClient from '@/lib/api';
+import { 
+  User, 
+  Word, 
+  QuizSet, 
+  QuizItem, 
+  QuizResponse, 
+  QuizResult,
+  WordTranslation 
+} from '@/types/quiz';
 
-export interface User {
-  id: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-  profile_picture?: string;
-  score: number;
-  is_admin: boolean;
-  date_joined: string;
-}
-
-export interface Quiz {
-  id: string;
-  title: string;
-  description: string;
-  level: 'beginner' | 'intermediate' | 'advanced';
-  questions_count: number;
-  time_limit: number;
-  pass_score: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Question {
-  id: string;
-  quiz_id: string;
-  question_text: string;
-  option_a: string;
-  option_b: string;
-  option_c: string;
-  option_d: string;
-  correct_answer: 'A' | 'B' | 'C' | 'D';
-  explanation: string;
-  difficulty: number;
-  order: number;
-}
-
-export interface QuizSession {
-  id: string;
-  quiz_id: string;
-  user_id: string;
-  score: number;
-  max_score: number;
-  start_time: string;
-  end_time?: string;
-  status: 'in_progress' | 'completed' | 'abandoned';
-}
-
-export interface Answer {
-  id: string;
-  session_id: string;
-  question_id: string;
-  selected_answer: 'A' | 'B' | 'C' | 'D';
-  is_correct: boolean;
-  answered_at: string;
-}
-
+// ダッシュボード統計
 export interface DashboardStats {
   total_quizzes: number;
-  completed_sessions: number;
+  completed_quizzes: number;
   average_score: number;
-  recent_sessions: QuizSession[];
+  total_words_learned: number;
+  recent_results: QuizResult[];
+  level_progress: {
+    level: number;
+    completed: number;
+    total: number;
+  }[];
+}
+
+// クイズ設定
+export interface QuizConfig {
+  mode: 'default' | 'random';
+  level: number;
+  segment: number;
+  question_count: number;
 }
 
 // Auth API
 export const authAPI = {
   async login(credentials: { email: string; password: string }) {
     const response = await apiClient.post('/auth/login/', credentials);
-    return response.data;
+    return response;
   },
 
-  async register(data: { email: string; password: string; first_name: string; last_name: string }) {
+  async register(data: { email: string; password: string; display_name: string }) {
     const response = await apiClient.post('/auth/register/', data);
-    return response.data;
+    return response;
   },
 
   async logout() {
     const response = await apiClient.post('/auth/logout/');
-    return response.data;
+    return response;
   },
 
-  async getProfile() {
+  async getProfile(): Promise<User> {
     const response = await apiClient.get('/auth/profile/');
-    return response.data as User;
+    return response;
   },
 
-  async updateProfile(data: Partial<User>) {
-    const response = await apiClient.patch('/auth/profile/', data);
-    return response.data as User;
+  async updateProfile(data: Partial<User>): Promise<User> {
+    const response = await apiClient.post('/auth/profile/', data);
+    return response;
   },
 };
 
@@ -96,57 +63,96 @@ export const authAPI = {
 export const dashboardAPI = {
   async getStats(): Promise<DashboardStats> {
     const response = await apiClient.get('/api/dashboard/stats/');
-    return response.data;
+    return response;
   },
 
-  async getRecentSessions(): Promise<QuizSession[]> {
-    const response = await apiClient.get('/api/dashboard/recent-sessions/');
-    return response.data;
+  async getRecentResults(): Promise<QuizResult[]> {
+    const response = await apiClient.get('/api/dashboard/recent-results/');
+    return response;
+  },
+};
+
+// Word API
+export const wordAPI = {
+  async getWords(level: number, segment: number): Promise<Word[]> {
+    const response = await apiClient.get(`/api/words/?level=${level}&segment=${segment}`);
+    return response;
+  },
+
+  async getWord(id: string): Promise<Word> {
+    const response = await apiClient.get(`/api/words/${id}/`);
+    return response;
+  },
+
+  async getTranslations(wordId: string): Promise<WordTranslation[]> {
+    const response = await apiClient.get(`/api/words/${wordId}/translations/`);
+    return response;
   },
 };
 
 // Quiz API
 export const quizAPI = {
-  async getQuizzes(): Promise<Quiz[]> {
-    const response = await apiClient.get('/api/quizzes/');
-    return response.data;
+  async createQuizSet(config: QuizConfig): Promise<QuizSet> {
+    const response = await apiClient.post('/api/quiz-sets/', config);
+    return response;
   },
 
-  async getQuiz(id: string): Promise<Quiz> {
-    const response = await apiClient.get(`/api/quizzes/${id}/`);
-    return response.data;
+  async getQuizSet(id: string): Promise<QuizSet> {
+    const response = await apiClient.get(`/api/quiz-sets/${id}/`);
+    return response;
   },
 
-  async getQuestions(quizId: string): Promise<Question[]> {
-    const response = await apiClient.get(`/api/quizzes/${quizId}/questions/`);
-    return response.data;
+  async getQuizItems(quizSetId: string): Promise<QuizItem[]> {
+    const response = await apiClient.get(`/api/quiz-sets/${quizSetId}/items/`);
+    return response;
   },
 
-  async startSession(quizId: string): Promise<QuizSession> {
-    const response = await apiClient.post(`/api/quizzes/${quizId}/start/`);
-    return response.data;
+  async startQuiz(quizSetId: string): Promise<QuizSet> {
+    const response = await apiClient.post(`/api/quiz-sets/${quizSetId}/start/`);
+    return response;
   },
 
-  async submitAnswer(sessionId: string, questionId: string, answer: 'A' | 'B' | 'C' | 'D'): Promise<Answer> {
-    const response = await apiClient.post(`/api/sessions/${sessionId}/answers/`, {
-      question_id: questionId,
-      selected_answer: answer,
+  async submitAnswer(quizSetId: string, itemId: string, selectedTranslationId: string): Promise<QuizResponse> {
+    const response = await apiClient.post(`/api/quiz-sets/${quizSetId}/responses/`, {
+      quiz_item_id: itemId,
+      selected_translation_id: selectedTranslationId,
     });
-    return response.data;
+    return response;
   },
 
-  async endSession(sessionId: string): Promise<QuizSession> {
-    const response = await apiClient.post(`/api/sessions/${sessionId}/end/`);
-    return response.data;
+  async finishQuiz(quizSetId: string): Promise<QuizResult> {
+    const response = await apiClient.post(`/api/quiz-sets/${quizSetId}/finish/`);
+    return response;
   },
 
-  async getSession(sessionId: string): Promise<QuizSession> {
-    const response = await apiClient.get(`/api/sessions/${sessionId}/`);
-    return response.data;
+  async getQuizResult(quizSetId: string): Promise<QuizResult> {
+    const response = await apiClient.get(`/api/quiz-sets/${quizSetId}/result/`);
+    return response;
+  },
+};
+
+// History API
+export const historyAPI = {
+  async getUserHistory(filters?: {
+    dateFrom?: string;
+    dateTo?: string;
+    level?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ results: QuizResult[]; count: number }> {
+    const params = new URLSearchParams();
+    if (filters?.dateFrom) params.append('date_from', filters.dateFrom);
+    if (filters?.dateTo) params.append('date_to', filters.dateTo);
+    if (filters?.level) params.append('level', filters.level.toString());
+    if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.offset) params.append('offset', filters.offset.toString());
+    
+    const response = await apiClient.get(`/api/history/?${params.toString()}`);
+    return response;
   },
 
-  async getSessionAnswers(sessionId: string): Promise<Answer[]> {
-    const response = await apiClient.get(`/api/sessions/${sessionId}/answers/`);
-    return response.data;
+  async getQuizResult(quizSetId: string): Promise<QuizResult> {
+    const response = await apiClient.get(`/api/history/${quizSetId}/`);
+    return response;
   },
 };

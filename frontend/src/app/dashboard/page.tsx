@@ -4,8 +4,8 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { dashboardAPI, DashboardStats } from '@/services/api';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { DashboardStats } from '@/types/quiz';
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
@@ -22,21 +22,23 @@ export default function Dashboard() {
       return;
     }
 
-    // ダッシュボード統計を取得
+    // ダッシュボード統計を取得（現在はデモデータ）
     const fetchStats = async () => {
       try {
-        const data = await dashboardAPI.getStats();
-        setStats(data);
+        // TODO: 実際のAPIコールに置き換え
+        // const data = await dashboardAPI.getStats();
+        const demoData: DashboardStats = {
+          total_quiz_sets: 15,
+          total_correct_answers: 127,
+          total_questions: 150,
+          average_score: 84.7,
+          average_latency_ms: 2340,
+          recent_results: []
+        };
+        setStats(demoData);
       } catch (err) {
         console.error('Failed to fetch dashboard stats:', err);
         setError('統計データの取得に失敗しました');
-        // エラーの場合はデモデータを表示
-        setStats({
-          total_quizzes: 3,
-          completed_sessions: 0,
-          average_score: 0,
-          recent_sessions: []
-        });
       } finally {
         setLoading(false);
       }
@@ -58,200 +60,144 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* ナビゲーションバー */}
-      <nav className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-semibold text-gray-900">Quiz App</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-700">
-                {session.user?.name}
-              </span>
-              <button
-                onClick={() => router.push('/auth/signout')}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-md text-sm font-medium"
-              >
-                ログアウト
-              </button>
-            </div>
-          </div>
+    <div className="space-y-6">
+      {/* ヘッダー */}
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">
+          ダッシュボード
+        </h1>
+        <p className="mt-2 text-gray-600">
+          こんにちは、{session.user?.name}さん！英単語クイズで学習を進めましょう。
+        </p>
+      </div>
+
+      {error && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+          <p className="text-yellow-800">{error}</p>
         </div>
-      </nav>
+      )}
 
-      {/* メインコンテンツ */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-900">
-              こんにちは、{session.user?.name}さん！
-            </h2>
-            <p className="mt-2 text-gray-600">
-              クイズにチャレンジして知識を試してみましょう。
-            </p>
-          </div>
+      {/* 今日のおすすめ */}
+      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg p-6 text-white">
+        <h2 className="text-xl font-semibold mb-2">今日のおすすめ</h2>
+        <p className="mb-4">レベル3の単語セットに挑戦してみませんか？</p>
+        <Link
+          href="/quiz/start"
+          className="inline-flex items-center px-4 py-2 bg-white text-indigo-600 rounded-md hover:bg-gray-100 transition-colors"
+        >
+          クイズを始める
+          <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
+      </div>
 
-          {error && (
-            <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
-              <p className="text-yellow-800">{error}</p>
-              <p className="text-sm text-yellow-600 mt-1">
-                デモデータを表示しています。
+      {/* 統計カード */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <span className="text-2xl">📚</span>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">受験回数</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {stats?.total_quiz_sets || 0}
               </p>
             </div>
-          )}
-
-          {/* 統計カード */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-indigo-500 rounded-md flex items-center justify-center">
-                      <span className="text-white text-sm font-medium">📚</span>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        利用可能なクイズ
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {stats?.total_quizzes || 0}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                      <span className="text-white text-sm font-medium">✅</span>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        完了したクイズ
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {stats?.completed_sessions || 0}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-                      <span className="text-white text-sm font-medium">⭐</span>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        平均スコア
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {stats?.average_score?.toFixed(1) || '0.0'}%
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
-
-          {/* アクションボタン */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Link
-              href="/quiz"
-              className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-indigo-500 rounded-lg flex items-center justify-center">
-                    <span className="text-white text-xl">🎯</span>
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-lg font-medium text-gray-900">
-                    クイズに挑戦
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    様々なカテゴリのクイズにチャレンジしましょう
-                  </p>
-                </div>
-              </div>
-            </Link>
-
-            <Link
-              href="/stats"
-              className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center">
-                    <span className="text-white text-xl">📊</span>
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-lg font-medium text-gray-900">
-                    統計を見る
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    あなたの成績と進捗を確認しましょう
-                  </p>
-                </div>
-              </div>
-            </Link>
-          </div>
-
-          {/* 最近のセッション */}
-          {stats?.recent_sessions && stats.recent_sessions.length > 0 && (
-            <div className="mt-8">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                最近のクイズ結果
-              </h3>
-              <div className="bg-white shadow overflow-hidden sm:rounded-md">
-                <ul className="divide-y divide-gray-200">
-                  {stats.recent_sessions.map((session) => (
-                    <li key={session.id} className="px-6 py-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            クイズセッション
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {new Date(session.start_time).toLocaleDateString('ja-JP')}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-gray-900">
-                            {session.score}/{session.max_score} 点
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {((session.score / session.max_score) * 100).toFixed(1)}%
-                          </p>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          )}
         </div>
-      </main>
+
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <span className="text-2xl">✅</span>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">正答数</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {stats?.total_correct_answers || 0}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <div className="p-2 bg-yellow-100 rounded-lg">
+              <span className="text-2xl">⭐</span>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">平均スコア</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {stats?.average_score?.toFixed(1) || '0.0'}%
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <span className="text-2xl">⏱️</span>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">平均反応時間</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {stats?.average_latency_ms ? (stats.average_latency_ms / 1000).toFixed(1) + 's' : '0.0s'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* メニューカード */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <Link
+          href="/quiz/start"
+          className="block bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center">
+            <div className="p-3 bg-indigo-100 rounded-lg">
+              <span className="text-3xl">🎯</span>
+            </div>
+            <div className="ml-4">
+              <h3 className="text-lg font-semibold text-gray-900">クイズ開始</h3>
+              <p className="text-sm text-gray-600">レベル・セグメントを選んで挑戦</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link
+          href="/history"
+          className="block bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center">
+            <div className="p-3 bg-green-100 rounded-lg">
+              <span className="text-3xl">📊</span>
+            </div>
+            <div className="ml-4">
+              <h3 className="text-lg font-semibold text-gray-900">マイ履歴</h3>
+              <p className="text-sm text-gray-600">過去の受験結果を確認</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link
+          href="/profile"
+          className="block bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center">
+            <div className="p-3 bg-yellow-100 rounded-lg">
+              <span className="text-3xl">👤</span>
+            </div>
+            <div className="ml-4">
+              <h3 className="text-lg font-semibold text-gray-900">プロフィール</h3>
+              <p className="text-sm text-gray-600">アカウント設定</p>
+            </div>
+          </div>
+        </Link>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,8 @@
 'use client';
 
 import { SessionProvider } from 'next-auth/react';
+import QueryProvider from './QueryProvider';
+import MainLayout from './MainLayout';
 
 interface ClientWrapperProps {
   children: React.ReactNode;
@@ -9,7 +11,11 @@ interface ClientWrapperProps {
 export default function ClientWrapper({ children }: ClientWrapperProps) {
   return (
     <SessionProvider>
-      {children}
+      <QueryProvider>
+        <MainLayout>
+          {children}
+        </MainLayout>
+      </QueryProvider>
     </SessionProvider>
   );
 }

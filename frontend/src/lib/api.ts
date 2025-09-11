@@ -1,5 +1,6 @@
 
 import { getSession } from "next-auth/react"
+import { Session } from "next-auth"
 
 // サーバー/クライアントでAPIエンドポイントを自動切り替え
 const isServer = typeof window === "undefined";
@@ -11,8 +12,8 @@ const API_URL = isServer
 export async function apiGet(path: string) {
   const session = await getSession()
   const headers: Record<string, string> = { "Content-Type": "application/json" }
-  if ((session as any)?.backendAccessToken) {
-    headers.Authorization = `Bearer ${(session as any).backendAccessToken}`
+  if ((session as Session & { backendAccessToken?: string })?.backendAccessToken) {
+    headers.Authorization = `Bearer ${(session as Session & { backendAccessToken?: string }).backendAccessToken}`
   }
   const res = await fetch(`${API_URL}${path}`, { headers })
   if (!res.ok) {
@@ -24,16 +25,75 @@ export async function apiGet(path: string) {
   return res.json()
 }
 
-export async function apiPost(path: string, body?: any) {
+export async function apiPost(path: string, body?: unknown) {
   const session = await getSession()
   const headers: Record<string, string> = { "Content-Type": "application/json" }
-  if ((session as any)?.backendAccessToken) {
-    headers.Authorization = `Bearer ${(session as any).backendAccessToken}`
+  if ((session as Session & { backendAccessToken?: string })?.backendAccessToken) {
+    headers.Authorization = `Bearer ${(session as Session & { backendAccessToken?: string }).backendAccessToken}`
   }
   const res = await fetch(`${API_URL}${path}`, { 
     method: "POST",
     headers,
     body: body ? JSON.stringify(body) : undefined
+  })
+  if (!res.ok) {
+    if (res.status === 401) {
+      window.location.href = '/auth/signin';
+    }
+    throw new Error(`${res.status} ${await res.text()}`)
+  }
+  return res.json()
+}
+
+export async function apiPatch(path: string, body?: unknown) {
+  const session = await getSession()
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if ((session as Session & { backendAccessToken?: string })?.backendAccessToken) {
+    headers.Authorization = `Bearer ${(session as Session & { backendAccessToken?: string }).backendAccessToken}`
+  }
+  const res = await fetch(`${API_URL}${path}`, { 
+    method: "PATCH",
+    headers,
+    body: body ? JSON.stringify(body) : undefined
+  })
+  if (!res.ok) {
+    if (res.status === 401) {
+      window.location.href = '/auth/signin';
+    }
+    throw new Error(`${res.status} ${await res.text()}`)
+  }
+  return res.json()
+}
+
+export async function apiPut(path: string, body?: unknown) {
+  const session = await getSession()
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if ((session as Session & { backendAccessToken?: string })?.backendAccessToken) {
+    headers.Authorization = `Bearer ${(session as Session & { backendAccessToken?: string }).backendAccessToken}`
+  }
+  const res = await fetch(`${API_URL}${path}`, { 
+    method: "PUT",
+    headers,
+    body: body ? JSON.stringify(body) : undefined
+  })
+  if (!res.ok) {
+    if (res.status === 401) {
+      window.location.href = '/auth/signin';
+    }
+    throw new Error(`${res.status} ${await res.text()}`)
+  }
+  return res.json()
+}
+
+export async function apiDelete(path: string) {
+  const session = await getSession()
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if ((session as Session & { backendAccessToken?: string })?.backendAccessToken) {
+    headers.Authorization = `Bearer ${(session as Session & { backendAccessToken?: string }).backendAccessToken}`
+  }
+  const res = await fetch(`${API_URL}${path}`, { 
+    method: "DELETE",
+    headers
   })
   if (!res.ok) {
     if (res.status === 401) {
@@ -52,7 +112,9 @@ export async function apiPost(path: string, body?: any) {
 const apiClient = {
   get: apiGet,
   post: apiPost,
-  // patch, put, delete など必要に応じて追加
+  patch: apiPatch,
+  put: apiPut,
+  delete: apiDelete,
 };
 
 export default apiClient;

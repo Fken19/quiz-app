@@ -1,595 +1,367 @@
-from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from django.shortcuts import get_object_or_404
-from django.utils import timezone
-from django.db.models import Q
 from django.contrib.auth import get_user_model
-from .models import (
-    User, Question, Option, QuizSession, QuizResult,
-    Group, GroupMembership, DailyUserStats, DailyGroupStats
-)
+from django.db.models import Count, Avg, Q, F
+from django.db import transaction
+from django.utils import timezone
+from rest_framework import viewsets, status, permissions
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.authtoken.models import Token
+from django.contrib.auth import authenticate
+from django.shortcuts import get_object_or_404
+from datetime import datetime, timedelta
+import uuid
+
+from .models import User, Word, WordTranslation, QuizSet, QuizItem, QuizResponse
 from .serializers import (
-    UserSerializer, QuestionSerializer, QuizSessionSerializer,
-    QuizSessionCreateSerializer, AnswerSubmissionSerializer,
-    QuizResultSerializer, GroupSerializer, GroupMembershipSerializer,
-    DailyUserStatsSerializer, DailyGroupStatsSerializer
+    UserSerializer, WordSerializer, WordTranslationSerializer,
+    QuizSetSerializer, QuizItemSerializer, QuizResponseSerializer,
+    QuizSetListSerializer, DashboardStatsSerializer
 )
-from rest_framework.permissions import AllowAny
-class GoogleAuthView(APIView):
-    permission_classes = [AllowAny]
 
-    def post(self, request):
-        """
-        Google認証後のユーザー登録・取得API
-        既存ユーザーがいれば返し、いなければ新規作成
-        """
-        print(f"Google auth request received: {request.data}")
-        
-        email = request.data.get('email')
-        first_name = request.data.get('first_name', '')
-        last_name = request.data.get('last_name', '')
-        display_name = f"{first_name} {last_name}".strip()
-        profile_picture = request.data.get('profile_picture', '')
-        google_id = request.data.get('google_id', '')
-
-        if not email:
-            print("Error: email is required")
-            return Response({'error': 'email is required'}, status=400)
-
-        try:
-            UserModel = get_user_model()
-            user, created = UserModel.objects.get_or_create(email=email, defaults={
-                'username': email,
-                'display_name': display_name or email,
-                'first_name': first_name,
-                'last_name': last_name,
-            })
-            # 必要ならプロフィール画像やGoogle IDも保存
-            if display_name and user.display_name != display_name:
-                user.display_name = display_name
-                user.save()
-
-            serializer = UserSerializer(user)
-            print(f"User created/found: {serializer.data}")
-            return Response({'user': serializer.data, 'created': created}, status=200)
-        except Exception as e:
-            print(f"Error creating/finding user: {str(e)}")
-            return Response({'error': str(e)}, status=500)
+User = get_user_model()
 
 
-class HealthCheckView(APIView):
-    """ヘルスチェック用エンドポイント"""
-    permission_classes = []  # 認証不要
-    
-    def get(self, request):
-        return Response({
-            'status': 'healthy',
-            'timestamp': timezone.now().isoformat(),
-            'service': 'quiz-api'
-        })
-
-
-class QuestionViewSet(viewsets.ReadOnlyModelViewSet):
-    """問題取得API"""
-    queryset = Question.objects.all()
-    serializer_class = QuestionSerializer
+class WordViewSet(viewsets.ReadOnlyModelViewSet):
+    """単語のビューセット"""
+    queryset = Word.objects.all()
+    serializer_class = WordSerializer
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get_queryset(self):
-        queryset = Question.objects.prefetch_related('options')
-        level = self.request.query_params.get('level')
-        segment = self.request.query_params.get('segment')
-        limit = self.request.query_params.get('limit')
-        
-        if level:
-            queryset = queryset.filter(level=level)
-        if segment:
-            queryset = queryset.filter(segment=segment)
-        if limit:
-            try:
-                queryset = queryset[:int(limit)]
-            except ValueError:
-                pass
-                
+        queryset = Word.objects.all()
+        difficulty = self.request.query_params.get('difficulty')
+        if difficulty:
+            queryset = queryset.filter(difficulty=difficulty)
         return queryset
 
 
-class QuizSessionViewSet(viewsets.ModelViewSet):
-    """クイズセッション管理API"""
-    queryset = QuizSession.objects.all()
-    serializer_class = QuizSessionSerializer
+class QuizSetViewSet(viewsets.ModelViewSet):
+    """クイズセットのビューセット"""
+    serializer_class = QuizSetSerializer
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get_queryset(self):
-        return QuizSession.objects.filter(user=self.request.user).prefetch_related('results__question', 'results__chosen_option')
-    
+        return QuizSet.objects.filter(user=self.request.user)
+
     def get_serializer_class(self):
-        if self.action == 'create':
-            return QuizSessionCreateSerializer
-        return QuizSessionSerializer
-    
+        if self.action == 'list':
+            return QuizSetListSerializer
+        return QuizSetSerializer
+
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
-    
+
     @action(detail=True, methods=['post'])
-    def answers(self, request, pk=None):
-        """回答送信"""
-        session = self.get_object()
-        serializer = AnswerSubmissionSerializer(data=request.data)
+    def start_quiz(self, request, pk=None):
+        """クイズを開始する"""
+        quiz_set = self.get_object()
         
-        if serializer.is_valid():
-            question_id = serializer.validated_data['question_id']
-            chosen_option_id = serializer.validated_data.get('chosen_option_id')
-            elapsed_ms = serializer.validated_data.get('elapsed_ms')
-            
-            question = get_object_or_404(Question, id=question_id)
-            chosen_option = None
-            is_correct = False
-            
-            if chosen_option_id:
-                chosen_option = get_object_or_404(Option, id=chosen_option_id, question=question)
-                is_correct = chosen_option.is_correct
-            
-            # 既存の回答を確認（重複防止）
-            existing_result = QuizResult.objects.filter(session=session, question=question).first()
-            if existing_result:
-                # 既存の回答を更新
-                existing_result.chosen_option = chosen_option
-                existing_result.is_correct = is_correct
-                existing_result.elapsed_ms = elapsed_ms
-                existing_result.save()
-                result = existing_result
-            else:
-                # 新しい回答を作成
-                result = QuizResult.objects.create(
-                    session=session,
-                    question=question,
-                    chosen_option=chosen_option,
-                    is_correct=is_correct,
-                    elapsed_ms=elapsed_ms
-                )
-            
-            return Response(QuizResultSerializer(result).data)
+        # 新しいクイズセッション開始のロジック
+        quiz_set.times_attempted += 1
+        quiz_set.save()
         
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+        # クイズアイテムをランダムに選択
+        quiz_items = quiz_set.items.order_by('?')[:10]  # 10問
+        
+        return Response({
+            'quiz_set_id': quiz_set.id,
+            'items': QuizItemSerializer(quiz_items, many=True).data
+        })
+
     @action(detail=True, methods=['post'])
-    def complete(self, request, pk=None):
-        """セッション完了"""
-        session = self.get_object()
-        total_time_ms = request.data.get('total_time_ms')
-        
-        session.completed_at = timezone.now()
-        if total_time_ms:
-            session.total_time_ms = total_time_ms
-        session.save()
-        
-        return Response({'status': 'completed'})
-
-
-class CurrentUserView(APIView):
-    """現在のユーザー情報"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get(self, request):
-        serializer = UserSerializer(request.user)
-        return Response(serializer.data)
-
-
-class UserResultsView(APIView):
-    """ユーザーの結果履歴"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get(self, request):
-        sessions = QuizSession.objects.filter(
-            user=request.user
-        ).prefetch_related('results__question', 'results__chosen_option').order_by('-started_at')
-        
-        # 日付フィルター
-        from_date = request.query_params.get('from')
-        to_date = request.query_params.get('to')
-        if from_date:
-            sessions = sessions.filter(started_at__date__gte=from_date)
-        if to_date:
-            sessions = sessions.filter(started_at__date__lte=to_date)
-        
-        serializer = QuizSessionSerializer(sessions, many=True)
-        return Response(serializer.data)
-
-
-# 管理者用ビュー
-class AdminUserListView(APIView):
-    """管理者用：ユーザー一覧"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get(self, request):
-        if not request.user.is_staff:
-            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-        
-        users = User.objects.all().order_by('-created_at')
-        serializer = UserSerializer(users, many=True)
-        return Response(serializer.data)
-
-
-class AdminGroupListView(APIView):
-    """管理者用：グループ一覧"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get(self, request):
-        if not request.user.is_staff:
-            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-        
-        groups = Group.objects.all().order_by('-created_at')
-        serializer = GroupSerializer(groups, many=True)
-        return Response(serializer.data)
-
-
-class AdminDailyStatsView(APIView):
-    """管理者用：日次統計"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get(self, request):
-        if not request.user.is_staff:
-            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-        
-        scope = request.query_params.get('scope', 'user')  # user or group
-        from_date = request.query_params.get('from')
-        to_date = request.query_params.get('to')
-        
-        if scope == 'group':
-            queryset = DailyGroupStats.objects.all()
-            if from_date:
-                queryset = queryset.filter(date__gte=from_date)
-            if to_date:
-                queryset = queryset.filter(date__lte=to_date)
-            serializer = DailyGroupStatsSerializer(queryset, many=True)
-        else:
-            queryset = DailyUserStats.objects.all()
-            if from_date:
-                queryset = queryset.filter(date__gte=from_date)
-            if to_date:
-                queryset = queryset.filter(date__lte=to_date)
-            serializer = DailyUserStatsSerializer(queryset, many=True)
-        
-        return Response(serializer.data)
-
-
-class UserDashboardView(APIView):
-    """ユーザーダッシュボード・集計データ"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get(self, request):
-        from django.db.models import Sum, Count, Avg
-        from datetime import datetime, timedelta
-        from django.utils import timezone
-        import pytz
-        
-        user = request.user
-        now = timezone.now()
-        jst = pytz.timezone('Asia/Tokyo')
-        now_jst = now.astimezone(jst)
-        
-        # 全ユーザーの結果を取得
-        all_results = QuizResult.objects.filter(
-            session__user=user
-        ).select_related('session').order_by('created_at')
-        
-        # 全体統計
-        total_stats = all_results.aggregate(
-            total_questions=Count('id'),
-            total_correct=Sum('is_correct'),
-            avg_time=Avg('elapsed_ms')
-        )
-        
-        total_questions = total_stats['total_questions'] or 0
-        total_correct = total_stats['total_correct'] or 0
-        overall_accuracy = round((total_correct / total_questions * 100), 2) if total_questions else 0
-        overall_avg_time = round((total_stats['avg_time'] or 0) / 1000, 2)  # ミリ秒→秒
-        
-        # 今日の統計
-        today_start = now_jst.replace(hour=0, minute=0, second=0, microsecond=0)
-        tomorrow_start = today_start + timedelta(days=1)
-        today_results = all_results.filter(
-            created_at__gte=today_start.astimezone(timezone.utc),
-            created_at__lt=tomorrow_start.astimezone(timezone.utc)
-        )
-        day_stats = today_results.aggregate(
-            count=Count('id'),
-            correct=Sum('is_correct'),
-            avg_time=Avg('elapsed_ms')
-        )
-        day_total_words = day_stats['count'] or 0
-        day_total_correct = day_stats['correct'] or 0
-        day_accuracy = round((day_total_correct / day_total_words * 100), 2) if day_total_words else 0
-        day_avg_time = round((day_stats['avg_time'] or 0) / 1000, 2)
-        
-        # 今週の統計
-        week_start = now_jst - timedelta(days=now_jst.weekday())
-        week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
-        next_week_start = week_start + timedelta(days=7)
-        week_results = all_results.filter(
-            created_at__gte=week_start.astimezone(timezone.utc),
-            created_at__lt=next_week_start.astimezone(timezone.utc)
-        )
-        week_stats = week_results.aggregate(
-            count=Count('id'),
-            correct=Sum('is_correct'),
-            avg_time=Avg('elapsed_ms')
-        )
-        week_total_words = week_stats['count'] or 0
-        week_total_correct = week_stats['correct'] or 0
-        week_accuracy = round((week_total_correct / week_total_words * 100), 2) if week_total_words else 0
-        week_avg_time = round((week_stats['avg_time'] or 0) / 1000, 2)
-        
-        # 今月の統計
-        month_start = now_jst.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        if month_start.month == 12:
-            next_month_start = month_start.replace(year=month_start.year + 1, month=1)
-        else:
-            next_month_start = month_start.replace(month=month_start.month + 1)
-        month_results = all_results.filter(
-            created_at__gte=month_start.astimezone(timezone.utc),
-            created_at__lt=next_month_start.astimezone(timezone.utc)
-        )
-        month_stats = month_results.aggregate(
-            count=Count('id'),
-            correct=Sum('is_correct'),
-            avg_time=Avg('elapsed_ms')
-        )
-        month_total_words = month_stats['count'] or 0
-        month_total_correct = month_stats['correct'] or 0
-        month_accuracy = round((month_total_correct / month_total_words * 100), 2) if month_total_words else 0
-        month_avg_time = round((month_stats['avg_time'] or 0) / 1000, 2)
-        
-        # グラフ用データ（簡易版）
-        # 日別（直近7日）
-        daily_data = []
-        for i in range(7):
-            day = today_start - timedelta(days=6-i)
-            day_end = day + timedelta(days=1)
-            day_results = all_results.filter(
-                created_at__gte=day.astimezone(timezone.utc),
-                created_at__lt=day_end.astimezone(timezone.utc)
-            )
-            day_count = day_results.aggregate(
-                correct=Sum('is_correct'),
-                incorrect=Count('id') - Sum('is_correct')
-            )
-            daily_data.append({
-                'date': day.strftime('%m/%d'),
-                'correct': day_count['correct'] or 0,
-                'incorrect': (day_count['incorrect'] or 0)
-            })
-        
-        # セッション数
-        total_sessions = QuizSession.objects.filter(user=user).count()
-        
-        return Response({
-            # 全体統計
-            'total_words': total_questions,
-            'overall_accuracy': overall_accuracy,
-            'overall_avg_time': overall_avg_time,
-            'total_quizzes': total_sessions,
-            
-            # 期間別統計
-            'daily_count': day_total_words,
-            'daily_accuracy': day_accuracy,
-            'daily_avg_time': day_avg_time,
-            
-            'weekly_count': week_total_words,
-            'weekly_accuracy': week_accuracy,
-            'weekly_avg_time': week_avg_time,
-            
-            'monthly_count': month_total_words,
-            'monthly_accuracy': month_accuracy,
-            'monthly_avg_time': month_avg_time,
-            
-            # グラフデータ
-            'day_graph_data': daily_data,
-        })
-
-
-class UserProfileView(APIView):
-    """ユーザープロフィール管理"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get(self, request):
-        """プロフィール情報取得"""
-        user = request.user
-        return Response({
-            'id': user.id,
-            'email': user.email,
-            'display_name': user.display_name,
-            'nickname': getattr(user, 'nickname', user.display_name or user.email),
-            'custom_icon_url': getattr(user, 'custom_icon_url', None),
-            'user_id': getattr(user, 'user_id', str(user.id)),
-        })
-    
-    def put(self, request):
-        """プロフィール情報更新"""
-        user = request.user
-        nickname = request.data.get('nickname', '').strip()
-        
-        if nickname:
-            user.display_name = nickname
-            # カスタムフィールドがあれば設定
-            if hasattr(user, 'nickname'):
-                user.nickname = nickname
-        
-        user.save()
-        
-        return Response({
-            'status': 'success',
-            'message': 'プロフィールを更新しました'
-        })
-
-
-class QuizSubmitView(APIView):
-    """クイズ結果一括送信（Flask互換）"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def post(self, request):
-        """Flask app.py の /submit ルートと互換性のある結果送信"""
-        data = request.data
-        
-        # バリデーション
-        if not isinstance(data.get("score"), int) or not isinstance(data.get("total"), int):
-            return Response({"status": "error", "message": "Invalid input types"}, status=status.HTTP_400_BAD_REQUEST)
-        if data.get("total", 0) <= 0:
-            return Response({"status": "error", "message": "Total must be positive"}, status=status.HTTP_400_BAD_REQUEST)
+    def submit_answer(self, request, pk=None):
+        """回答を送信する"""
+        quiz_set = self.get_object()
+        quiz_item_id = request.data.get('quiz_item_id')
+        user_answer = request.data.get('answer')
         
         try:
-            user = request.user
-            
-            # セッション作成
-            session = QuizSession.objects.create(
-                user=user,
-                started_at=timezone.now(),
-                completed_at=timezone.now(),
-                total_time_ms=int((data.get("time", 0)) * 1000)  # 秒→ミリ秒
+            quiz_item = QuizItem.objects.get(id=quiz_item_id, quiz_set=quiz_set)
+        except QuizItem.DoesNotExist:
+            return Response(
+                {'error': 'クイズアイテムが見つかりません'},
+                status=status.HTTP_404_NOT_FOUND
             )
-            
-            # 結果詳細保存
-            for detail in data.get("results", []):
-                question_text = detail.get("question", "")
-                user_answer = detail.get("userAnswer", "")
-                correct_answer = detail.get("correctAnswer", "")
-                answer_time = detail.get("time", 0)
-                
-                # 問題IDを取得（テキストから逆引き）
-                question = Question.objects.filter(text=question_text).first()
-                chosen_option = None
-                is_correct = (user_answer == correct_answer)
-                
-                if question:
-                    chosen_option = Option.objects.filter(
-                        question=question,
-                        text=user_answer
-                    ).first()
-                
-                QuizResult.objects.create(
-                    session=session,
-                    question=question,
-                    chosen_option=chosen_option,
-                    is_correct=is_correct,
-                    elapsed_ms=int(answer_time * 1000)  # 秒→ミリ秒
-                )
-            
-            return Response({"status": "success"}, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            return Response({
-                "status": "error", 
-                "message": f"データ保存に失敗しました: {str(e)}"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-class QuizLevelsView(APIView):
-    """クイズレベル一覧（Flask互換）"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get(self, request):
-        """レベル分けされた問題一覧を返す"""
-        total_questions = Question.objects.count()
-        segment_size = 50
-        total_levels = (total_questions + segment_size - 1) // segment_size
         
-        levels_list = []
-        for i in range(total_levels):
-            levels_list.append({
-                'level': i + 1,
-                'start': i * segment_size + 1,
-                'end': min((i + 1) * segment_size, total_questions)
-            })
+        # 既存の回答をチェック
+        existing_response = QuizResponse.objects.filter(
+            user=request.user,
+            quiz_item=quiz_item
+        ).first()
+        
+        if existing_response:
+            return Response(
+                {'error': 'この問題には既に回答済みです'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 正解判定
+        correct_answer = quiz_item.word.translation_set.first().translation
+        is_correct = user_answer.lower().strip() == correct_answer.lower().strip()
+        
+        # 回答を保存
+        quiz_response = QuizResponse.objects.create(
+            user=request.user,
+            quiz_item=quiz_item,
+            user_answer=user_answer,
+            is_correct=is_correct,
+            response_time=request.data.get('response_time', 0)
+        )
         
         return Response({
-            'levels': levels_list,
-            'total_questions': total_questions
+            'is_correct': is_correct,
+            'correct_answer': correct_answer,
+            'response_id': quiz_response.id
         })
 
 
-class QuizSegmentsView(APIView):
-    """レベル内セグメント一覧（Flask互換）"""
-    permission_classes = [permissions.IsAuthenticated]
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def google_auth(request):
+    """Google認証エンドポイント"""
+    google_token = request.data.get('token')
     
-    def get(self, request, level):
-        """指定レベル内のセグメント一覧を返す"""
-        segment_size = 10
-        total_segments = 5
-        
-        segments_list = []
-        for i in range(total_segments):
-            segments_list.append({
-                'segment': i + 1,
-                'start': i * segment_size + 1,
-                'end': (i + 1) * segment_size
-            })
-        
-        return Response({
-            'level': level,
-            'segments': segments_list
-        })
-
-
-class QuizLevelQuestionsView(APIView):
-    """レベル別問題取得（Flask互換）"""
-    permission_classes = [permissions.IsAuthenticated]
+    if not google_token:
+        return Response(
+            {'error': 'Googleトークンが必要です'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
     
-    def get(self, request, level, segment=None):
-        """指定レベル・セグメントの問題を返す"""
-        segment_size = 50
-        start_index = (int(level) - 1) * segment_size
-        
-        questions = Question.objects.all().prefetch_related('options')[start_index:start_index + segment_size]
-        
-        if segment is not None:
-            # セグメント指定がある場合はさらに絞る
-            seg_size = 10
-            seg_start = (int(segment) - 1) * seg_size
-            seg_end = seg_start + seg_size
-            questions = list(questions)[seg_start:seg_end]
-        
-        serializer = QuestionSerializer(questions, many=True)
-        return Response({
-            'level': level,
-            'segment': segment,
-            'questions': serializer.data
-        })
-
-
-class AuthStatusView(APIView):
-    """認証状態確認（Flask /auth_status互換）"""
-    permission_classes = [permissions.AllowAny]
+    # ここでGoogle OAuthトークンを検証する実装を追加
+    # 今は簡易実装として、ユーザーが存在しない場合は作成
+    email = request.data.get('email')
+    name = request.data.get('name')
     
-    def get(self, request):
-        if request.user.is_authenticated:
-            return Response({
-                'authenticated': True,
-                'user': {
-                    'id': request.user.id,
-                    'username': request.user.username,
-                    'email': request.user.email,
-                    'display_name': request.user.display_name or request.user.username,
-                    'avatar_url': request.user.avatar_url
-                }
-            })
+    if not email:
+        return Response(
+            {'error': 'メールアドレスが必要です'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    user, created = User.objects.get_or_create(
+        email=email,
+        defaults={'name': name or email.split('@')[0]}
+    )
+    
+    token, created = Token.objects.get_or_create(user=user)
+    
+    return Response({
+        'token': token.key,
+        'user': UserSerializer(user).data
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_stats(request):
+    """ダッシュボード統計データ"""
+    user = request.user
+    
+    # 基本統計
+    total_responses = QuizResponse.objects.filter(user=user).count()
+    correct_responses = QuizResponse.objects.filter(user=user, is_correct=True).count()
+    
+    accuracy = (correct_responses / total_responses * 100) if total_responses > 0 else 0
+    
+    # 今週の統計
+    week_ago = timezone.now() - timedelta(days=7)
+    weekly_responses = QuizResponse.objects.filter(
+        user=user,
+        created_at__gte=week_ago
+    ).count()
+    
+    # ストリーク計算（連続正解日数）
+    current_streak = 0
+    today = timezone.now().date()
+    
+    # 日別の正解率を計算してストリークを求める
+    for i in range(30):  # 過去30日をチェック
+        check_date = today - timedelta(days=i)
+        daily_responses = QuizResponse.objects.filter(
+            user=user,
+            created_at__date=check_date
+        )
+        
+        if not daily_responses.exists():
+            if i == 0:  # 今日回答がない場合
+                continue
+            else:
+                break
+                
+        daily_correct = daily_responses.filter(is_correct=True).count()
+        daily_total = daily_responses.count()
+        
+        if daily_total > 0 and (daily_correct / daily_total) >= 0.7:  # 70%以上で継続
+            current_streak += 1
         else:
-            return Response({'authenticated': False})
-
-
-class LogoutView(APIView):
-    """ログアウト（Flask /logout互換）"""
-    permission_classes = [permissions.IsAuthenticated]
+            break
     
-    def post(self, request):
-        """ログアウト処理"""
-        # セッション削除
-        if hasattr(request, 'session'):
-            request.session.flush()
+    # レベル計算（100問につき1レベル）
+    level = total_responses // 100 + 1
+    
+    # 月間進歩（月初からの改善）
+    month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    monthly_responses = QuizResponse.objects.filter(
+        user=user,
+        created_at__gte=month_start
+    )
+    
+    monthly_accuracy = 0
+    if monthly_responses.exists():
+        monthly_correct = monthly_responses.filter(is_correct=True).count()
+        monthly_accuracy = (monthly_correct / monthly_responses.count() * 100)
+    
+    # 最近のクイズセット
+    recent_quiz_sets = QuizSet.objects.filter(user=user).order_by('-created_at')[:5]
+    
+    stats_data = {
+        'total_quizzes': QuizSet.objects.filter(user=user).count(),
+        'average_score': accuracy,
+        'current_streak': current_streak,
+        'weekly_activity': weekly_responses,
+        'level': level,
+        'monthly_progress': monthly_accuracy,
+        'recent_quiz_sets': QuizSetListSerializer(recent_quiz_sets, many=True).data
+    }
+    
+    return Response(stats_data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def quiz_history(request):
+    """クイズ履歴の取得"""
+    user = request.user
+    
+    # フィルター
+    difficulty = request.GET.get('difficulty')
+    date_range = request.GET.get('date_range')  # 'week', 'month', 'year'
+    
+    quiz_sets = QuizSet.objects.filter(user=user)
+    
+    if difficulty:
+        quiz_sets = quiz_sets.filter(difficulty=difficulty)
+    
+    if date_range:
+        now = timezone.now()
+        if date_range == 'week':
+            start_date = now - timedelta(days=7)
+        elif date_range == 'month':
+            start_date = now - timedelta(days=30)
+        elif date_range == 'year':
+            start_date = now - timedelta(days=365)
+        else:
+            start_date = None
+            
+        if start_date:
+            quiz_sets = quiz_sets.filter(created_at__gte=start_date)
+    
+    quiz_sets = quiz_sets.order_by('-created_at')
+    
+    # 各クイズセットの統計を含める
+    history_data = []
+    for quiz_set in quiz_sets:
+        responses = QuizResponse.objects.filter(
+            user=user,
+            quiz_item__quiz_set=quiz_set
+        )
         
-        return Response({
-            'status': 'success',
-            'message': 'ログアウトしました'
+        total_questions = responses.count()
+        correct_answers = responses.filter(is_correct=True).count()
+        
+        score = (correct_answers / total_questions * 100) if total_questions > 0 else 0
+        
+        history_data.append({
+            'id': quiz_set.id,
+            'title': quiz_set.title,
+            'difficulty': quiz_set.difficulty,
+            'score': round(score, 1),
+            'total_questions': total_questions,
+            'correct_answers': correct_answers,
+            'completed_at': quiz_set.created_at,
+            'duration': sum(r.response_time for r in responses) if responses else 0
         })
+    
+    return Response(history_data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_profile(request):
+    """ユーザープロフィール情報"""
+    user = request.user
+    
+    # 統計情報
+    total_responses = QuizResponse.objects.filter(user=user).count()
+    correct_responses = QuizResponse.objects.filter(user=user, is_correct=True).count()
+    
+    # お気に入りの難易度
+    difficulty_stats = QuizSet.objects.filter(user=user).values('difficulty').annotate(
+        count=Count('id')
+    ).order_by('-count')
+    
+    favorite_difficulty = difficulty_stats.first()['difficulty'] if difficulty_stats else 'beginner'
+    
+    # 平均回答時間
+    avg_response_time = QuizResponse.objects.filter(user=user).aggregate(
+        avg_time=Avg('response_time')
+    )['avg_time'] or 0
+    
+    profile_data = {
+        'user': UserSerializer(user).data,
+        'stats': {
+            'total_quizzes': QuizSet.objects.filter(user=user).count(),
+            'total_questions_answered': total_responses,
+            'accuracy_rate': (correct_responses / total_responses * 100) if total_responses > 0 else 0,
+            'favorite_difficulty': favorite_difficulty,
+            'average_response_time': round(avg_response_time, 2),
+            'member_since': user.created_at,
+        },
+        'achievements': {
+            'quiz_master': total_responses >= 1000,
+            'accuracy_expert': (correct_responses / total_responses * 100) >= 90 if total_responses > 0 else False,
+            'speed_demon': avg_response_time <= 5.0,
+            'consistent_learner': True,  # 実装を簡略化
+        }
+    }
+    
+    return Response(profile_data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_quiz_set(request):
+    """新しいクイズセットを生成"""
+    difficulty = request.data.get('difficulty', 'beginner')
+    word_count = min(int(request.data.get('word_count', 10)), 20)  # 最大20問
+    
+    # 指定された難易度の単語をランダムに取得
+    words = Word.objects.filter(difficulty=difficulty).order_by('?')[:word_count]
+    
+    if len(words) < word_count:
+        return Response(
+            {'error': f'{difficulty}レベルの単語が不足しています'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # クイズセットを作成
+    quiz_set = QuizSet.objects.create(
+        user=request.user,
+        title=f'{difficulty.title()} Quiz - {timezone.now().strftime("%Y/%m/%d %H:%M")}',
+        difficulty=difficulty
+    )
+    
+    # クイズアイテムを作成
+    for word in words:
+        QuizItem.objects.create(
+            quiz_set=quiz_set,
+            word=word,
+            question_text=f"「{word.word}」の意味は？",
+            question_type='translation'
+        )
+    
+    return Response({
+        'quiz_set': QuizSetSerializer(quiz_set).data,
+        'message': f'{word_count}問のクイズセットが作成されました'
+    })

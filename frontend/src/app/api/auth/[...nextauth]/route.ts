@@ -59,11 +59,11 @@ export const authOptions: NextAuthOptions = {
     // ② クライアントへ必要最小限を渡す
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).id = token.userId as string
-        (session.user as any).role = token.role as string
+        (session.user as { id?: string; role?: string }).id = token.userId as string
+        (session.user as { id?: string; role?: string }).role = token.role as string
       }
-      (session as any).backendAccessToken = token.backendAccessToken as string
-      (session as any).backendError = token.backendError as string
+      (session as { backendAccessToken?: string }).backendAccessToken = token.backendAccessToken as string
+      (session as { backendError?: string }).backendError = token.backendError as string
       return session
     },
 

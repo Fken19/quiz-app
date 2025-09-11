@@ -1,6 +1,7 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 export default function AuthErrorPage() {
   const searchParams = useSearchParams();
@@ -22,7 +23,7 @@ export default function AuthErrorPage() {
         <h1 className="text-3xl font-bold text-red-600 mb-4">{title}</h1>
         <p className="text-lg text-gray-700 mb-2">{message}</p>
         {hint && <p className="text-sm text-gray-500 mb-4">{hint}</p>}
-        <a href="/" className="mt-8 text-blue-600 underline">トップページへ戻る</a>
+  <Link href="/" className="mt-8 text-blue-600 underline">トップページへ戻る</Link>
       </div>
     </div>
   );

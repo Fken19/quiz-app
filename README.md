@@ -26,22 +26,46 @@ cd quiz-app
 ---
 
 ### 4. Dockerコンテナのビルド＆起動（開発環境）
+
+#### 推奨方法：Makeコマンドを使用
+```sh
+make dev    # 開発環境の自動セットアップ
+```
+
+#### または手動でDocker Composeを使用
 ```sh
 docker-compose up -d
 ```
+
+#### 利用可能なMakeコマンド
+```sh
+make help          # 全コマンドのヘルプを表示
+make build         # Dockerイメージをビルド
+make up            # 環境を起動
+make down          # 環境を停止
+make logs          # 全サービスのログを表示
+make logs-frontend # フロントエンドのログを表示
+make logs-backend  # バックエンドのログを表示
+make clean         # 全てを削除してリセット
+```
+
+#### アクセス先
+- **フロントエンド**: http://localhost:3000
+- **バックエンド API**: http://localhost:8080
+- **データベース**: localhost:5432
+
 - これで**3つのコンテナ**が起動します
 	- `backend`（Django APIサーバー）
 	- `frontend`（Next.jsフロントエンド）
 	- `db`（PostgreSQL）
 
-> ⚠️ `docker-compose up -d` だけで **Django/Next.jsサーバーも自動で起動** します。通常はこのコマンドだけで http://localhost:8080 (API) と http://localhost:3000 (フロント) にアクセスできます。
+> ⚠️ `docker-compose up -d` や `make dev` だけで **Django/Next.jsサーバーも自動で起動** します。通常はこのコマンドだけで http://localhost:8080 (API) と http://localhost:3000 (フロント) にアクセスできます。
 > 
 > コードを修正・保存すると**自動的にホットリロードで反映**されます（DjangoもNext.jsもdevサーバーはホットリロード対応）。
 > 
-> サーバーを手動で再起動したい場合は `docker-compose restart backend` や `docker-compose restart frontend` を使ってください。
+> サーバーを手動で再起動したい場合は `docker-compose restart backend` や `make restart` を使ってください。
 > 
 > **手動でrunserverやnpm run devを実行しないでください。** すでにサーバーが起動しているため、ポート競合エラーになります。
-> 
 
 ---
 

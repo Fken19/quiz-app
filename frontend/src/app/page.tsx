@@ -34,27 +34,20 @@ export default function Home() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="pt-20 pb-16 text-center lg:pt-32">
           <h1 className="mx-auto max-w-4xl text-5xl font-medium tracking-tight text-slate-900 sm:text-7xl">
-            Quiz{' '}
+            英単語{' '}
             <span className="relative whitespace-nowrap text-indigo-600">
-              <span className="relative">App</span>
-            </span>{' '}
-            へようこそ
+              <span className="relative">クイズアプリ</span>
+            </span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg tracking-tight text-slate-700">
-            あなたの知識をテストし、新しいことを学びましょう。様々なカテゴリのクイズに挑戦して、スコアを向上させてください。
+            Googleアカウントでログインして、英単語4択クイズに挑戦しましょう。あなたの成績を記録し、学習の進捗を可視化できます。
           </p>
           <div className="mt-10 flex justify-center gap-x-6">
             <Link
               href="/auth/signin"
-              className="group inline-flex items-center justify-center rounded-full py-2 px-4 text-sm font-semibold focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 focus-visible:outline-indigo-600"
+              className="group inline-flex items-center justify-center rounded-full py-3 px-6 text-sm font-semibold focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 focus-visible:outline-indigo-600"
             >
-              始める
-            </Link>
-            <Link
-              href="/quiz"
-              className="group inline-flex ring-1 items-center justify-center rounded-full py-2 px-4 text-sm focus:outline-none ring-slate-200 text-slate-700 hover:text-slate-900 hover:ring-slate-300 active:bg-slate-100 active:text-slate-600 focus-visible:outline-indigo-600 focus-visible:ring-slate-300"
-            >
-              クイズを見る
+              Googleでログイン
             </Link>
           </div>
         </div>
@@ -63,26 +56,26 @@ export default function Home() {
           <dl className="grid max-w-xl grid-cols-1 gap-x-8 gap-y-16 lg:max-w-none lg:grid-cols-3">
             <div className="flex flex-col">
               <dt className="flex items-center gap-x-3 text-base font-semibold leading-7 text-gray-900">
-                📚 豊富なクイズ
+                📚 英単語学習
               </dt>
               <dd className="mt-4 flex flex-auto flex-col text-base leading-7 text-gray-600">
-                <p className="flex-auto">様々なカテゴリの問題が用意されており、あなたの興味に合わせてクイズを選択できます。</p>
+                <p className="flex-auto">レベル別・セグメント別に整理された英単語4択クイズで効率的に学習できます。</p>
               </dd>
             </div>
             <div className="flex flex-col">
               <dt className="flex items-center gap-x-3 text-base font-semibold leading-7 text-gray-900">
-                📊 進捗追跡
+                📊 学習記録
               </dt>
               <dd className="mt-4 flex flex-auto flex-col text-base leading-7 text-gray-600">
-                <p className="flex-auto">あなたのスコアや進捗を追跡し、時間の経過とともに改善を確認できます。</p>
+                <p className="flex-auto">正答率、反応時間、学習履歴を自動記録。ダッシュボードで進捗を可視化します。</p>
               </dd>
             </div>
             <div className="flex flex-col">
               <dt className="flex items-center gap-x-3 text-base font-semibold leading-7 text-gray-900">
-                🏆 チャレンジ
+                � 教育現場対応
               </dt>
               <dd className="mt-4 flex flex-auto flex-col text-base leading-7 text-gray-600">
-                <p className="flex-auto">難易度の異なるクイズに挑戦し、あなたのスキルを向上させましょう。</p>
+                <p className="flex-auto">教師による課題配布、クラス管理、成績集計機能で塾・学校での使用に最適化。</p>
               </dd>
             </div>
           </dl>
