@@ -12,14 +12,11 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# アプリケーションコードをコピー
+# 開発用にコードをボリュームマウントするため、COPYは最小限
 COPY . .
-
-# 静的ファイルを収集
-RUN python manage.py collectstatic --noinput
 
 # ポート8080で実行
 EXPOSE 8080
 
-# 本番用: Gunicornでアプリケーションを起動
-CMD exec gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 8 --timeout 0 quiz_backend.wsgi:application
+# 開発用: Django runserver（ホットリロード対応）
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8080"]

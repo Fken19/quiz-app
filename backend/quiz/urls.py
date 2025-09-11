@@ -24,6 +24,7 @@ urlpatterns = [
     # 認証機能
     path('auth/status/', views.AuthStatusView.as_view(), name='auth-status'),
     path('auth/logout/', views.LogoutView.as_view(), name='auth-logout'),
+    path('auth/google/', views.GoogleAuthView.as_view(), name='auth-google'),
     path('admin/', include([
         path('users/', views.AdminUserListView.as_view(), name='admin-users'),
         path('groups/', views.AdminGroupListView.as_view(), name='admin-groups'),

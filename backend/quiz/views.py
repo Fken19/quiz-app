@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db.models import Q
+from django.contrib.auth import get_user_model
 from .models import (
     User, Question, Option, QuizSession, QuizResult,
     Group, GroupMembership, DailyUserStats, DailyGroupStats
@@ -15,6 +16,47 @@ from .serializers import (
     QuizResultSerializer, GroupSerializer, GroupMembershipSerializer,
     DailyUserStatsSerializer, DailyGroupStatsSerializer
 )
+from rest_framework.permissions import AllowAny
+class GoogleAuthView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        """
+        Google認証後のユーザー登録・取得API
+        既存ユーザーがいれば返し、いなければ新規作成
+        """
+        print(f"Google auth request received: {request.data}")
+        
+        email = request.data.get('email')
+        first_name = request.data.get('first_name', '')
+        last_name = request.data.get('last_name', '')
+        display_name = f"{first_name} {last_name}".strip()
+        profile_picture = request.data.get('profile_picture', '')
+        google_id = request.data.get('google_id', '')
+
+        if not email:
+            print("Error: email is required")
+            return Response({'error': 'email is required'}, status=400)
+
+        try:
+            UserModel = get_user_model()
+            user, created = UserModel.objects.get_or_create(email=email, defaults={
+                'username': email,
+                'display_name': display_name or email,
+                'first_name': first_name,
+                'last_name': last_name,
+            })
+            # 必要ならプロフィール画像やGoogle IDも保存
+            if display_name and user.display_name != display_name:
+                user.display_name = display_name
+                user.save()
+
+            serializer = UserSerializer(user)
+            print(f"User created/found: {serializer.data}")
+            return Response({'user': serializer.data, 'created': created}, status=200)
+        except Exception as e:
+            print(f"Error creating/finding user: {str(e)}")
+            return Response({'error': str(e)}, status=500)
 
 
 class HealthCheckView(APIView):

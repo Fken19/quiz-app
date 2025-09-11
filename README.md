@@ -1,4 +1,196 @@
+
+
 # 英単語クイズアプリ
+
+---
+## 🐳 開発環境セットアップ手順（Docker推奨）
+
+### 1. 必要なツール
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [VSCode拡張: Docker](https://marketplace.visualstudio.com/items?itemName=ms-azuretools.vscode-docker)（推奨）
+
+---
+
+### 2. リポジトリのクローン
+```sh
+git clone <このリポジトリのURL>
+cd quiz-app
+```
+
+---
+
+### 3. 環境変数ファイルの準備
+- `backend/.env` および `frontend/.env.local` を編集
+	- Google認証やDB接続情報を正しく設定
+
+---
+
+### 4. Dockerコンテナのビルド＆起動（開発環境）
+```sh
+docker-compose up -d
+```
+- これで**3つのコンテナ**が起動します
+	- `backend`（Django APIサーバー）
+	- `frontend`（Next.jsフロントエンド）
+	- `db`（PostgreSQL）
+
+> ⚠️ `docker-compose up -d` だけで **Django/Next.jsサーバーも自動で起動** します。通常はこのコマンドだけで http://localhost:8080 (API) と http://localhost:3000 (フロント) にアクセスできます。
+> 
+> コードを修正・保存すると**自動的にホットリロードで反映**されます（DjangoもNext.jsもdevサーバーはホットリロード対応）。
+> 
+> サーバーを手動で再起動したい場合は `docker-compose restart backend` や `docker-compose restart frontend` を使ってください。
+> 
+> **手動でrunserverやnpm run devを実行しないでください。** すでにサーバーが起動しているため、ポート競合エラーになります。
+> 
+> `docker-compose`コマンドのWARN: `version`属性は無視されます。`docker-compose.yml`の`version:`行は削除しても問題ありません。
+
+---
+
+
+
+### 5. 各サービスのシェルに入る（ターミナル推奨）
+- **バックエンド（Django）用シェル**
+	```sh
+	docker-compose exec backend bash
+	```
+- **フロントエンド（Next.js）用シェル**
+	```sh
+	docker-compose exec frontend sh
+	```
+
+> 2つのターミナルを開いて両方のサービスに同時に入るのが推奨です。
+> 
+> **注意:** サーバーの起動・再起動は基本的に自動です。シェルに入るのは、パッケージ追加やDB操作など「一時的な作業」のみでOKです。
+> 
+> もしサーバーを手動で再起動したい場合は、既存プロセスをkillしてから `python manage.py runserver 0.0.0.0:8080` や `npm run dev` を実行してください（通常は不要）。
+
+---
+
+### 6. 初回のみ：マイグレーション・管理ユーザー作成
+```sh
+# backendコンテナ内で
+python manage.py migrate
+python manage.py createsuperuser
+```
+
+---
+
+### 7. 動作確認
+- バックエンドAPI:  
+	`curl http://localhost:8080/health/`
+- フロントエンド:  
+	`http://localhost:3000` にアクセス
+
+> **フロントエンドが http://localhost:3001 など別ポートで起動した場合**
+> - 既にサーバーが起動中です。新たにnpm run dev等を実行しないでください。
+> - どうしても手動で再起動したい場合は、既存プロセスをkillしてから再度実行してください。
+
+---
+
+### 8. よく使うコマンド
+- バックエンドのシェルに入る
+	```sh
+	docker-compose exec backend bash
+	```
+- フロントエンドのシェルに入る
+	```sh
+	docker-compose exec frontend sh
+	```
+- サーバーログ確認
+	```sh
+	docker-compose logs -f
+	```
+- コンテナ停止
+	```sh
+	docker-compose down
+	```
+
+---
+
+> ⚠️ ローカルで直接 `python` や `npm` コマンドを実行せず、**必ずコンテナ内で作業**してください。
+
+---
+
+---
+## 🐳 Dockerベース開発セットアップ（推奨）
+
+このプロジェクトは**全ての開発・実行作業をDockerコンテナ内で完結**させることを推奨します。
+
+### 1. 必要なツール
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [docker-compose](https://docs.docker.com/compose/)（Docker Desktopに同梱）
+
+### 2. リポジトリのクローン
+```sh
+git clone <このリポジトリのURL>
+cd quiz-app
+```
+
+### 3. 環境変数ファイルの確認
+- `backend/.env` および `frontend/.env.local` を必要に応じて編集
+- Google認証やDB接続情報などを正しく設定
+
+### 4. Dockerコンテナの起動（開発環境）
+```sh
+docker-compose up -d
+```
+
+**本番環境の場合:**
+```sh
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+### 5. マイグレーション・管理ユーザー作成
+```sh
+docker-compose exec backend python manage.py migrate
+docker-compose exec backend python manage.py createsuperuser
+```
+
+### 6. 動作確認
+- バックエンドAPI:  
+	`curl http://localhost:8080/health/`
+- フロントエンド:  
+	`http://localhost:3000` にアクセス
+
+### 7. その他よく使うコマンド
+- バックエンドのシェルに入る
+	```sh
+	docker-compose exec backend bash
+	```
+- フロントエンドのシェルに入る
+	```sh
+	docker-compose exec frontend sh
+	```
+- サーバーログ確認
+	```sh
+	docker-compose logs -f
+	```
+- 特定サービスのログ確認
+	```sh
+	docker-compose logs -f backend
+	docker-compose logs -f frontend
+	```
+- コンテナ停止
+	```sh
+	docker-compose down
+	```
+
+### 8. Docker構成
+- **開発環境**: `docker-compose.yml`（ホットリロード対応）
+- **本番環境**: `docker-compose.prod.yml`（最適化済み）
+- **Dockerfile構成**:
+	- `backend/Dockerfile.dev`: 開発用（Django runserver）
+	- `backend/Dockerfile`: 本番用（Gunicorn）
+	- `frontend/Dockerfile`: 開発用（Next.js dev server）
+	- `frontend/Dockerfile.prod`: 本番用（静的ビルド）
+
+---
+
+> ⚠️ **ローカルで直接 `python` や `pip` コマンドを実行しないでください**（全てDocker内で実行）
+> 
+> 環境変数や認証情報の管理に注意してください。
+
+---
 
 ![Tests](https://github.com/Fken19/quiz-app/actions/workflows/test.yml/badge.svg)
 
@@ -65,6 +257,8 @@ source venv/bin/activate  # macOS/Linux
 # venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
+
+> ⚠️ 通常の開発は必ずDockerコンテナ内で行ってください。ローカル仮想環境は特殊な場合のみ利用。
 
 ### 2. 環境変数設定
 
