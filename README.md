@@ -42,83 +42,67 @@ docker-compose up -d
 > 
 > **手動でrunserverやnpm run devを実行しないでください。** すでにサーバーが起動しているため、ポート競合エラーになります。
 > 
-> `docker-compose`コマンドのWARN: `version`属性は無視されます。`docker-compose.yml`の`version:`行は削除しても問題ありません。
 
 ---
 
 
+# 英単語クイズアプリ
 
-### 5. 各サービスのシェルに入る（ターミナル推奨）
-- **バックエンド（Django）用シェル**
-	```sh
-	docker-compose exec backend bash
-	```
-- **フロントエンド（Next.js）用シェル**
-	```sh
-	docker-compose exec frontend sh
-	```
-
-> 2つのターミナルを開いて両方のサービスに同時に入るのが推奨です。
-> 
-> **注意:** サーバーの起動・再起動は基本的に自動です。シェルに入るのは、パッケージ追加やDB操作など「一時的な作業」のみでOKです。
-> 
-> もしサーバーを手動で再起動したい場合は、既存プロセスをkillしてから `python manage.py runserver 0.0.0.0:8080` や `npm run dev` を実行してください（通常は不要）。
+![Tests](https://github.com/Fken19/quiz-app/actions/workflows/test.yml/badge.svg)
 
 ---
 
-### 6. 初回のみ：マイグレーション・管理ユーザー作成
-```sh
-# backendコンテナ内で
-python manage.py migrate
-python manage.py createsuperuser
+## 🚀 プロジェクト概要
+
+このプロジェクトは、**Django REST Framework + Next.js + Supabase(PostgreSQL)** を用いた英単語クイズアプリです。生徒がGoogleアカウントでログインし、クイズ結果を記録・可視化できるよう設計されています。塾などの教育現場での使用を想定し、管理者（教師）機能も含みます。
+
+---
+
+## 🏗️ アーキテクチャ
+
+- **バックエンド**: Django REST Framework + Supabase(PostgreSQL)
+- **フロントエンド**: Next.js（静的書き出し + Cloud Storage + CDN）
+- **認証**: Google OAuth（django-allauth）
+- **デプロイ**: Cloud Run（API） + Cloud Storage/CDN（フロント）
+- **監視**: Cloud Logging / Error Reporting
+
+---
+
+## 📁 ディレクトリ構成
+
+```
+quiz-app/
+├── backend/                    # Django REST API
+│   ├── quiz_backend/          # Django設定
+│   ├── quiz/                  # メインアプリ
+│   ├── manage.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/                  # Next.jsフロントエンド
+├── .github/workflows/         # CI/CD
+└── README.md
 ```
 
 ---
 
-### 7. 動作確認
-- バックエンドAPI:  
-	`curl http://localhost:8080/health/`
-- フロントエンド:  
-	`http://localhost:3000` にアクセス
+## 🗄️ データベース設計（主要テーブル）
 
-> **フロントエンドが http://localhost:3001 など別ポートで起動した場合**
-> - 既にサーバーが起動中です。新たにnpm run dev等を実行しないでください。
-> - どうしても手動で再起動したい場合は、既存プロセスをkillしてから再度実行してください。
-
----
-
-### 8. よく使うコマンド
-- バックエンドのシェルに入る
-	```sh
-	docker-compose exec backend bash
-	```
-- フロントエンドのシェルに入る
-	```sh
-	docker-compose exec frontend sh
-	```
-- サーバーログ確認
-	```sh
-	docker-compose logs -f
-	```
-- コンテナ停止
-	```sh
-	docker-compose down
-	```
+- **users**: ユーザー情報（Google OAuth連携）
+- **groups**: クラス・グループ管理
+- **group_memberships**: グループメンバーシップ（生徒・管理者）
+- **questions**: 英単語問題
+- **options**: 選択肢（正解・不正解）
+- **quiz_sessions**: クイズセッション
+- **quiz_results**: 回答結果
+- **daily_user_stats**: 日次ユーザー統計
+- **daily_group_stats**: 日次グループ統計
 
 ---
 
-> ⚠️ ローカルで直接 `python` や `npm` コマンドを実行せず、**必ずコンテナ内で作業**してください。
-
----
-
----
-## 🐳 Dockerベース開発セットアップ（推奨）
-
-このプロジェクトは**全ての開発・実行作業をDockerコンテナ内で完結**させることを推奨します。
+## 🐳 開発環境セットアップ（Docker推奨）
 
 ### 1. 必要なツール
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [docker-compose](https://docs.docker.com/compose/)（Docker Desktopに同梱）
 
 ### 2. リポジトリのクローン
 ```sh
@@ -126,18 +110,12 @@ git clone <このリポジトリのURL>
 cd quiz-app
 ```
 
-### 3. 環境変数ファイルの確認
-- `backend/.env` および `frontend/.env.local` を必要に応じて編集
-- Google認証やDB接続情報などを正しく設定
+### 3. 環境変数ファイルの準備
+- `backend/.env` および `frontend/.env.local` を編集（Google認証やDB接続情報を正しく設定）
 
-### 4. Dockerコンテナの起動（開発環境）
+### 4. Dockerコンテナのビルド＆起動（開発環境）
 ```sh
 docker-compose up -d
-```
-
-**本番環境の場合:**
-```sh
-docker-compose -f docker-compose.prod.yml up -d
 ```
 
 ### 5. マイグレーション・管理ユーザー作成
@@ -165,121 +143,12 @@ docker-compose exec backend python manage.py createsuperuser
 	```sh
 	docker-compose logs -f
 	```
-- 特定サービスのログ確認
-	```sh
-	docker-compose logs -f backend
-	docker-compose logs -f frontend
-	```
 - コンテナ停止
 	```sh
 	docker-compose down
 	```
 
-### 8. Docker構成
-- **開発環境**: `docker-compose.yml`（ホットリロード対応）
-- **本番環境**: `docker-compose.prod.yml`（最適化済み）
-- **Dockerfile構成**:
-	- `backend/Dockerfile.dev`: 開発用（Django runserver）
-	- `backend/Dockerfile`: 本番用（Gunicorn）
-	- `frontend/Dockerfile`: 開発用（Next.js dev server）
-	- `frontend/Dockerfile.prod`: 本番用（静的ビルド）
-
----
-
-> ⚠️ **ローカルで直接 `python` や `pip` コマンドを実行しないでください**（全てDocker内で実行）
-> 
-> 環境変数や認証情報の管理に注意してください。
-
----
-
-![Tests](https://github.com/Fken19/quiz-app/actions/workflows/test.yml/badge.svg)
-
-## 🚀 プロジェクト概要
-
-このプロジェクトは、**Django REST Framework + Next.js + Supabase(PostgreSQL)** を用いた英単語クイズアプリです。  
-生徒がGoogleアカウントでログインし、クイズ結果を記録・可視化できるよう設計されています。  
-塾などの教育現場での使用を想定し、管理者（教師）機能も含みます。
-
----
-
-## 🏗️ アーキテクチャ（Django移行版）
-
-- **バックエンド**: Django REST Framework + Supabase(PostgreSQL)
-- **フロントエンド**: Next.js（静的書き出し + Cloud Storage + CDN）
-- **認証**: Google OAuth（django-allauth）
-- **デプロイ**: Cloud Run（API） + Cloud Storage/CDN（フロント）
-- **監視**: Cloud Logging / Error Reporting
-
----
-
-## 📁 ディレクトリ構成
-
-```
-quiz-app/
-├── backend/                    # Django REST API
-│   ├── quiz_backend/          # Django設定
-│   ├── quiz/                  # メインアプリ
-│   ├── manage.py
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/                   # Next.js（今後追加）
-├── legacy_flask/              # 旧Flaskアプリ（参考用）
-├── .github/workflows/         # CI/CD
-└── README.md
-```
-
----
-
-## 🗄️ データベース設計
-
-### 主要テーブル（PostgreSQL）
-
-- **users**: ユーザー情報（Google OAuth連携）
-- **groups**: クラス・グループ管理
-- **group_memberships**: グループメンバーシップ（生徒・管理者）
-- **questions**: 英単語問題
-- **options**: 選択肢（正解・不正解）
-- **quiz_sessions**: クイズセッション
-- **quiz_results**: 回答結果
-- **daily_user_stats**: 日次ユーザー統計
-- **daily_group_stats**: 日次グループ統計
-
----
-
-## 🔧 開発セットアップ
-
-### 1. 仮想環境作成・依存関係インストール
-
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # macOS/Linux
-# venv\Scripts\activate  # Windows
-pip install -r requirements.txt
-```
-
-> ⚠️ 通常の開発は必ずDockerコンテナ内で行ってください。ローカル仮想環境は特殊な場合のみ利用。
-
-### 2. 環境変数設定
-
-```bash
-cp .env.example .env
-# .envファイルを編集（DB接続、Google OAuth等）
-```
-
-### 3. データベースマイグレーション
-
-```bash
-python manage.py makemigrations
-python manage.py migrate
-python manage.py createsuperuser
-```
-
-### 4. 開発サーバー起動
-
-```bash
-python manage.py runserver
-```
+> ⚠️ ローカルで直接 `python` や `npm` コマンドを実行せず、**必ずコンテナ内で作業**してください。
 
 ---
 
@@ -306,13 +175,13 @@ python manage.py runserver
 ## 🚢 デプロイ
 
 ### Cloud Run（API）
-```bash
+```sh
 gcloud builds submit --tag gcr.io/{PROJECT_ID}/quiz-api
 gcloud run deploy quiz-api --image gcr.io/{PROJECT_ID}/quiz-api --platform managed
 ```
 
-### Next.js（フロント・今後）
-```bash
+### Next.js（フロント）
+```sh
 npm run build
 npm run export
 gcloud storage rsync out/ gs://your-frontend-bucket --recursive
@@ -322,7 +191,7 @@ gcloud storage rsync out/ gs://your-frontend-bucket --recursive
 
 ## 🧪 テスト
 
-```bash
+```sh
 python manage.py test
 ```
 
@@ -360,3 +229,4 @@ python manage.py test
 ## 📞 サポート
 
 質問や問題がある場合は、GitHubのIssueを作成してください。
+
