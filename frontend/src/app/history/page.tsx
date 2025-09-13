@@ -65,7 +65,7 @@ export default function HistoryPage() {
       // 実際のAPIコール
       const response = await fetch(`/api/history?${params.toString()}`, {
         headers: {
-          'Authorization': `Token ${token}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });

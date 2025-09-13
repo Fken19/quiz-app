@@ -62,6 +62,17 @@ export const authAPI = {
   },
 
   async updateProfile(data: Partial<User>, token: string): Promise<User> {
+    // If data is FormData (contains files), send directly using fetch to allow multipart
+    if ((data as any) instanceof FormData) {
+      const apiRoot = process.env.NEXT_PUBLIC_API_URL_BROWSER || 'http://localhost:8080';
+      const res = await fetch(`${apiRoot}/user/profile/`, {
+        method: 'POST',
+        body: data as any,
+        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
+      });
+      return res.json();
+    }
+
     const response = await apiFetch('/auth/profile/', {
       method: 'POST',
       body: JSON.stringify(data),

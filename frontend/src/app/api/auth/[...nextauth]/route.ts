@@ -25,24 +25,46 @@ export const authOptions: NextAuthOptions = {
       if (trigger === "signIn" && account?.provider === "google" && account.id_token) {
         try {
           const payload = { id_token: account.id_token }
-          // サーバ（この Next 実行プロセス）から呼ぶときはコンテナ内で名前解決できる
-          // NEXT_PUBLIC_API_URL を優先し、開発時にブラウザから呼ぶ場合は
-          // NEXT_PUBLIC_API_URL_BROWSER を使用する（存在しない場合は localhost をフォールバック）
-          const backendUrl = (typeof window === 'undefined')
-            ? (process.env.NEXT_PUBLIC_API_URL || 'http://backend:8080')
-            : (process.env.NEXT_PUBLIC_API_URL_BROWSER || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080')
-          console.log('[jwt] sending handshake to backend', { url: backendUrl + '/api/auth/google/', payloadSize: JSON.stringify(payload).length, chosenBackendUrl: backendUrl })
+          // サーバ側からの呼び出しは実行環境によって到達先が変わる（コンテナ内からは service 名、
+          // ホスト上で動く dev サーバーからは localhost）。候補 URL を順に試して成功した最初のものを使う。
+          const candidates = [] as string[];
+          // 優先: 環境変数で明示された URL
+          if (process.env.NEXT_PUBLIC_API_URL) candidates.push(process.env.NEXT_PUBLIC_API_URL);
+          // ブラウザ向けに設定された URL（ローカル開発で localhost を指すことが多い）
+          if (process.env.NEXT_PUBLIC_API_URL_BROWSER) candidates.push(process.env.NEXT_PUBLIC_API_URL_BROWSER);
+          // 既知のデフォルト候補
+          candidates.push('http://backend:8080');
+          candidates.push('http://localhost:8080');
 
-          const ctrl = new AbortController()
-          const id = setTimeout(() => ctrl.abort(), 4000)
+          let r: Response | null = null;
+          let chosenBackendUrl: string | null = null;
 
-          const r = await fetch(`${backendUrl}/api/auth/google/`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-            signal: ctrl.signal,
-          })
-          clearTimeout(id)
+          for (const base of candidates) {
+            try {
+              const url = `${base.replace(/\/+$/, '')}/api/auth/google/`;
+              console.log('[jwt] trying handshake to backend candidate', { url, payloadSize: JSON.stringify(payload).length });
+              const ctrl = new AbortController();
+              const id = setTimeout(() => ctrl.abort(), 4000);
+              r = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: ctrl.signal,
+              });
+              clearTimeout(id);
+              // 成功または400/403等を返しているならその URL を採用
+              chosenBackendUrl = base;
+              break;
+            } catch (err) {
+              console.warn('[jwt] handshake candidate failed, trying next', { candidate: base, error: String(err) });
+              // 次の候補へ
+              r = null;
+              chosenBackendUrl = null;
+            }
+          }
+
+          if (!r) throw new Error('All backend handshake candidates failed');
+          console.log('[jwt] django handshake response candidate', { chosenBackendUrl });
 
           const text = await r.text().catch(() => '')
           let data: any = {}

@@ -8,6 +8,7 @@ class User(AbstractUser):
     """ユーザーモデル"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     display_name = models.CharField(max_length=100, blank=True)
+    avatar = models.ImageField(blank=True, null=True, upload_to='avatars/')
     avatar_url = models.URLField(blank=True, null=True)
     role = models.CharField(max_length=20, choices=[
         ('student', '生徒'),

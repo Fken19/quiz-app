@@ -21,17 +21,26 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const queryString = searchParams.toString();
     
-    // バックエンドAPIに転送（Docker環境では backend:8080 を使用）
-    const backendUrl = `http://backend:8080/api/quiz/history${queryString ? `?${queryString}` : ''}`;
-    
+    // バックエンドのベースURLは環境変数で切り替え可能にする
+    // 優先順: BACKEND_URL (server-only) -> NEXT_PUBLIC_API_URL_BROWSER -> ローカルデフォルト
+  // サーバー側では明示的な BACKEND_URL または NEXT_PUBLIC_API_URL を優先して使う。
+  // ブラウザ向けの NEXT_PUBLIC_API_URL_BROWSER は最後のフォールバックにする。
+  const backendBase = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL_BROWSER || 'http://localhost:8080';
+    const backendBaseNormalized = backendBase.replace(/\/$/, '');
+    const backendUrl = `${backendBaseNormalized}/api/quiz/history${queryString ? `?${queryString}` : ''}`;
+
     console.log('Proxying to:', backendUrl); // デバッグ用
-    
+
+    // Authorization ヘッダーは Token または Bearer を受け取り、そのままバックエンドに渡す
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (bearerToken) headers['Authorization'] = bearerToken;
+
     const response = await fetch(backendUrl, {
       method: 'GET',
-      headers: {
-        'Authorization': bearerToken,
-        'Content-Type': 'application/json',
-      },
+      headers,
+      // タイムアウトやネットワークエラーが起きやすいので必要に応じて fetch polyfill でタイムアウトを入れる
     });
 
     if (!response.ok) {

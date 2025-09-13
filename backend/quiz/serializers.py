@@ -6,14 +6,38 @@ from .models import (
 
 class UserSerializer(serializers.ModelSerializer):
     average_score = serializers.ReadOnlyField()
+    # avatar field: if ImageField exists on model, include its URL
+    avatar = serializers.ImageField(read_only=True)
+    avatar_url = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'display_name', 'avatar_url', 'role', 'created_at',
+            'id', 'email', 'display_name', 'avatar', 'avatar_url', 'role', 'created_at',
             'last_login', 'level_preference', 'quiz_count', 'total_score', 'average_score'
         ]
         read_only_fields = ['id', 'created_at', 'quiz_count', 'total_score', 'average_score']
+
+    def get_avatar_url(self, obj):
+        # prefer avatar (ImageField) URL if available, otherwise avatar_url text field
+        try:
+            if getattr(obj, 'avatar') and hasattr(obj.avatar, 'url'):
+                # If serializer has context with request, build absolute URI
+                request = self.context.get('request') if hasattr(self, 'context') else None
+                url = obj.avatar.url
+                if request:
+                    return request.build_absolute_uri(url)
+                return url
+        except Exception:
+            pass
+        # fallback to avatar_url field, ensure absolute URL if possible
+        avatar_url = getattr(obj, 'avatar_url', None)
+        request = self.context.get('request') if hasattr(self, 'context') else None
+        if avatar_url:
+            if request and not avatar_url.startswith('http'):
+                return request.build_absolute_uri(avatar_url)
+            return avatar_url
+        return None
 
 
 class WordTranslationSerializer(serializers.ModelSerializer):

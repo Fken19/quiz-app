@@ -447,46 +447,103 @@ def quiz_history(request):
     return Response(history_data)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def user_profile(request):
-    """ユーザープロフィール情報"""
+    """
+    ユーザープロフィール情報（GET）および更新（POST: display_name, email, avatar）
+    """
     user = request.user
-    
-    # 統計情報
-    total_responses = QuizResponse.objects.filter(user=user).count()
-    correct_responses = QuizResponse.objects.filter(user=user, is_correct=True).count()
-    
-    # お気に入りの難易度
-    difficulty_stats = QuizSet.objects.filter(user=user).values('difficulty').annotate(
+
+    # POST は更新を受け付ける
+    if request.method == 'POST':
+        display_name = request.POST.get('display_name')
+        email = request.POST.get('email')
+        avatar_file = request.FILES.get('avatar')
+
+        changed = False
+        original_avatar = user.avatar
+        
+        if display_name is not None and display_name != user.display_name:
+            user.display_name = display_name
+            changed = True
+            
+        if email is not None and email != user.email:
+            user.email = email
+            changed = True
+            
+        if avatar_file is not None:
+            # avatar ImageField が存在すれば保存
+            try:
+                user.avatar = avatar_file
+                changed = True
+            except Exception as e:
+                # avatar フィールドが無い場合はavatar_urlフィールドに保存を試みる
+                try:
+                    # 一時的にファイルを保存してURLを生成
+                    import os
+                    from django.core.files.storage import default_storage
+                    file_name = f"avatars/{user.id}_{avatar_file.name}"
+                    file_path = default_storage.save(file_name, avatar_file)
+                    user.avatar_url = request.build_absolute_uri(default_storage.url(file_path))
+                    changed = True
+                except Exception:
+                    pass
+
+        if changed:
+            user.save()
+            # 更新後のユーザー情報をシリアライザーで返す
+            return Response({
+                'success': True,
+                'message': 'プロフィールが更新されました',
+                'user': UserSerializer(user, context={'request': request}).data
+            })
+
+        return Response({
+            'success': False,
+            'message': '変更はありませんでした',
+            'user': UserSerializer(user, context={'request': request}).data
+        })
+
+    # GET は従来のプロフィールデータを返す
+    total_responses = QuizResponse.objects.filter(quiz_set__user=user).count()
+    correct_responses = QuizResponse.objects.filter(quiz_set__user=user, is_correct=True).count()
+
+    difficulty_stats = QuizSet.objects.filter(user=user).values('level').annotate(
         count=Count('id')
     ).order_by('-count')
-    
-    favorite_difficulty = difficulty_stats.first()['difficulty'] if difficulty_stats else 'beginner'
-    
-    # 平均回答時間
-    avg_response_time = QuizResponse.objects.filter(user=user).aggregate(
-        avg_time=Avg('response_time')
+
+    favorite_level = difficulty_stats.first()['level'] if difficulty_stats else 1
+
+    avg_response_time = QuizResponse.objects.filter(quiz_set__user=user).aggregate(
+        avg_time=Avg('reaction_time_ms')
     )['avg_time'] or 0
-    
+
     profile_data = {
-        'user': UserSerializer(user).data,
+        'user': UserSerializer(user, context={'request': request}).data,
         'stats': {
             'total_quizzes': QuizSet.objects.filter(user=user).count(),
             'total_questions_answered': total_responses,
             'accuracy_rate': (correct_responses / total_responses * 100) if total_responses > 0 else 0,
-            'favorite_difficulty': favorite_difficulty,
-            'average_response_time': round(avg_response_time, 2),
+            'favorite_level': favorite_level,
+            'average_response_time': round(avg_response_time / 1000, 2) if avg_response_time else 0,  # ms を秒に変換
             'member_since': user.created_at,
         },
         'achievements': {
             'quiz_master': total_responses >= 1000,
             'accuracy_expert': (correct_responses / total_responses * 100) >= 90 if total_responses > 0 else False,
-            'speed_demon': avg_response_time <= 5.0,
+            'speed_demon': (avg_response_time / 1000) <= 5.0 if avg_response_time else False,  # 5秒以下
             'consistent_learner': True,  # 実装を簡略化
         }
     }
-    
+
+    # debug: log profile_data for verification of avatar_url
+    try:
+        import logging
+        logging.getLogger('quiz.middleware').info('Profile GET response: %s', profile_data)
+    except Exception:
+        pass
+
     return Response(profile_data)
 
 

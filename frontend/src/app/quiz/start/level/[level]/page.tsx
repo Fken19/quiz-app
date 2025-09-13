@@ -8,7 +8,7 @@ import { quizAPI } from '@/services/api';
 import { useState } from 'react';
 
 export default function QuizLevelPage() {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
   console.log('session:', session, 'status:', status);
   const router = useRouter();
   const params = useParams();
@@ -38,8 +38,20 @@ export default function QuizLevelPage() {
   const handleSegmentSelect = async (segment: number) => {
     setLoading(true);
     try {
-      const token = session?.backendAccessToken;
-      console.log('handleSegmentSelect token:', token);
+      let token = session?.backendAccessToken;
+      console.log('handleSegmentSelect token (before refresh):', token);
+
+      // フロント側セッションにトークンがない場合は update() で再取得を試みる
+      if (!token && typeof update === 'function') {
+        try {
+          const refreshed = await update();
+          token = (refreshed as any)?.backendAccessToken;
+          console.log('handleSegmentSelect token (after refresh):', token);
+        } catch (e) {
+          console.warn('session.update() failed', e);
+        }
+      }
+
       if (!token) throw new Error('No backendAccessToken');
       const quizSet = await quizAPI.createQuizSet({
         level,
