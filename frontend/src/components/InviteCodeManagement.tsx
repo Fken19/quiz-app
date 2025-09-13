@@ -32,7 +32,12 @@ export default function InviteCodeManagement() {
   const fetchCodes = async () => {
     try {
       const data = await apiGet('/teacher/invite-codes/');
-      setCodes(data);
+      // DRF のページネーション設定によっては { results: [...] } の形式で返る
+      // また、create API の応答や一部のラップされたレスポンスでは { codes: [...] } の可能性もある
+      const resolved = Array.isArray(data)
+        ? data
+        : data.results ?? data.codes ?? [];
+      setCodes(resolved);
     } catch (error) {
       console.error('招待コード取得エラー:', error);
     } finally {
@@ -44,7 +49,9 @@ export default function InviteCodeManagement() {
     setCreating(true);
     try {
       const data = await apiPost('/teacher/invite-codes/', createParams);
-      setCodes(prev => [...data.codes, ...prev]);
+  // create API は { codes: [...] } を返す想定だが、念のため柔軟に対応
+  const newCodes = Array.isArray(data) ? data : data.codes ?? [];
+  setCodes(prev => [...newCodes, ...prev]);
       // 成功通知をここに追加（Toast等）
       alert(data.message);
     } catch (error) {
@@ -126,11 +133,11 @@ export default function InviteCodeManagement() {
     <div className="space-y-6">
       {/* コード発行カード */}
       <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-bold mb-4">招待コード発行</h2>
+        <h2 className="text-xl font-bold text-black mb-4">招待コード発行</h2>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-black mb-2">
               発行件数
             </label>
             <input
@@ -142,12 +149,12 @@ export default function InviteCodeManagement() {
                 ...prev, 
                 count: Math.max(1, Math.min(50, parseInt(e.target.value) || 1))
               }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
             />
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-black mb-2">
               有効期限（時間）
             </label>
             <select
@@ -156,7 +163,7 @@ export default function InviteCodeManagement() {
                 ...prev, 
                 expires_hours: parseInt(e.target.value) 
               }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
             >
               <option value={1}>1時間</option>
               <option value={3}>3時間</option>
@@ -180,31 +187,31 @@ export default function InviteCodeManagement() {
 
       {/* コード一覧 */}
       <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-bold mb-4">招待コード一覧</h2>
+        <h2 className="text-xl font-bold text-black mb-4">招待コード一覧</h2>
         
         {codes.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">招待コードがありません</p>
+          <p className="text-gray-700 text-center py-8">招待コードがありません</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                     コード
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                     状態
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                     残り時間
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                     発行日時
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                     使用者
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                     アクション
                   </th>
                 </tr>
@@ -213,7 +220,7 @@ export default function InviteCodeManagement() {
                 {codes.map((code) => (
                   <tr key={code.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="font-mono text-lg font-bold">{code.code}</span>
+                      <span className="font-mono text-lg font-bold text-black">{code.code}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStatusBadge(code.status)}
@@ -221,10 +228,10 @@ export default function InviteCodeManagement() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {code.status === 'active' ? formatRemainingTime(code.expires_at) : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {new Date(code.issued_at).toLocaleString('ja-JP')}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {code.used_by ? code.used_by.display_name || code.used_by.email : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">

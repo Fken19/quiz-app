@@ -154,8 +154,8 @@ export default function HistoryPage() {
               <span className="text-xl">📊</span>
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">総受験回数</p>
-              <p className="text-2xl font-bold text-gray-900">{results.length}</p>
+              <p className="text-sm font-medium text-gray-700">総受験回数</p>
+              <p className="text-2xl font-bold text-black">{results.length}</p>
             </div>
           </div>
         </div>
@@ -166,8 +166,8 @@ export default function HistoryPage() {
               <span className="text-xl">⭐</span>
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">平均スコア</p>
-              <p className="text-2xl font-bold text-gray-900">{averageScore.toFixed(1)}%</p>
+              <p className="text-sm font-medium text-gray-700">平均スコア</p>
+              <p className="text-2xl font-bold text-black">{averageScore.toFixed(1)}%</p>
             </div>
           </div>
         </div>
@@ -178,8 +178,8 @@ export default function HistoryPage() {
               <span className="text-xl">🎯</span>
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">最高スコア</p>
-              <p className="text-2xl font-bold text-gray-900">
+              <p className="text-sm font-medium text-gray-700">最高スコア</p>
+              <p className="text-2xl font-bold text-black">
                 {results.length > 0 ? 
                   Math.max(...results.map((r: QuizResult) => Math.round((r.total_score / r.total_questions) * 100))) + '%' : 
                   '0%'
@@ -195,8 +195,8 @@ export default function HistoryPage() {
               <span className="text-xl">📈</span>
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">総問題数</p>
-              <p className="text-2xl font-bold text-gray-900">
+              <p className="text-sm font-medium text-gray-700">総問題数</p>
+              <p className="text-2xl font-bold text-black">
                 {results.reduce((sum: number, result: QuizResult) => sum + result.total_questions, 0)}
               </p>
             </div>
@@ -216,7 +216,7 @@ export default function HistoryPage() {
               type="date"
               value={filters.dateFrom}
               onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-black"
             />
           </div>
 
@@ -228,18 +228,16 @@ export default function HistoryPage() {
               type="date"
               value={filters.dateTo}
               onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-black"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              レベル
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">レベル</label>
             <select
               value={filters.level}
               onChange={(e) => handleFilterChange('level', e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-black"
             >
               <option value="">全レベル</option>
               <option value="1">レベル1</option>
@@ -250,13 +248,11 @@ export default function HistoryPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              並び替え
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">並び替え</label>
             <select
               value={filters.sortBy}
               onChange={(e) => handleFilterChange('sortBy', e.target.value as 'date' | 'score' | 'level')}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-black"
             >
               <option value="date">受験日時</option>
               <option value="score">スコア</option>
@@ -265,13 +261,11 @@ export default function HistoryPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              順序
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">順序</label>
             <select
               value={filters.sortOrder}
               onChange={(e) => handleFilterChange('sortOrder', e.target.value as 'asc' | 'desc')}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-black"
             >
               <option value="desc">降順</option>
               <option value="asc">昇順</option>

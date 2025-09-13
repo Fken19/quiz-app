@@ -159,10 +159,8 @@ export default function StudentsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* ヘッダー */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">生徒管理</h1>
-          <p className="mt-2 text-gray-600">
-            生徒の招待・紐付け状況の確認・成績管理
-          </p>
+          <h1 className="text-3xl font-bold text-black">生徒管理</h1>
+          <p className="mt-2 text-black">生徒の招待・紐付け状況の確認・成績管理</p>
         </div>
 
         {/* 統計カード */}
@@ -177,10 +175,10 @@ export default function StudentsPage() {
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
+                    <dt className="text-sm font-medium text-black truncate">
                       有効な生徒
                     </dt>
-                    <dd className="text-lg font-medium text-gray-900">
+                    <dd className="text-lg font-medium text-black">
                       {students.filter(s => s.status === 'active').length}名
                     </dd>
                   </dl>
@@ -199,10 +197,10 @@ export default function StudentsPage() {
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
+                    <dt className="text-sm font-medium text-black truncate">
                       承認待ち
                     </dt>
-                    <dd className="text-lg font-medium text-gray-900">
+                    <dd className="text-lg font-medium text-black">
                       {students.filter(s => s.status === 'pending').length}名
                     </dd>
                   </dl>
@@ -221,10 +219,10 @@ export default function StudentsPage() {
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
+                    <dt className="text-sm font-medium text-black truncate">
                       平均スコア
                     </dt>
-                    <dd className="text-lg font-medium text-gray-900">
+                    <dd className="text-lg font-medium text-black">
                       {students.filter(s => s.status === 'active').length > 0 
                         ? (students.filter(s => s.status === 'active').reduce((sum, s) => sum + s.student.average_score, 0) / students.filter(s => s.status === 'active').length).toFixed(1)
                         : 0
@@ -246,10 +244,10 @@ export default function StudentsPage() {
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
+                    <dt className="text-sm font-medium text-black truncate">
                       総クイズ回数
                     </dt>
-                    <dd className="text-lg font-medium text-gray-900">
+                    <dd className="text-lg font-medium text-black">
                       {students.filter(s => s.status === 'active').reduce((sum, s) => sum + s.student.quiz_count, 0)}回
                     </dd>
                   </dl>
@@ -260,18 +258,18 @@ export default function StudentsPage() {
         </div>
 
         {/* タブナビゲーション */}
-        <div className="border-b border-gray-200 mb-8">
+      <div className="border-b border-gray-200 mb-8">
           <nav className="-mb-px flex space-x-8">
             <button
               onClick={() => setActiveTab('students')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'students'
                   ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          : 'border-transparent text-black hover:text-black hover:border-gray-300'
               }`}
             >
               生徒一覧
-              <span className="ml-2 py-0.5 px-2 text-xs bg-gray-100 text-gray-600 rounded-full">
+        <span className="ml-2 py-0.5 px-2 text-xs bg-gray-100 text-black rounded-full">
                 {students.filter(s => s.status === 'active').length}
               </span>
             </button>
@@ -296,9 +294,7 @@ export default function StudentsPage() {
             <div className="bg-white p-4 rounded-lg shadow-sm border">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
-                    検索
-                  </label>
+                  <label htmlFor="search" className="block text-sm font-medium text-black mb-2">検索</label>
                   <input
                     type="text"
                     id="search"
@@ -310,9 +306,7 @@ export default function StudentsPage() {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    ステータス
-                  </label>
+                  <label className="block text-sm font-medium text-black mb-2">ステータス</label>
                   <div className="flex space-x-2">
                     {[
                       { key: 'all', label: '全て' },
@@ -325,7 +319,7 @@ export default function StudentsPage() {
                         className={`px-3 py-1 text-sm rounded-full ${
                           statusFilter === key
                             ? 'bg-blue-100 text-blue-800'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            : 'bg-gray-100 text-black hover:bg-gray-200'
                         }`}
                       >
                         {label}
@@ -342,23 +336,16 @@ export default function StudentsPage() {
                 <h3 className="text-lg font-medium text-gray-900">
                   紐付けされた生徒 ({filteredStudents.length}名)
                 </h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  招待コードで紐付けされた生徒の一覧と成績情報
-                </p>
+                <p className="mt-1 text-sm text-gray-900">
+                          招待コードで紐付けされた生徒の一覧と成績情報
+                        </p>
               </div>
 
               {filteredStudents.length === 0 ? (
                 <div className="p-8 text-center">
-                  <div className="text-gray-400 text-6xl mb-4">👥</div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    {searchTerm ? '検索結果がありません' : '紐付けされた生徒はいません'}
-                  </h3>
-                  <p className="text-gray-500 mb-4">
-                    {searchTerm 
-                      ? '検索条件に一致する生徒がありません。'
-                      : '招待コードを発行して生徒を招待してください。'
-                    }
-                  </p>
+                  <div className="text-black text-6xl mb-4">👥</div>
+                  <h3 className="text-lg font-medium text-black mb-2">{searchTerm ? '検索結果がありません' : '紐付けされた生徒はいません'}</h3>
+                  <p className="text-black mb-4">{searchTerm ? '検索条件に一致する生徒がありません。' : '招待コードを発行して生徒を招待してください。'}</p>
                   {!searchTerm && (
                     <button
                       onClick={() => setActiveTab('invites')}
@@ -371,77 +358,42 @@ export default function StudentsPage() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          生徒情報
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          状態
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          学習実績
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          紐付け日時
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          アクション
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredStudents.map((link) => (
-                        <tr key={link.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {link.student.display_name || '未設定'}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {link.student.email}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {getStatusBadge(link.status)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              クイズ: {link.student.quiz_count}回
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              平均: {Math.round(link.student.average_score)}%
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {new Date(link.linked_at).toLocaleDateString('ja-JP')}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                            {link.status === 'active' && (
-                              <>
-                                <button
-                                  onClick={() => {
-                                    // 成績詳細ページへの遷移（今後実装）
-                                    alert('成績詳細機能は今後実装予定です');
-                                  }}
-                                  className="text-blue-600 hover:text-blue-900"
-                                >
-                                  成績詳細
-                                </button>
-                                <button
-                                  onClick={() => revokeStudentLink(link.id)}
-                                  className="text-red-600 hover:text-red-900"
-                                >
-                                  紐付け解除
-                                </button>
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <thead className="bg-gray-50">
+                              <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">生徒情報</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">状態</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">学習実績</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">紐付け日時</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">アクション</th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {filteredStudents.map((link) => (
+                                <tr key={link.id} className="hover:bg-gray-50">
+                                  <td className="px-6 py-4">
+                                    <div>
+                                      <div className="text-sm font-medium text-black">{link.student.display_name || '未設定'}</div>
+                                      <div className="text-sm text-black">{link.student.email}</div>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(link.status)}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="text-sm text-black">クイズ: {link.student.quiz_count}回</div>
+                                    <div className="text-sm text-black">平均: {Math.round(link.student.average_score)}%</div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-black">{new Date(link.linked_at).toLocaleDateString('ja-JP')}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                                    {link.status === 'active' && (
+                                      <>
+                                        <button onClick={() => { alert('成績詳細機能は今後実装予定です'); }} className="text-blue-600 hover:text-blue-900">成績詳細</button>
+                                        <button onClick={() => revokeStudentLink(link.id)} className="text-red-600 hover:text-red-900">紐付け解除</button>
+                                      </>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                 </div>
               )}
             </div>

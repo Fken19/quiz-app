@@ -385,7 +385,7 @@ export default function GroupsPage() {
                       type="text"
                       value={createForm.name}
                       onChange={(e) => setCreateForm({...createForm, name: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black placeholder-gray-500"
                       placeholder="例: 数学A 中学2年"
                     />
                   </div>
@@ -399,7 +399,7 @@ export default function GroupsPage() {
                         type="text"
                         value={createForm.school}
                         onChange={(e) => setCreateForm({...createForm, school: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black placeholder-gray-500"
                         placeholder="〇〇中学校"
                       />
                     </div>
@@ -410,7 +410,7 @@ export default function GroupsPage() {
                       <select
                         value={createForm.grade}
                         onChange={(e) => setCreateForm({...createForm, grade: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black"
                       >
                         <option value="">選択</option>
                         <option value="中学1年">中学1年</option>
@@ -429,7 +429,7 @@ export default function GroupsPage() {
                         type="text"
                         value={createForm.class_name}
                         onChange={(e) => setCreateForm({...createForm, class_name: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black placeholder-gray-500"
                         placeholder="A組"
                       />
                     </div>
@@ -443,7 +443,7 @@ export default function GroupsPage() {
                       value={createForm.description}
                       onChange={(e) => setCreateForm({...createForm, description: e.target.value})}
                       rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black placeholder-gray-500"
                       placeholder="グループの説明を入力してください（学習内容、目標など）"
                     />
                   </div>

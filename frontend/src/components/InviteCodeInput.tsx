@@ -11,17 +11,21 @@ interface InviteCodeInputProps {
 }
 
 interface AcceptCodeResponse {
-  success: boolean;
   message: string;
-  teacher: {
-    id: string;
-    display_name: string;
-    email: string;
-  };
   link: {
     id: string;
     status: string;
     linked_at: string;
+    teacher: {
+      id: string;
+      display_name: string;
+      email: string;
+    };
+    student: {
+      id: string;
+      display_name: string;
+      email: string;
+    };
   };
 }
 
@@ -74,13 +78,15 @@ export default function InviteCodeInput({ onSuccess, onError }: InviteCodeInputP
     setLoading(true);
 
     try {
-      const response: AcceptCodeResponse = await apiPost('/student/invite-codes/accept/', {
+      const response: AcceptCodeResponse = await apiPost('/student/invite/accept/', {
         code: code,
         agreed: agreed
       });
 
-      if (response.success) {
-        onSuccess(response.teacher.display_name || response.teacher.email);
+      // レスポンスにmessageがあれば成功とみなす
+      if (response.message) {
+        const teacherName = response.link?.teacher?.display_name || response.link?.teacher?.email || '講師';
+        onSuccess(teacherName);
         setCode('');
         setAgreed(false);
       } else {
@@ -105,7 +111,7 @@ export default function InviteCodeInput({ onSuccess, onError }: InviteCodeInputP
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="inviteCode" className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor="inviteCode" className="block text-sm font-medium text-black mb-2">
           招待コード
         </label>
         <input
@@ -113,12 +119,12 @@ export default function InviteCodeInput({ onSuccess, onError }: InviteCodeInputP
           id="inviteCode"
           value={code}
           onChange={handleCodeChange}
-          placeholder="ABCD-EF12"
+          placeholder="ここに入力（例: ABCD-EF12）"
           maxLength={9} // ABCD-EF12 = 9文字
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-lg tracking-wider text-center"
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-lg tracking-wider text-center text-black"
           disabled={loading}
         />
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-gray-700">
           講師から受け取った8桁のコードを入力してください（例: ABCD-EF12）
         </p>
       </div>
@@ -142,7 +148,7 @@ export default function InviteCodeInput({ onSuccess, onError }: InviteCodeInputP
           className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
           disabled={loading}
         />
-        <label htmlFor="agreement" className="text-sm text-gray-700">
+        <label htmlFor="agreement" className="text-sm text-black">
           上記の内容に同意し、講師との紐付けを行います
         </label>
       </div>
@@ -163,8 +169,8 @@ export default function InviteCodeInput({ onSuccess, onError }: InviteCodeInputP
       </button>
 
       <div className="mt-4 p-3 bg-gray-50 rounded-md">
-        <h5 className="text-xs font-medium text-gray-700 mb-1">注意事項</h5>
-        <ul className="text-xs text-gray-600 space-y-1">
+        <h5 className="text-xs font-medium text-black mb-1">注意事項</h5>
+        <ul className="text-xs text-gray-700 space-y-1">
           <li>• 招待コードは1時間で期限切れになります</li>
           <li>• 1つのコードは1回のみ使用できます</li>
           <li>• すでに紐付けられている講師のコードは使用できません</li>

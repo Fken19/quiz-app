@@ -6,20 +6,32 @@ import { useEffect, useState } from 'react';
 import { User } from '@/types/quiz';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import InviteCodeInput from '@/components/InviteCodeInput';
+import { apiGet, apiDelete } from '@/lib/api-utils';
 
-interface InstructorInfo {
+interface TeacherLink {
   id: string;
-  name: string;
-  email: string;
-  joined_at: string;
-}
-
-interface ApprovalHistory {
-  id: string;
-  instructor_name: string;
-  instructor_email: string;
-  action: 'approved' | 'removed';
-  date: string;
+  teacher: {
+    id: string;
+    display_name: string;
+    email: string;
+  };
+  student: {
+    id: string;
+    display_name: string;
+    email: string;
+  };
+  status: 'pending' | 'active' | 'revoked';
+  linked_at: string;
+  revoked_at?: string;
+  revoked_by?: {
+    id: string;
+    display_name: string;
+    email: string;
+  };
+  invite_code?: {
+    id: string;
+    code: string;
+  };
 }
 
 export default function ProfilePage() {
@@ -30,8 +42,8 @@ export default function ProfilePage() {
   const [displayName, setDisplayName] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [instructors, setInstructors] = useState<InstructorInfo[]>([]);
-  const [approvalHistory, setApprovalHistory] = useState<ApprovalHistory[]>([]);
+  const [teacherLinks, setTeacherLinks] = useState<TeacherLink[]>([]);
+  const [allLinks, setAllLinks] = useState<TeacherLink[]>([]); // 全履歴（active + revoked）
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -68,97 +80,48 @@ export default function ProfilePage() {
 
   const fetchUserProfile = async () => {
     try {
-      const token = (session as any)?.backendAccessToken;
-      if (!token) {
-        setError('認証トークンが見つかりません');
-        return;
-      }
-
       // プロフィール情報を取得
-      const profileRes = await fetch('/api/user/profile/', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (profileRes.ok) {
-        const profileData = await profileRes.json();
-        
-        // APIレスポンスの構造を確認して適切にデータを設定
-        const userData = profileData.user || profileData;
-        setUser(userData);
-        setDisplayName(userData.display_name || '');
-        
-        // avatar_url が存在する場合はそれを使用、なければavatarフィールドのURLを使用
-        const avatarUrl = userData.avatar_url || (userData.avatar && userData.avatar.startsWith('http') ? userData.avatar : null);
-        // Normalize URLs that point to the Docker internal hostname 'backend'
-        let normalizedAvatarUrl = avatarUrl;
-        if (normalizedAvatarUrl) {
-          try {
-            const parsed = new URL(normalizedAvatarUrl);
-            if (parsed.hostname === 'backend') {
-              // replace internal docker hostname with host-accessible origin and port
-              const publicHost = window.location.hostname || 'localhost';
-              // backend listens on 8080 in docker-compose
-              parsed.hostname = publicHost;
-              parsed.port = '8080';
-              normalizedAvatarUrl = parsed.toString();
-            }
-          } catch (e) {
-            // keep original if URL parsing fails
+      const profileData = await apiGet('/user/profile/');
+      
+      // APIレスポンスの構造を確認して適切にデータを設定
+      const userData = profileData.user || profileData;
+      setUser(userData);
+      setDisplayName(userData.display_name || '');
+      
+      // avatar_url が存在する場合はそれを使用、なければavatarフィールドのURLを使用
+      const avatarUrl = userData.avatar_url || (userData.avatar && userData.avatar.startsWith('http') ? userData.avatar : null);
+      // Normalize URLs that point to the Docker internal hostname 'backend'
+      let normalizedAvatarUrl = avatarUrl;
+      if (normalizedAvatarUrl) {
+        try {
+          const parsed = new URL(normalizedAvatarUrl);
+          if (parsed.hostname === 'backend') {
+            // replace internal docker hostname with host-accessible origin and port
+            const publicHost = window.location.hostname || 'localhost';
+            // backend listens on 8080 in docker-compose
+            parsed.hostname = publicHost;
+            parsed.port = '8080';
+            normalizedAvatarUrl = parsed.toString();
           }
+        } catch (e) {
+          // keep original if URL parsing fails
         }
-        setAvatarPreview(normalizedAvatarUrl);
-        
-      } else {
-        const errorData = await profileRes.json();
-        setError(errorData.message || 'プロフィール情報の取得に失敗しました');
       }
+      setAvatarPreview(normalizedAvatarUrl);
 
-      // 講師一覧を取得（デモデータ）
-      // TODO: 実際のAPI実装時に置き換え
-      const demoInstructors: InstructorInfo[] = [
-        {
-          id: '1',
-          name: '田中先生',
-          email: 'tanaka@example.com',
-          joined_at: '2024-01-15T00:00:00Z'
-        },
-        {
-          id: '2', 
-          name: '佐藤先生',
-          email: 'sato@example.com',
-          joined_at: '2024-02-20T00:00:00Z'
-        }
-      ];
-      setInstructors(demoInstructors);
-
-      // 承認/解除履歴を取得（デモデータ）
-      const demoHistory: ApprovalHistory[] = [
-        {
-          id: '1',
-          instructor_name: '田中先生',
-          instructor_email: 'tanaka@example.com',
-          action: 'approved',
-          date: '2024-01-15T00:00:00Z'
-        },
-        {
-          id: '2',
-          instructor_name: '山田先生',
-          instructor_email: 'yamada@example.com', 
-          action: 'removed',
-          date: '2024-03-10T00:00:00Z'
-        },
-        {
-          id: '3',
-          instructor_name: '佐藤先生',
-          instructor_email: 'sato@example.com',
-          action: 'approved',
-          date: '2024-02-20T00:00:00Z'
-        }
-      ];
-      setApprovalHistory(demoHistory);
+      // 生徒用の講師リンク一覧を取得
+      try {
+        const linksData = await apiGet('/student/teachers/');
+        setTeacherLinks(Array.isArray(linksData) ? linksData : linksData.results || []);
+        
+        // 全履歴も取得（解除済みを含む）
+        const allLinksData = await apiGet('/student/teachers/?include_revoked=true');
+        setAllLinks(Array.isArray(allLinksData) ? allLinksData : allLinksData.results || []);
+      } catch (linkError) {
+        console.warn('講師リンク情報の取得に失敗:', linkError);
+        setTeacherLinks([]);
+        setAllLinks([]);
+      }
 
     } catch (err) {
       console.error('Failed to fetch user profile:', err);
@@ -251,43 +214,35 @@ export default function ProfilePage() {
     }
   };
 
-  const handleRemoveInstructor = async (instructorId: string) => {
-    const instructor = instructors.find(i => i.id === instructorId);
-    if (!instructor) return;
+  const handleRemoveTeacher = async (linkId: string) => {
+    const link = teacherLinks.find(l => l.id === linkId);
+    if (!link) return;
 
     const confirmed = window.confirm(
-      `${instructor.name}との紐付けを解除しますか？この操作により、講師からの管理対象から外れます。`
+      `${link.teacher.display_name || link.teacher.email}との紐付けを解除しますか？この操作により、講師からの管理対象から外れます。`
     );
     
     if (!confirmed) return;
 
     try {
-      const token = (session as any)?.backendAccessToken;
-      if (!token) {
-        setError('認証トークンが見つかりません');
-        return;
-      }
-
-      // TODO: 実際のAPI実装時に置き換え
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // 生徒用の講師リンク削除API
+      await apiDelete(`/student/teachers/${linkId}/revoke/`);
       
-      // 講師一覧から削除
-      setInstructors(prev => prev.filter(i => i.id !== instructorId));
+      // 講師一覧から削除（状態更新）
+      setTeacherLinks(prev => prev.filter(l => l.id !== linkId));
       
-      // 履歴に追加
-      const newHistory: ApprovalHistory = {
-        id: Date.now().toString(),
-        instructor_name: instructor.name,
-        instructor_email: instructor.email,
-        action: 'removed',
-        date: new Date().toISOString()
+      // 全履歴にrevokedとして追加（再取得するのが理想的だが、簡易的に状態更新）
+      const updatedLink = {
+        ...link,
+        status: 'revoked' as const,
+        revoked_at: new Date().toISOString(),
       };
-      setApprovalHistory(prev => [newHistory, ...prev]);
+      setAllLinks(prev => [updatedLink, ...prev.filter(l => l.id !== linkId)]);
       
       setSuccess('講師との紐付けを解除しました');
 
     } catch (err) {
-      console.error('Failed to remove instructor:', err);
+      console.error('Failed to remove teacher link:', err);
       setError('講師との紐付け解除に失敗しました');
     }
   };
@@ -308,10 +263,8 @@ export default function ProfilePage() {
     <div className="space-y-6">
       {/* ヘッダー */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">プロフィール</h1>
-        <p className="mt-2 text-gray-600">
-          プロフィール情報と講師との関係を管理できます。
-        </p>
+        <h1 className="text-3xl font-bold text-black">プロフィール</h1>
+        <p className="mt-2 text-black">プロフィール情報と講師との関係を管理できます。</p>
       </div>
 
       {/* アラート */}
@@ -341,16 +294,14 @@ export default function ProfilePage() {
         {/* プロフィール編集 */}
         <div className="lg:col-span-2">
           <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">プロフィール編集</h3>
-            </div>
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-black">プロフィール編集</h3>
+              </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
               {/* アバター画像 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-4">
-                  アバター画像
-                </label>
+                <label className="block text-sm font-medium text-black mb-4">アバター画像</label>
                 <div className="flex items-center space-x-6">
                   <div className="w-20 h-20 bg-indigo-500 rounded-full flex items-center justify-center text-white text-2xl font-bold overflow-hidden">
                     {avatarPreview ? (
@@ -369,7 +320,7 @@ export default function ProfilePage() {
                     />
                     <label
                       htmlFor="avatar-upload"
-                      className="cursor-pointer bg-white border border-gray-300 rounded-md px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      className="cursor-pointer bg-white border border-gray-300 rounded-md px-4 py-2 text-sm font-medium text-black hover:bg-gray-50"
                     >
                       画像を変更
                     </label>
@@ -379,16 +330,14 @@ export default function ProfilePage() {
 
               {/* 表示名 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  表示名
-                </label>
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-                  required
-                />
+                <label className="block text-sm font-medium text-black mb-1">表示名</label>
+                        <input
+                          type="text"
+                          value={displayName}
+                          onChange={(e) => setDisplayName(e.target.value)}
+                          className="w-full p-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-black"
+                          required
+                        />
               </div>
 
               {/* 保存ボタン */}
@@ -414,31 +363,15 @@ export default function ProfilePage() {
           {/* 招待コード入力 */}
           <div className="mt-6 bg-white rounded-lg shadow">
             <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">講師からの招待</h3>
-              <p className="text-sm text-gray-600 mt-1">講師から受け取った招待コードを入力してください</p>
+              <h3 className="text-lg font-semibold text-black">講師からの招待</h3>
+              <p className="text-sm text-black mt-1">講師から受け取った招待コードを入力してください</p>
             </div>
             <div className="p-6">
               <InviteCodeInput 
                 onSuccess={(teacherName: string) => {
                   setSuccess(`${teacherName}との紐付けが完了しました`);
-                  // 講師一覧を更新（実際のAPIでは再取得が必要）
-                  const newInstructor: InstructorInfo = {
-                    id: Date.now().toString(),
-                    name: teacherName,
-                    email: 'teacher@example.com',
-                    joined_at: new Date().toISOString()
-                  };
-                  setInstructors(prev => [...prev, newInstructor]);
-                  
-                  // 履歴に追加
-                  const newHistory: ApprovalHistory = {
-                    id: Date.now().toString(),
-                    instructor_name: teacherName,
-                    instructor_email: 'teacher@example.com',
-                    action: 'approved',
-                    date: new Date().toISOString()
-                  };
-                  setApprovalHistory(prev => [newHistory, ...prev]);
+                  // データを再取得して最新状態に更新
+                  fetchUserProfile();
                 }}
                 onError={setError}
               />
@@ -448,27 +381,28 @@ export default function ProfilePage() {
           {/* 管理中の講師一覧 */}
           <div className="mt-6 bg-white rounded-lg shadow">
             <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">管理中の講師一覧</h3>
-              <p className="text-sm text-gray-600 mt-1">あなたを管理している講師の一覧です</p>
+              <h3 className="text-lg font-semibold text-black">管理中の講師一覧</h3>
+              <p className="text-sm text-black mt-1">あなたを管理している講師の一覧です</p>
             </div>
             <div className="p-6">
-              {instructors.length === 0 ? (
+              {teacherLinks.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-gray-500">管理中の講師はいません</p>
+                  <p className="text-black">管理中の講師はいません</p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {instructors.map((instructor) => (
-                    <div key={instructor.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                  {teacherLinks.map((link) => (
+                    <div key={link.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
                       <div>
-                        <h4 className="font-medium text-gray-900">{instructor.name}</h4>
-                        <p className="text-sm text-gray-600">{instructor.email}</p>
-                        <p className="text-xs text-gray-500">
-                          紐付け日: {new Date(instructor.joined_at).toLocaleDateString('ja-JP')}
-                        </p>
+                        <h4 className="font-medium text-black">{link.teacher.display_name || link.teacher.email}</h4>
+                        <p className="text-sm text-black">{link.teacher.email}</p>
+                        <p className="text-xs text-black">紐付け日: {new Date(link.linked_at).toLocaleDateString('ja-JP')}</p>
+                        {link.invite_code && (
+                          <p className="text-xs text-black">コード: {link.invite_code.code}</p>
+                        )}
                       </div>
                       <button
-                        onClick={() => handleRemoveInstructor(instructor.id)}
+                        onClick={() => handleRemoveTeacher(link.id)}
                         className="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700"
                       >
                         解除
@@ -485,21 +419,19 @@ export default function ProfilePage() {
         <div className="lg:col-span-1 space-y-6">
           {/* 統計情報 */}
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">統計情報</h3>
+            <h3 className="text-lg font-semibold text-black mb-4">統計情報</h3>
             <div className="space-y-4">
               <div className="flex justify-between">
-                <span className="text-gray-600">総受験回数</span>
-                <span className="font-medium">{user.quiz_count}回</span>
+                <span className="text-black">総受験回数</span>
+                        <span className="font-medium text-black">{user.quiz_count}回</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">平均スコア</span>
-                <span className="font-medium">{user.average_score?.toFixed(1)}%</span>
+                <span className="text-black">平均スコア</span>
+                        <span className="font-medium text-black">{user.average_score?.toFixed(1)}%</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">登録日</span>
-                <span className="font-medium">
-                  {new Date(user.created_at).toLocaleDateString('ja-JP')}
-                </span>
+                <span className="text-black">登録日</span>
+                        <span className="font-medium text-black">{new Date(user.created_at).toLocaleDateString('ja-JP')}</span>
               </div>
             </div>
 
@@ -513,8 +445,8 @@ export default function ProfilePage() {
                   )}
                 </div>
                 <div className="ml-4">
-                  <h4 className="text-lg font-medium text-gray-900">{user.display_name}</h4>
-                  <p className="text-gray-600">{user.email}</p>
+                  <h4 className="text-lg font-medium text-black">{user.display_name}</h4>
+                  <p className="text-black">{user.email}</p>
                 </div>
               </div>
             </div>
@@ -523,29 +455,27 @@ export default function ProfilePage() {
           {/* 承認/解除履歴 */}
           <div className="bg-white rounded-lg shadow">
             <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">承認/解除履歴</h3>
-              <p className="text-sm text-gray-600 mt-1">講師との紐付け履歴</p>
+              <h3 className="text-lg font-semibold text-black">承認/解除履歴</h3>
+              <p className="text-sm text-black mt-1">講師との紐付け履歴</p>
             </div>
             <div className="p-6">
-              {approvalHistory.length === 0 ? (
+              {allLinks.length === 0 ? (
                 <div className="text-center py-4">
-                  <p className="text-gray-500">履歴はありません</p>
+            <p className="text-black">履歴はありません</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {approvalHistory.slice(0, 5).map((history) => (
-                    <div key={history.id} className="flex items-center space-x-3">
+                  {allLinks
+                    .sort((a, b) => new Date(b.linked_at).getTime() - new Date(a.linked_at).getTime())
+                    .slice(0, 5)
+                    .map((link) => (
+                    <div key={link.id} className="flex items-center space-x-3">
                       <div className={`w-3 h-3 rounded-full ${
-                        history.action === 'approved' ? 'bg-green-500' : 'bg-red-500'
+                        link.status === 'active' ? 'bg-green-500' : 'bg-red-500'
                       }`}></div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {history.instructor_name}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {history.action === 'approved' ? '承認' : '解除'} - {' '}
-                          {new Date(history.date).toLocaleDateString('ja-JP')}
-                        </p>
+                        <p className="text-sm font-medium text-black truncate">{link.teacher.display_name || link.teacher.email}</p>
+                        <p className="text-xs text-black">{link.status === 'active' ? '紐付け' : '解除'} - {new Date(link.status === 'active' ? link.linked_at : (link.revoked_at || link.linked_at)).toLocaleDateString('ja-JP')}</p>
                       </div>
                     </div>
                   ))}
