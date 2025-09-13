@@ -8,30 +8,33 @@ import {
   Bars3Icon,
   XMarkIcon,
   HomeIcon,
+  UserGroupIcon,
   AcademicCapIcon,
+  DocumentTextIcon,
   ChartBarIcon,
-  UserIcon,
+  CogIcon,
 } from '@heroicons/react/24/outline';
 
 const navigation = [
-  { name: 'ダッシュボード', href: '/dashboard', icon: HomeIcon },
-  { name: 'クイズ', href: '/quiz', icon: AcademicCapIcon },
-  { name: '統計', href: '/stats', icon: ChartBarIcon },
-  { name: 'プロフィール', href: '/profile', icon: UserIcon },
+  { name: 'ダッシュボード', href: '/admin-dashboard', icon: HomeIcon },
+  { name: 'グループ管理', href: '/admin-dashboard/groups', icon: UserGroupIcon },
+  { name: '生徒管理', href: '/admin-dashboard/students', icon: AcademicCapIcon },
+  { name: 'テスト作成', href: '/admin-dashboard/tests', icon: DocumentTextIcon },
+  { name: '成績分析', href: '/admin-dashboard/analytics', icon: ChartBarIcon },
+  { name: 'プロフィール', href: '/admin-dashboard/profile', icon: CogIcon },
 ];
 
-interface LayoutProps {
+interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
-export default function Layout({ children }: LayoutProps) {
+export default function AdminLayout({ children }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { data: session } = useSession();
   const pathname = usePathname();
 
   // 認証ページではレイアウトを表示しない
-  // 認証ページと管理者ダッシュボード配下では学習者用サイドバーを表示しない
-  if (pathname?.startsWith('/auth') || pathname?.startsWith('/admin-dashboard')) {
+  if (pathname?.startsWith('/auth')) {
     return <>{children}</>;
   }
 
@@ -55,11 +58,11 @@ export default function Layout({ children }: LayoutProps) {
           </div>
           <div className="flex-1 h-0 pt-5 pb-4 overflow-y-auto">
             <div className="flex-shrink-0 flex items-center px-4">
-              <h1 className="text-2xl font-bold text-indigo-600">Quiz App</h1>
+              <h1 className="text-2xl font-bold text-indigo-600">Quiz App 管理</h1>
             </div>
             <nav className="mt-5 px-2 space-y-1">
               {navigation.map((item) => {
-                const isActive = pathname === item.href;
+                const isActive = pathname === item.href || (item.href === '/admin-dashboard' && pathname === '/admin-dashboard/');
                 return (
                   <Link
                     key={item.name}
@@ -90,11 +93,11 @@ export default function Layout({ children }: LayoutProps) {
           <div className="flex-1 flex flex-col min-h-0 border-r border-gray-200 bg-white">
             <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
               <div className="flex items-center flex-shrink-0 px-4">
-                <h1 className="text-2xl font-bold text-indigo-600">Quiz App</h1>
+                <h1 className="text-2xl font-bold text-indigo-600">Quiz App 管理</h1>
               </div>
               <nav className="mt-5 flex-1 px-2 bg-white space-y-1">
                 {navigation.map((item) => {
-                  const isActive = pathname === item.href;
+                  const isActive = pathname === item.href || (item.href === '/admin-dashboard' && pathname === '/admin-dashboard/');
                   return (
                     <Link
                       key={item.name}
@@ -139,12 +142,24 @@ export default function Layout({ children }: LayoutProps) {
             <div className="ml-4 flex items-center md:ml-6">
               {session ? (
                 <div className="flex items-center space-x-4">
-                  <span className="text-sm text-gray-700">
-                    {session.user?.name}
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    {session.user?.image && (
+                      <img
+                        src={session.user.image}
+                        alt="プロフィール"
+                        className="w-8 h-8 rounded-full"
+                      />
+                    )}
+                    <div>
+                      <span className="text-sm text-gray-700">
+                        {session.user?.name}
+                      </span>
+                      <p className="text-xs text-indigo-600 font-medium">管理者</p>
+                    </div>
+                  </div>
                   <button
                     onClick={() => signOut()}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-md text-sm font-medium"
+                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md text-sm font-medium"
                   >
                     ログアウト
                   </button>

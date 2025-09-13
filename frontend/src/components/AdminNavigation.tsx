@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
 
-export default function Navigation() {
+export default function AdminNavigation() {
   const { data: session, status } = useSession();
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -18,21 +18,18 @@ export default function Navigation() {
     return null; // ログインしていない場合はナビゲーションを表示しない
   }
 
-  // 管理者画面配下では学習者用ナビゲーションを表示しない
-  if (pathname?.startsWith('/admin-dashboard')) {
-    return null;
-  }
-
   const navigation = [
-    { name: 'ダッシュボード', href: '/dashboard', icon: '🏠' },
-    { name: 'クイズ開始', href: '/quiz/start', icon: '📝' },
-    { name: 'マイ履歴', href: '/history', icon: '📊' },
-    { name: 'プロフィール', href: '/profile', icon: '👤' },
+    { name: 'ダッシュボード', href: '/admin-dashboard', icon: '🏠' },
+    { name: 'グループ管理', href: '/admin-dashboard/groups', icon: '👥' },
+    { name: '生徒管理', href: '/admin-dashboard/students', icon: '📚' },
+    { name: 'テスト作成', href: '/admin-dashboard/tests', icon: '📝' },
+    { name: '成績分析', href: '/admin-dashboard/analytics', icon: '📊' },
+    { name: 'プロフィール', href: '/admin-dashboard/profile', icon: '⚙️' },
   ];
 
   const isActive = (href: string) => {
-    if (href === '/dashboard') {
-      return pathname === '/dashboard' || pathname === '/';
+    if (href === '/admin-dashboard') {
+      return pathname === '/admin-dashboard' || pathname === '/admin-dashboard/';
     }
     return pathname.startsWith(href);
   };
@@ -43,7 +40,7 @@ export default function Navigation() {
       <div className="lg:hidden fixed top-4 left-4 z-50">
         <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className="bg-blue-600 text-white p-2 rounded-md shadow-lg"
+          className="bg-indigo-600 text-white p-2 rounded-md shadow-lg"
         >
           <svg
             className="w-6 h-6"
@@ -73,7 +70,7 @@ export default function Navigation() {
       {/* Desktop sidebar */}
       <nav className="hidden lg:block fixed left-0 top-0 h-full w-64 bg-white shadow-lg border-r">
         <div className="p-6">
-          <h1 className="text-xl font-bold text-gray-800">英単語クイズ</h1>
+          <h1 className="text-xl font-bold text-indigo-800">Quiz App 管理</h1>
         </div>
         
         <div className="px-4">
@@ -83,7 +80,7 @@ export default function Navigation() {
               href={item.href}
               className={`flex items-center px-4 py-3 mb-2 rounded-lg transition-colors ${
                 isActive(item.href)
-                  ? 'bg-blue-100 text-blue-700 border-l-4 border-blue-700'
+                  ? 'bg-indigo-100 text-indigo-700 border-l-4 border-indigo-700'
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
@@ -91,6 +88,17 @@ export default function Navigation() {
               {item.name}
             </Link>
           ))}
+        </div>
+
+        {/* 学習者モード切替 */}
+        <div className="px-4 mt-6">
+          <Link
+            href="/dashboard"
+            className="flex items-center px-4 py-3 mb-2 rounded-lg border-2 border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            <span className="mr-3 text-lg">🔄</span>
+            学習者モードへ
+          </Link>
         </div>
 
         <div className="absolute bottom-0 w-full p-4 border-t">
@@ -106,7 +114,7 @@ export default function Navigation() {
               <p className="text-sm font-medium text-gray-800">
                 {session.user?.name || session.user?.email}
               </p>
-              <p className="text-xs text-gray-500">学習者</p>
+              <p className="text-xs text-indigo-600 font-medium">管理者</p>
             </div>
           </div>
           
@@ -128,7 +136,7 @@ export default function Navigation() {
           />
           <div className="fixed left-0 top-0 h-full w-64 bg-white shadow-lg">
             <div className="p-6 pt-16">
-              <h1 className="text-xl font-bold text-gray-800">英単語クイズ</h1>
+              <h1 className="text-xl font-bold text-indigo-800">Quiz App 管理</h1>
             </div>
             
             <div className="px-4">
@@ -139,7 +147,7 @@ export default function Navigation() {
                   onClick={() => setIsMenuOpen(false)}
                   className={`flex items-center px-4 py-3 mb-2 rounded-lg transition-colors ${
                     isActive(item.href)
-                      ? 'bg-blue-100 text-blue-700 border-l-4 border-blue-700'
+                      ? 'bg-indigo-100 text-indigo-700 border-l-4 border-indigo-700'
                       : 'text-gray-600 hover:bg-gray-100'
                   }`}
                 >
@@ -147,6 +155,18 @@ export default function Navigation() {
                   {item.name}
                 </Link>
               ))}
+            </div>
+
+            {/* 学習者モード切替 */}
+            <div className="px-4 mt-6">
+              <Link
+                href="/dashboard"
+                onClick={() => setIsMenuOpen(false)}
+                className="flex items-center px-4 py-3 mb-2 rounded-lg border-2 border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                <span className="mr-3 text-lg">🔄</span>
+                学習者モードへ
+              </Link>
             </div>
 
             <div className="absolute bottom-0 w-full p-4 border-t">
@@ -162,7 +182,7 @@ export default function Navigation() {
                   <p className="text-sm font-medium text-gray-800">
                     {session.user?.name || session.user?.email}
                   </p>
-                  <p className="text-xs text-gray-500">学習者</p>
+                  <p className="text-xs text-indigo-600 font-medium">管理者</p>
                 </div>
               </div>
               

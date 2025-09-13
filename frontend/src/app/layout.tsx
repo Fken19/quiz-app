@@ -23,8 +23,13 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Use an env var to provide a stable value for the --vsc-domain CSS variable
+  // when present. This avoids hydration mismatch if some tool or extension
+  // injects the same variable on the client or server.
+  const vscDomain = process.env.NEXT_PUBLIC_VSC_DOMAIN ?? '';
+
   return (
-    <html lang="ja">
+    <html lang="ja" style={{ ['--vsc-domain' as any]: vscDomain }}>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

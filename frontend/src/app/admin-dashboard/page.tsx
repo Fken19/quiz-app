@@ -4,6 +4,7 @@ import { useSession, signIn } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import AdminLayout from '@/components/AdminLayout';
 
 interface AdminStats {
   total_students: number;
@@ -93,9 +94,11 @@ export default function AdminDashboardHome() {
 
   if (status === "loading" || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="large" />
-      </div>
+      <AdminLayout>
+        <div className="min-h-screen flex items-center justify-center">
+          <LoadingSpinner size="large" />
+        </div>
+      </AdminLayout>
     );
   }
 
@@ -117,223 +120,199 @@ export default function AdminDashboardHome() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* ヘッダー */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
+    <AdminLayout>
+      {error && (
+        <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
+          <p className="text-yellow-800">{error}</p>
+          <p className="text-sm text-yellow-600 mt-1">
+            デモデータを表示しています。
+          </p>
+        </div>
+      )}
+
+      {/* 統計カード */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
             <div className="flex items-center">
-              <h1 className="text-xl font-semibold text-gray-900">Quiz App 管理者画面</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-700">{session.user?.name}</span>
-              <img
-                src={session.user?.image || "/default-avatar.png"}
-                alt="avatar"
-                className="w-8 h-8 rounded-full border"
-              />
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">👥</span>
+                </div>
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">
+                    総生徒数
+                  </dt>
+                  <dd className="text-lg font-medium text-gray-900">
+                    {stats.total_students}
+                  </dd>
+                </dl>
+              </div>
             </div>
           </div>
         </div>
-      </header>
 
-      {/* メインコンテンツ */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          {error && (
-            <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
-              <p className="text-yellow-800">{error}</p>
-              <p className="text-sm text-yellow-600 mt-1">
-                デモデータを表示しています。
-              </p>
-            </div>
-          )}
-
-          {/* 統計カード */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                      <span className="text-white text-sm font-medium">👥</span>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        総生徒数
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {stats.total_students}
-                      </dd>
-                    </dl>
-                  </div>
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">📚</span>
                 </div>
               </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                      <span className="text-white text-sm font-medium">📚</span>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        管理グループ数
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {stats.total_groups}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">
+                    管理グループ数
+                  </dt>
+                  <dd className="text-lg font-medium text-gray-900">
+                    {stats.total_groups}
+                  </dd>
+                </dl>
               </div>
             </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-                      <span className="text-white text-sm font-medium">📈</span>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        今日のアクティブ
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {stats.active_sessions_today}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
-                      <span className="text-white text-sm font-medium">⭐</span>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        平均スコア
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {stats.average_score}%
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 管理メニュー */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <Link
-              href="/admin-dashboard/groups"
-              className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
-            >
-              <div className="flex items-center space-x-4">
-                <div className="bg-blue-100 p-3 rounded-lg">
-                  <span className="text-2xl">📚</span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">グループ管理</h3>
-                  <p className="text-gray-600 text-sm">グループの選択・作成・編集</p>
-                </div>
-              </div>
-            </Link>
-
-            <Link
-              href="/admin-dashboard/students"
-              className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
-            >
-              <div className="flex items-center space-x-4">
-                <div className="bg-green-100 p-3 rounded-lg">
-                  <span className="text-2xl">👥</span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">生徒管理</h3>
-                  <p className="text-gray-600 text-sm">生徒の追加・成績確認</p>
-                </div>
-              </div>
-            </Link>
-
-            <Link
-              href="/admin-dashboard/analytics"
-              className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
-            >
-              <div className="flex items-center space-x-4">
-                <div className="bg-purple-100 p-3 rounded-lg">
-                  <span className="text-2xl">📊</span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">成績分析</h3>
-                  <p className="text-gray-600 text-sm">詳細な成績データと分析</p>
-                </div>
-              </div>
-            </Link>
-          </div>
-
-          {/* 最近のグループ */}
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-            <div className="px-4 py-5 sm:px-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">
-                最近作成したグループ
-              </h3>
-              <p className="mt-1 max-w-2xl text-sm text-gray-500">
-                管理しているグループの一覧
-              </p>
-            </div>
-            <div className="border-t border-gray-200">
-              <ul className="divide-y divide-gray-200">
-                {recentGroups.map((group) => (
-                  <li key={group.id} className="px-4 py-4 sm:px-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">
-                          {group.name}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {group.description} • {group.student_count}名
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-500">
-                          {new Date(group.created_at).toLocaleDateString('ja-JP')}
-                        </p>
-                        <Link
-                          href={`/admin-dashboard/groups/${group.id}`}
-                          className="text-indigo-600 hover:text-indigo-900 text-sm"
-                        >
-                          詳細
-                        </Link>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-8 text-center text-gray-500 text-sm">
-            ※この画面は管理者専用です。ユーザー用画面へのリンクはありません。
           </div>
         </div>
-      </main>
-    </div>
+
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">📈</span>
+                </div>
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">
+                    今日のアクティブ
+                  </dt>
+                  <dd className="text-lg font-medium text-gray-900">
+                    {stats.active_sessions_today}
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">⭐</span>
+                </div>
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">
+                    平均スコア
+                  </dt>
+                  <dd className="text-lg font-medium text-gray-900">
+                    {stats.average_score}%
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 管理メニュー */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <Link
+          href="/admin-dashboard/groups"
+          className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
+        >
+          <div className="flex items-center space-x-4">
+            <div className="bg-blue-100 p-3 rounded-lg">
+              <span className="text-2xl">📚</span>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">グループ管理</h3>
+              <p className="text-gray-600 text-sm">グループの選択・作成・編集</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link
+          href="/admin-dashboard/students"
+          className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
+        >
+          <div className="flex items-center space-x-4">
+            <div className="bg-green-100 p-3 rounded-lg">
+              <span className="text-2xl">👥</span>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">生徒管理</h3>
+              <p className="text-gray-600 text-sm">生徒の追加・成績確認</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link
+          href="/admin-dashboard/analytics"
+          className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
+        >
+          <div className="flex items-center space-x-4">
+            <div className="bg-purple-100 p-3 rounded-lg">
+              <span className="text-2xl">📊</span>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">成績分析</h3>
+              <p className="text-gray-600 text-sm">詳細な成績データと分析</p>
+            </div>
+          </div>
+        </Link>
+      </div>
+
+      {/* 最近のグループ */}
+      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+        <div className="px-4 py-5 sm:px-6">
+          <h3 className="text-lg leading-6 font-medium text-gray-900">
+            最近作成したグループ
+          </h3>
+          <p className="mt-1 max-w-2xl text-sm text-gray-500">
+            管理しているグループの一覧
+          </p>
+        </div>
+        <div className="border-t border-gray-200">
+          <ul className="divide-y divide-gray-200">
+            {recentGroups.map((group) => (
+              <li key={group.id} className="px-4 py-4 sm:px-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {group.name}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {group.description} • {group.student_count}名
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">
+                      {new Date(group.created_at).toLocaleDateString('ja-JP')}
+                    </p>
+                    <Link
+                      href={`/admin-dashboard/groups/${group.id}`}
+                      className="text-indigo-600 hover:text-indigo-900 text-sm"
+                    >
+                      詳細
+                    </Link>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <div className="mt-8 text-center text-gray-500 text-sm">
+        ※この画面は管理者専用です。ユーザー用画面へのリンクはありません。
+      </div>
+    </AdminLayout>
   );
 }
