@@ -80,6 +80,9 @@ export interface DashboardStats {
   average_score: number;
   average_latency_ms: number;
   recent_results: QuizResult[];
+  streak_days?: number; // 連続学習日数
+  today_quiz_count?: number; // 今日の学習数
+  today_correct_count?: number; // 今日の正答数
 }
 
 // API レスポンス型

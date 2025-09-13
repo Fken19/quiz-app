@@ -36,6 +36,12 @@ services:
       - ./frontend/.env.docker
     environment:
       - NODE_ENV=development
+      # Inside the frontend container, use the backend service host so server-side
+      # Next callbacks (jwt in NextAuth) can reach Django. Browser still uses
+      # NEXT_PUBLIC_API_URL_BROWSER (mapped to host localhost) for fetches from
+      # the user's browser.
+      - NEXT_PUBLIC_API_URL=http://backend:8080
+      - NEXT_PUBLIC_API_URL_BROWSER=http://localhost:8080
     depends_on:
       - backend
 

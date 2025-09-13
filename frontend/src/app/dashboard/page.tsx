@@ -92,8 +92,62 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      {/* 統計カード */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* 宿題・連絡カード（ダミー） */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white p-5 rounded-lg shadow flex items-center">
+          <div className="p-3 bg-orange-100 rounded-lg mr-4">
+            <span className="text-2xl">📝</span>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-600">宿題</p>
+            <p className="text-lg font-bold text-gray-900">今週の課題：レベル2 セクション3</p>
+            <p className="text-xs text-gray-500">提出期限：9/15</p>
+          </div>
+        </div>
+        <div className="bg-white p-5 rounded-lg shadow flex items-center">
+          <div className="p-3 bg-cyan-100 rounded-lg mr-4">
+            <span className="text-2xl">📢</span>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-600">連絡</p>
+            <p className="text-lg font-bold text-gray-900">来週は単語テストがあります</p>
+            <p className="text-xs text-gray-500">2025/9/19 実施予定</p>
+          </div>
+        </div>
+      </div>
+
+      {/* 今日の学習サマリー（ダミー） */}
+      <div className="bg-white rounded-lg shadow p-5 flex items-center gap-8">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">📅</span>
+          <span className="text-gray-700 font-semibold">今日の学習数</span>
+          <span className="text-xl font-bold text-indigo-600">{stats?.today_quiz_count ?? 3}</span>
+          <span className="text-gray-500">回</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">✅</span>
+          <span className="text-gray-700 font-semibold">今日の正答数</span>
+          <span className="text-xl font-bold text-green-600">{stats?.today_correct_count ?? 25}</span>
+          <span className="text-gray-500">問</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        {/* Streakカード */}
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <div className="p-2 bg-pink-100 rounded-lg">
+              <span className="text-2xl">🔥</span>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">連続学習日数</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {/* TODO: API連携。今はダミー値 */}
+                {stats?.streak_days ?? 5}日
+              </p>
+            </div>
+          </div>
+        </div>
+        {/* 既存の統計カード */}
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center">
             <div className="p-2 bg-blue-100 rounded-lg">
@@ -107,7 +161,6 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center">
             <div className="p-2 bg-green-100 rounded-lg">
@@ -121,7 +174,6 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center">
             <div className="p-2 bg-yellow-100 rounded-lg">
@@ -135,7 +187,6 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center">
             <div className="p-2 bg-purple-100 rounded-lg">
@@ -151,8 +202,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* メニューカード */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* メニューカード＋フォーカス学習導線 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Link
           href="/quiz/start"
           className="block bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow"
@@ -164,6 +215,22 @@ export default function Dashboard() {
             <div className="ml-4">
               <h3 className="text-lg font-semibold text-gray-900">クイズ開始</h3>
               <p className="text-sm text-gray-600">レベル・セグメントを選んで挑戦</p>
+            </div>
+          </div>
+        </Link>
+
+        {/* フォーカス学習導線 */}
+        <Link
+          href="/quiz/start?focus=weak"
+          className="block bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center">
+            <div className="p-3 bg-pink-100 rounded-lg">
+              <span className="text-3xl">💡</span>
+            </div>
+            <div className="ml-4">
+              <h3 className="text-lg font-semibold text-gray-900">苦手だけ10問</h3>
+              <p className="text-sm text-gray-600">直近で間違えた単語に集中</p>
             </div>
           </div>
         </Link>

@@ -25,6 +25,7 @@ urlpatterns = [
 
     # 個別API エンドポイント
     path('auth/google/', views.google_auth, name='google_auth'),
+    path('auth/google-simple/', views.google_auth_simple, name='google_auth_simple'),  # テスト用
     path('dashboard/stats/', views.dashboard_stats, name='dashboard_stats'),
     path('quiz/history/', views.quiz_history, name='quiz_history'),
     path('user/profile/', views.user_profile, name='user_profile'),

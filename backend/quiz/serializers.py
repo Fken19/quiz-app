@@ -17,13 +17,37 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class WordTranslationSerializer(serializers.ModelSerializer):
+    ja = serializers.CharField(source='text', read_only=True)
+    word_id = serializers.UUIDField(source='word.id', read_only=True)
+
     class Meta:
         model = WordTranslation
-        fields = ['id', 'text', 'is_correct']
+        fields = ['id', 'word_id', 'ja', 'is_correct']
+
+
+class PublicWordTranslationSerializer(serializers.ModelSerializer):
+    """API の公開用: is_correct を含めない"""
+    ja = serializers.CharField(source='text', read_only=True)
+    word_id = serializers.UUIDField(source='word.id', read_only=True)
+
+    class Meta:
+        model = WordTranslation
+        fields = ['id', 'word_id', 'ja']
+
+
+class InternalWordTranslationSerializer(serializers.ModelSerializer):
+    """内部/履歴用: is_correct を含む"""
+    ja = serializers.CharField(source='text', read_only=True)
+    word_id = serializers.UUIDField(source='word.id', read_only=True)
+
+    class Meta:
+        model = WordTranslation
+        fields = ['id', 'word_id', 'ja', 'is_correct']
 
 
 class WordSerializer(serializers.ModelSerializer):
-    translations = WordTranslationSerializer(many=True, read_only=True)
+    # 公開 API では is_correct を返さないので Public serializer を使用
+    translations = PublicWordTranslationSerializer(many=True, read_only=True)
     
     class Meta:
         model = Word
@@ -32,20 +56,33 @@ class WordSerializer(serializers.ModelSerializer):
 
 class QuizItemSerializer(serializers.ModelSerializer):
     word = WordSerializer(read_only=True)
-    
+    # フロントは quizItem.translations を期待するのでここで flatten して返す
+    translations = serializers.SerializerMethodField()
+    # フロント側の型名に合わせて order_no を出力
+    order_no = serializers.IntegerField(source='order', read_only=True)
+
     class Meta:
         model = QuizItem
-        fields = ['id', 'word', 'order']
+        fields = ['id', 'word', 'translations', 'order_no']
+
+    def get_translations(self, obj):
+        # word.translations は既に WordSerializer が提供しているが、
+        # QuizItem の直下に translations 配列を置いた方がフロントが扱いやすい
+        translations = obj.word.translations.all()
+        # 公開 API では is_correct を返さない Public serializer を使う
+        return PublicWordTranslationSerializer(translations, many=True).data
 
 
 class QuizResponseSerializer(serializers.ModelSerializer):
     quiz_item = QuizItemSerializer(read_only=True)
-    selected_translation = WordTranslationSerializer(read_only=True)
-    
+    # 公開 API では選択された翻訳の is_correct を返さない
+    selected_translation = PublicWordTranslationSerializer(read_only=True)
+
     class Meta:
         model = QuizResponse
+        # is_correct は GET で露出しない（POST のレスポンスや内部管理で保持）
         fields = [
-            'id', 'quiz_item', 'selected_translation', 'is_correct', 'reaction_time_ms', 'created_at'
+            'id', 'quiz_item', 'selected_translation', 'reaction_time_ms', 'created_at'
         ]
 
 

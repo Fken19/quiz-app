@@ -1,4 +1,4 @@
-import apiClient from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import { 
   User, 
   Word, 
@@ -33,113 +33,137 @@ export interface QuizConfig {
 
 // Auth API
 export const authAPI = {
-  async login(credentials: { email: string; password: string }) {
-    const response = await apiClient.post('/auth/login/', credentials);
+  async login(credentials: { email: string; password: string }, token: string) {
+    const response = await apiFetch('/auth/login/', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    }, token).then(res => res.json());
     return response;
   },
 
-  async register(data: { email: string; password: string; display_name: string }) {
-    const response = await apiClient.post('/auth/register/', data);
+  async register(data: { email: string; password: string; display_name: string }, token: string) {
+    const response = await apiFetch('/auth/register/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, token).then(res => res.json());
     return response;
   },
 
-  async logout() {
-    const response = await apiClient.post('/auth/logout/');
+  async logout(token: string) {
+    const response = await apiFetch('/auth/logout/', {
+      method: 'POST',
+    }, token).then(res => res.json());
     return response;
   },
 
-  async getProfile(): Promise<User> {
-    const response = await apiClient.get('/auth/profile/');
+  async getProfile(token: string): Promise<User> {
+    const response = await apiFetch('/auth/profile/', {}, token).then(res => res.json());
     return response;
   },
 
-  async updateProfile(data: Partial<User>): Promise<User> {
-    const response = await apiClient.post('/auth/profile/', data);
+  async updateProfile(data: Partial<User>, token: string): Promise<User> {
+    const response = await apiFetch('/auth/profile/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, token).then(res => res.json());
     return response;
   },
 };
 
 // Dashboard API
 export const dashboardAPI = {
-  async getStats(): Promise<DashboardStats> {
-    const response = await apiClient.get('/api/dashboard/stats/');
+  async getStats(token: string): Promise<DashboardStats> {
+    const response = await apiFetch('/api/dashboard/stats/', {}, token).then(res => res.json());
     return response;
   },
 
-  async getRecentResults(): Promise<QuizResult[]> {
-    const response = await apiClient.get('/api/dashboard/recent-results/');
+  async getRecentResults(token: string): Promise<QuizResult[]> {
+    const response = await apiFetch('/api/dashboard/recent-results/', {}, token).then(res => res.json());
     return response;
   },
 };
 
 // Word API
 export const wordAPI = {
-  async getWords(level: number, segment: number): Promise<Word[]> {
-    const response = await apiClient.get(`/api/words/?level=${level}&segment=${segment}`);
+  async getWords(level: number, segment: number, token: string): Promise<Word[]> {
+    const response = await apiFetch(`/api/words/?level=${level}&segment=${segment}`, {}, token).then(res => res.json());
     return response;
   },
 
-  async getWord(id: string): Promise<Word> {
-    const response = await apiClient.get(`/api/words/${id}/`);
+  async getWord(id: string, token: string): Promise<Word> {
+    const response = await apiFetch(`/api/words/${id}/`, {}, token).then(res => res.json());
     return response;
   },
 
-  async getTranslations(wordId: string): Promise<WordTranslation[]> {
-    const response = await apiClient.get(`/api/words/${wordId}/translations/`);
+  async getTranslations(wordId: string, token: string): Promise<WordTranslation[]> {
+    const response = await apiFetch(`/api/words/${wordId}/translations/`, {}, token).then(res => res.json());
     return response;
   },
 };
 
 // Quiz API
 export const quizAPI = {
-  async createQuizSet(config: QuizConfig): Promise<QuizSet> {
-    const response = await apiClient.post('/api/quiz-sets/', config);
+  async createQuizSet(config: QuizConfig, token: string): Promise<QuizSet> {
+    const response = await apiFetch('/api/quiz-sets/', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    }, token).then(res => res.json());
     return response;
   },
 
-  async getQuizSet(id: string): Promise<QuizSet> {
-    const response = await apiClient.get(`/api/quiz-sets/${id}/`);
+  async getQuizSet(id: string, token: string): Promise<QuizSet> {
+    const response = await apiFetch(`/api/quiz-sets/${id}/`, {}, token).then(res => res.json());
     return response;
   },
 
-  async getQuizItems(quizSetId: string): Promise<QuizItem[]> {
-    const response = await apiClient.get(`/api/quiz-sets/${quizSetId}/items/`);
+  async getQuizItems(quizSetId: string, token: string): Promise<QuizItem[]> {
+    const response = await apiFetch(`/api/quiz-sets/${quizSetId}/items/`, {}, token).then(res => res.json());
     return response;
   },
 
-  async startQuiz(quizSetId: string): Promise<QuizSet> {
-    const response = await apiClient.post(`/api/quiz-sets/${quizSetId}/start/`);
+  async startQuiz(quizSetId: string, token: string): Promise<QuizSet> {
+    const response = await apiFetch(`/api/quiz-sets/${quizSetId}/start/`, {
+      method: 'POST',
+    }, token).then(res => res.json());
     return response;
   },
 
-  async submitAnswer(quizSetId: string, itemId: string, selectedTranslationId: string): Promise<QuizResponse> {
-    const response = await apiClient.post(`/api/quiz-sets/${quizSetId}/responses/`, {
-      quiz_item_id: itemId,
-      selected_translation_id: selectedTranslationId,
-    });
+  async submitAnswer(quizSetId: string, itemId: string, selectedTranslationId: string, token: string): Promise<QuizResponse> {
+    const response = await apiFetch(`/api/quiz-sets/${quizSetId}/responses/`, {
+      method: 'POST',
+      body: JSON.stringify({
+        quiz_item_id: itemId,
+        selected_translation_id: selectedTranslationId,
+      }),
+    }, token).then(res => res.json());
     return response;
   },
 
-  async finishQuiz(quizSetId: string): Promise<QuizResult> {
-    const response = await apiClient.post(`/api/quiz-sets/${quizSetId}/finish/`);
+  async finishQuiz(quizSetId: string, token: string): Promise<QuizResult> {
+    const response = await apiFetch(`/api/quiz-sets/${quizSetId}/finish/`, {
+      method: 'POST',
+    }, token).then(res => res.json());
     return response;
   },
 
-  async getQuizResult(quizSetId: string): Promise<QuizResult> {
-    const response = await apiClient.get(`/api/quiz-sets/${quizSetId}/result/`);
+  async getQuizResult(quizSetId: string, token: string): Promise<QuizResult> {
+    const response = await apiFetch(`/api/quiz-sets/${quizSetId}/result/`, {}, token).then(res => res.json());
     return response;
   },
 };
 
 // History API
 export const historyAPI = {
-  async getUserHistory(filters?: {
-    dateFrom?: string;
-    dateTo?: string;
-    level?: number;
-    limit?: number;
-    offset?: number;
-  }): Promise<{ results: QuizResult[]; count: number }> {
+  async getUserHistory(
+    filters: {
+      dateFrom?: string;
+      dateTo?: string;
+      level?: number;
+      limit?: number;
+      offset?: number;
+    } = {},
+    token: string
+  ): Promise<{ results: QuizResult[]; count: number }> {
     const params = new URLSearchParams();
     if (filters?.dateFrom) params.append('date_from', filters.dateFrom);
     if (filters?.dateTo) params.append('date_to', filters.dateTo);
@@ -147,12 +171,12 @@ export const historyAPI = {
     if (filters?.limit) params.append('limit', filters.limit.toString());
     if (filters?.offset) params.append('offset', filters.offset.toString());
     
-    const response = await apiClient.get(`/api/history/?${params.toString()}`);
+    const response = await apiFetch(`/api/history/?${params.toString()}`, {}, token).then(res => res.json());
     return response;
   },
 
-  async getQuizResult(quizSetId: string): Promise<QuizResult> {
-    const response = await apiClient.get(`/api/history/${quizSetId}/`);
+  async getQuizResult(quizSetId: string, token: string): Promise<QuizResult> {
+    const response = await apiFetch(`/api/history/${quizSetId}/`, {}, token).then(res => res.json());
     return response;
   },
 };

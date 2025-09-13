@@ -1,120 +1,50 @@
 
-import { getSession } from "next-auth/react"
-import { Session } from "next-auth"
 
-// サーバー/クライアントでAPIエンドポイントを自動切り替え
-const isServer = typeof window === "undefined";
-const API_URL = isServer
-  ? process.env.NEXT_PUBLIC_API_URL || "http://backend:8080"
-  : process.env.NEXT_PUBLIC_API_URL_BROWSER || "http://localhost:8080";
+'use client';
 
-// Bearer Token方式のAPIラッパー
-export async function apiGet(path: string) {
-  const session = await getSession()
-  const headers: Record<string, string> = { "Content-Type": "application/json" }
-  if ((session as Session & { backendAccessToken?: string })?.backendAccessToken) {
-    headers.Authorization = `Bearer ${(session as Session & { backendAccessToken?: string }).backendAccessToken}`
+
+export class NotAuthenticatedError extends Error {}
+
+export async function apiFetch(
+  path: string,
+  init: RequestInit = {},
+  token?: string
+) {
+  const headers = new Headers(init.headers ?? {});
+  if (init.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
   }
-  const res = await fetch(`${API_URL}${path}`, { headers })
-  if (!res.ok) {
-    if (res.status === 401) {
-      window.location.href = '/auth/signin';
-    }
-    throw new Error(`${res.status} ${await res.text()}`)
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  } else {
+    throw new NotAuthenticatedError('backendAccessToken missing');
   }
-  return res.json()
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL_BROWSER || "http://localhost:8080"}${path}`,
+    { ...init, headers, cache: 'no-store', credentials: 'omit' }
+  );
+  return res;
 }
 
-export async function apiPost(path: string, body?: unknown) {
-  const session = await getSession()
-  const headers: Record<string, string> = { "Content-Type": "application/json" }
-  if ((session as Session & { backendAccessToken?: string })?.backendAccessToken) {
-    headers.Authorization = `Bearer ${(session as Session & { backendAccessToken?: string }).backendAccessToken}`
-  }
-  const res = await fetch(`${API_URL}${path}`, { 
-    method: "POST",
-    headers,
-    body: body ? JSON.stringify(body) : undefined
-  })
-  if (!res.ok) {
-    if (res.status === 401) {
-      window.location.href = '/auth/signin';
-    }
-    throw new Error(`${res.status} ${await res.text()}`)
-  }
-  return res.json()
-}
-
-export async function apiPatch(path: string, body?: unknown) {
-  const session = await getSession()
-  const headers: Record<string, string> = { "Content-Type": "application/json" }
-  if ((session as Session & { backendAccessToken?: string })?.backendAccessToken) {
-    headers.Authorization = `Bearer ${(session as Session & { backendAccessToken?: string }).backendAccessToken}`
-  }
-  const res = await fetch(`${API_URL}${path}`, { 
-    method: "PATCH",
-    headers,
-    body: body ? JSON.stringify(body) : undefined
-  })
-  if (!res.ok) {
-    if (res.status === 401) {
-      window.location.href = '/auth/signin';
-    }
-    throw new Error(`${res.status} ${await res.text()}`)
-  }
-  return res.json()
-}
 
 export async function apiPut(path: string, body?: unknown) {
-  const session = await getSession()
-  const headers: Record<string, string> = { "Content-Type": "application/json" }
-  if ((session as Session & { backendAccessToken?: string })?.backendAccessToken) {
-    headers.Authorization = `Bearer ${(session as Session & { backendAccessToken?: string }).backendAccessToken}`
-  }
-  const res = await fetch(`${API_URL}${path}`, { 
-    method: "PUT",
-    headers,
+  return apiFetch(path, {
+    method: 'PUT',
     body: body ? JSON.stringify(body) : undefined
-  })
-  if (!res.ok) {
-    if (res.status === 401) {
-      window.location.href = '/auth/signin';
-    }
-    throw new Error(`${res.status} ${await res.text()}`)
-  }
-  return res.json()
+  }).then(res => res.json());
 }
 
+
 export async function apiDelete(path: string) {
-  const session = await getSession()
-  const headers: Record<string, string> = { "Content-Type": "application/json" }
-  if ((session as Session & { backendAccessToken?: string })?.backendAccessToken) {
-    headers.Authorization = `Bearer ${(session as Session & { backendAccessToken?: string }).backendAccessToken}`
-  }
-  const res = await fetch(`${API_URL}${path}`, { 
-    method: "DELETE",
-    headers
-  })
-  if (!res.ok) {
-    if (res.status === 401) {
-      window.location.href = '/auth/signin';
-    }
-    throw new Error(`${res.status} ${await res.text()}`)
-  }
-  return res.json()
+  return apiFetch(path, {
+    method: 'DELETE',
+  }).then(res => res.json());
 }
 
 
 
 // 必要ならaxiosクライアントも同様にAPI_URLで生成すること
 
-// apiClientのダミー実装（本来はaxios等で作成するが、ここではfetchラッパーを使う）
-const apiClient = {
-  get: apiGet,
-  post: apiPost,
-  patch: apiPatch,
-  put: apiPut,
-  delete: apiDelete,
-};
 
-export default apiClient;
+// apiFetchのみをエクスポート
+export default apiFetch;

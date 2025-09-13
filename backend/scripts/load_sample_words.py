@@ -9,133 +9,143 @@ django.setup()
 
 from quiz.models import Word, WordTranslation
 
-# サンプル単語データ
 sample_words = [
-    # 初級
-    {"word": "hello", "pronunciation": "həˈloʊ", "part_of_speech": "interjection", "difficulty": "beginner", "level": 1, "segment": "greetings",
-     "translations": [
-         {"translation": "こんにちは", "is_correct": True, "context": "挨拶"},
-         {"translation": "おはよう", "is_correct": False, "context": "朝の挨拶"},
-         {"translation": "こんばんは", "is_correct": False, "context": "夜の挨拶"}
-     ]},
-    {"word": "goodbye", "pronunciation": "ɡʊdˈbaɪ", "part_of_speech": "interjection", "difficulty": "beginner", "level": 1, "segment": "greetings",
-     "translations": [
-         {"translation": "さようなら", "is_correct": True, "context": "別れの挨拶"},
-         {"translation": "また明日", "is_correct": False, "context": "明日会う予定の別れ"},
-         {"translation": "お疲れ様", "is_correct": False, "context": "仕事の別れ"}
-     ]},
-    {"word": "apple", "pronunciation": "ˈæpəl", "part_of_speech": "noun", "difficulty": "beginner", "level": 1, "segment": "food",
-     "translations": [
-         {"translation": "りんご", "is_correct": True, "context": "果物"},
-         {"translation": "みかん", "is_correct": False, "context": "柑橘類"},
-         {"translation": "バナナ", "is_correct": False, "context": "熱帯果物"}
-     ]},
-    {"word": "book", "pronunciation": "bʊk", "part_of_speech": "noun", "difficulty": "beginner", "level": 1, "segment": "education",
-     "translations": [
-         {"translation": "本", "is_correct": True, "context": "読み物"},
-         {"translation": "雑誌", "is_correct": False, "context": "定期刊行物"},
-         {"translation": "新聞", "is_correct": False, "context": "日刊紙"}
-     ]},
-    {"word": "water", "pronunciation": "ˈwɔːtər", "part_of_speech": "noun", "difficulty": "beginner", "level": 1, "segment": "basic",
-     "translations": [
-         {"translation": "水", "is_correct": True, "context": "液体"},
-         {"translation": "お湯", "is_correct": False, "context": "温かい水"},
-         {"translation": "氷", "is_correct": False, "context": "固体の水"}
-     ]},
-    
-    # 中級
-    {"word": "accomplish", "pronunciation": "əˈkʌmplɪʃ", "part_of_speech": "verb", "difficulty": "intermediate", "level": 3, "segment": "achievement",
-     "translations": [
-         {"translation": "達成する", "is_correct": True, "context": "目標を成し遂げる"},
-         {"translation": "始める", "is_correct": False, "context": "新しく開始する"},
-         {"translation": "諦める", "is_correct": False, "context": "断念する"}
-     ]},
-    {"word": "knowledge", "pronunciation": "ˈnɑːlɪdʒ", "part_of_speech": "noun", "difficulty": "intermediate", "level": 3, "segment": "education",
-     "translations": [
-         {"translation": "知識", "is_correct": True, "context": "学んだ情報"},
-         {"translation": "経験", "is_correct": False, "context": "実際に体験したこと"},
-         {"translation": "想像", "is_correct": False, "context": "頭の中で思い描くこと"}
-     ]},
-    {"word": "environment", "pronunciation": "ɪnˈvaɪrənmənt", "part_of_speech": "noun", "difficulty": "intermediate", "level": 3, "segment": "nature",
-     "translations": [
-         {"translation": "環境", "is_correct": True, "context": "周囲の状況"},
-         {"translation": "気候", "is_correct": False, "context": "天候の状況"},
-         {"translation": "地域", "is_correct": False, "context": "特定の場所"}
-     ]},
-    {"word": "opportunity", "pronunciation": "ˌɑːpərˈtuːnəti", "part_of_speech": "noun", "difficulty": "intermediate", "level": 3, "segment": "business",
-     "translations": [
-         {"translation": "機会", "is_correct": True, "context": "チャンス"},
-         {"translation": "困難", "is_correct": False, "context": "難しい状況"},
-         {"translation": "結果", "is_correct": False, "context": "何かの成果"}
-     ]},
-    {"word": "consideration", "pronunciation": "kənˌsɪdəˈreɪʃən", "part_of_speech": "noun", "difficulty": "intermediate", "level": 3, "segment": "thinking",
-     "translations": [
-         {"translation": "考慮", "is_correct": True, "context": "よく考えること"},
-         {"translation": "無視", "is_correct": False, "context": "気にしないこと"},
-         {"translation": "即決", "is_correct": False, "context": "すぐに決めること"}
-     ]},
-    
-    # 上級
-    {"word": "contemporary", "pronunciation": "kənˈtempəreri", "part_of_speech": "adjective", "difficulty": "advanced", "level": 5, "segment": "time",
-     "translations": [
-         {"translation": "現代の", "is_correct": True, "context": "現在の時代の"},
-         {"translation": "古代の", "is_correct": False, "context": "昔の時代の"},
-         {"translation": "未来の", "is_correct": False, "context": "将来の時代の"}
-     ]},
-    {"word": "sophisticated", "pronunciation": "səˈfɪstɪkeɪtɪd", "part_of_speech": "adjective", "difficulty": "advanced", "level": 5, "segment": "quality",
-     "translations": [
-         {"translation": "洗練された", "is_correct": True, "context": "高度で複雑な"},
-         {"translation": "単純な", "is_correct": False, "context": "簡単で分かりやすい"},
-         {"translation": "古風な", "is_correct": False, "context": "昔ながらの"}
-     ]},
-    {"word": "ambiguous", "pronunciation": "æmˈbɪɡjuəs", "part_of_speech": "adjective", "difficulty": "advanced", "level": 5, "segment": "communication",
-     "translations": [
-         {"translation": "曖昧な", "is_correct": True, "context": "はっきりしない"},
-         {"translation": "明確な", "is_correct": False, "context": "はっきりしている"},
-         {"translation": "簡潔な", "is_correct": False, "context": "短くまとまった"}
-     ]},
-    {"word": "nevertheless", "pronunciation": "ˌnevərðəˈles", "part_of_speech": "adverb", "difficulty": "advanced", "level": 5, "segment": "logic",
-     "translations": [
-         {"translation": "それにもかかわらず", "is_correct": True, "context": "逆接の接続詞"},
-         {"translation": "その結果", "is_correct": False, "context": "結果を示す"},
-         {"translation": "例えば", "is_correct": False, "context": "例を示す"}
-     ]},
-    {"word": "tremendous", "pronunciation": "trɪˈmendəs", "part_of_speech": "adjective", "difficulty": "advanced", "level": 5, "segment": "degree",
-     "translations": [
-         {"translation": "とても大きな", "is_correct": True, "context": "程度が非常に大きい"},
-         {"translation": "とても小さな", "is_correct": False, "context": "程度が非常に小さい"},
-         {"translation": "普通の", "is_correct": False, "context": "平均的な"}
-     ]}
+    {"word": "apple", "correct": "りんご", "dummy": ["バナナ", "オレンジ", "ぶどう"]},
+    {"word": "dog", "correct": "犬", "dummy": ["猫", "鳥", "馬"]},
+    {"word": "car", "correct": "車", "dummy": ["自転車", "電車", "飛行機"]},
+    {"word": "water", "correct": "水", "dummy": ["火", "土", "空気"]},
+    {"word": "sun", "correct": "太陽", "dummy": ["月", "星", "雲"]},
+    {"word": "computer", "correct": "コンピュータ", "dummy": ["スマートフォン", "タブレット", "テレビ"]},
+    {"word": "school", "correct": "学校", "dummy": ["病院", "公園", "図書館"]},
+    {"word": "book", "correct": "本", "dummy": ["新聞", "雑誌", "手紙"]},
+    {"word": "music", "correct": "音楽", "dummy": ["映画", "ゲーム", "アート"]},
+    {"word": "teacher", "correct": "先生", "dummy": ["学生", "エンジニア", "医者"]},
+    {"word": "cat", "correct": "猫", "dummy": ["犬", "鳥", "魚"]},
+    {"word": "house", "correct": "家", "dummy": ["建物", "アパート", "部屋"]},
+    {"word": "tree", "correct": "木", "dummy": ["花", "草", "葉"]},
+    {"word": "river", "correct": "川", "dummy": ["湖", "海", "滝"]},
+    {"word": "mountain", "correct": "山", "dummy": ["丘", "谷", "平原"]},
+    {"word": "ocean", "correct": "海洋", "dummy": ["湖", "川", "池"]},
+    {"word": "flower", "correct": "花", "dummy": ["葉", "実", "茎"]},
+    {"word": "rain", "correct": "雨", "dummy": ["雪", "霧", "風"]},
+    {"word": "snow", "correct": "雪", "dummy": ["雨", "霜", "氷"]},
+    {"word": "wind", "correct": "風", "dummy": ["嵐", "静寂", "雨"]},
+    {"word": "fire", "correct": "火", "dummy": ["水", "風", "土"]},
+    {"word": "earth", "correct": "地球", "dummy": ["火星", "金星", "月"]},
+    {"word": "moon", "correct": "月", "dummy": ["太陽", "星", "惑星"]},
+    {"word": "star", "correct": "星", "dummy": ["月", "太陽", "彗星"]},
+    {"word": "clock", "correct": "時計", "dummy": ["カレンダー", "日記", "時計台"]},
+    {"word": "phone", "correct": "電話", "dummy": ["メール", "ラジオ", "テレビ"]},
+    {"word": "pen", "correct": "ペン", "dummy": ["鉛筆", "マーカー", "ブラシ"]},
+    {"word": "paper", "correct": "紙", "dummy": ["布", "プラスチック", "木"]},
+    {"word": "desk", "correct": "机", "dummy": ["テーブル", "椅子", "棚"]},
+    {"word": "chair", "correct": "椅子", "dummy": ["机", "ソファ", "ベッド"]},
+    {"word": "window", "correct": "窓", "dummy": ["ドア", "壁", "屋根"]},
+    {"word": "door", "correct": "ドア", "dummy": ["窓", "柵", "壁"]},
+    {"word": "road", "correct": "道", "dummy": ["道程", "道具", "線路"]},
+    {"word": "bicycle", "correct": "自転車", "dummy": ["バイク", "車", "電車"]},
+    {"word": "train", "correct": "電車", "dummy": ["バス", "飛行機", "船"]},
+    {"word": "plane", "correct": "飛行機", "dummy": ["ヘリコプター", "船", "車"]},
+    {"word": "ship", "correct": "船", "dummy": ["飛行機", "電車", "車"]},
+    {"word": "city", "correct": "都市", "dummy": ["村", "町", "郊外"]},
+    {"word": "village", "correct": "村", "dummy": ["都市", "町", "集落"]},
+    {"word": "country", "correct": "国", "dummy": ["都市", "州", "地域"]},
+    {"word": "language", "correct": "言語", "dummy": ["文化", "文字", "発音"]},
+    {"word": "friend", "correct": "友達", "dummy": ["敵", "知人", "仲間"]},
+    {"word": "family", "correct": "家族", "dummy": ["友達", "隣人", "同僚"]},
+    {"word": "child", "correct": "子供", "dummy": ["大人", "少年", "少女"]},
+    {"word": "adult", "correct": "大人", "dummy": ["子供", "少年", "高齢者"]},
+    {"word": "food", "correct": "食べ物", "dummy": ["飲み物", "料理", "デザート"]},
+    {"word": "drink", "correct": "飲み物", "dummy": ["食べ物", "スナック", "料理"]},
+    {"word": "coffee", "correct": "コーヒー", "dummy": ["紅茶", "ジュース", "水"]},
+    {"word": "tea", "correct": "お茶", "dummy": ["コーヒー", "ジュース", "水"]},
+    {"word": "sugar", "correct": "砂糖", "dummy": ["塩", "胡椒", "小麦粉"]},
+    {"word": "salt", "correct": "塩", "dummy": ["砂糖", "酢", "油"]},
+    {"word": "chocolate", "correct": "チョコレート", "dummy": ["キャンディ", "ケーキ", "アイス"]},
+    {"word": "cake", "correct": "ケーキ", "dummy": ["パン", "クッキー", "パイ"]},
+    {"word": "bread", "correct": "パン", "dummy": ["ケーキ", "ご飯", "シリアル"]},
+    {"word": "butter", "correct": "バター", "dummy": ["マーガリン", "チーズ", "クリーム"]},
+    {"word": "cheese", "correct": "チーズ", "dummy": ["バター", "ヨーグルト", "牛乳"]},
+    {"word": "egg", "correct": "卵", "dummy": ["豆", "果物", "肉"]},
+    {"word": "rice", "correct": "米", "dummy": ["小麦", "大麦", "トウモロコシ"]},
+    {"word": "noodle", "correct": "麺", "dummy": ["ご飯", "パン", "米"]},
+    {"word": "soup", "correct": "スープ", "dummy": ["サラダ", "スムージー", "ジュース"]},
+    {"word": "meat", "correct": "肉", "dummy": ["魚", "野菜", "果物"]},
+    {"word": "fish", "correct": "魚", "dummy": ["肉", "貝", "昆虫"]},
+    {"word": "vegetable", "correct": "野菜", "dummy": ["果物", "肉", "穀物"]},
+    {"word": "fruit", "correct": "果物", "dummy": ["野菜", "肉", "菓子"]},
+    {"word": "market", "correct": "市場", "dummy": ["店", "駅", "広場"]},
+    {"word": "shop", "correct": "店", "dummy": ["市場", "商店", "スーパーマーケット"]},
+    {"word": "store", "correct": "店舗", "dummy": ["店", "市場", "商店"]},
+    {"word": "money", "correct": "お金", "dummy": ["時間", "価値", "点数"]},
+    {"word": "bank", "correct": "銀行", "dummy": ["市場", "店", "ATM"]},
+    {"word": "carpet", "correct": "カーペット", "dummy": ["マット", "カーテン", "ラグ"]},
+    {"word": "mirror", "correct": "鏡", "dummy": ["窓", "写真", "テレビ"]},
+    {"word": "table", "correct": "テーブル", "dummy": ["机", "椅子", "棚"]},
+    {"word": "lamp", "correct": "ランプ", "dummy": ["ライト", "テレビ", "時計"]},
+    {"word": "sofa", "correct": "ソファ", "dummy": ["椅子", "ベッド", "机"]},
+    {"word": "bed", "correct": "ベッド", "dummy": ["ソファ", "椅子", "マットレス"]},
+    {"word": "pillow", "correct": "枕", "dummy": ["毛布", "シーツ", "ベッドカバー"]},
+    {"word": "blanket", "correct": "毛布", "dummy": ["枕", "シーツ", "カバー"]},
+    {"word": "bath", "correct": "風呂", "dummy": ["シャワー", "洗面所", "トイレ"]},
+    {"word": "shower", "correct": "シャワー", "dummy": ["風呂", "洗面所", "浴室"]},
+    {"word": "toilet", "correct": "トイレ", "dummy": ["浴室", "洗面所", "部屋"]},
+    {"word": "sink", "correct": "流し", "dummy": ["カウンター", "テーブル", "棚"]},
+    {"word": "keyboard", "correct": "キーボード", "dummy": ["マウス", "ディスプレイ", "プリンター"]},
+    {"word": "mouse", "correct": "マウス", "dummy": ["キーボード", "タッチパッド", "リモコン"]},
+    {"word": "screen", "correct": "画面", "dummy": ["ディスプレイ", "窓", "鏡"]},
+    {"word": "cable", "correct": "ケーブル", "dummy": ["コード", "ワイヤー", "パイプ"]},
+    {"word": "library", "correct": "図書館", "dummy": ["学校", "本屋", "資料室"]},
+    {"word": "magazine", "correct": "雑誌", "dummy": ["新聞", "本", "ポスター"]},
+    {"word": "newspaper", "correct": "新聞", "dummy": ["雑誌", "本", "チラシ"]},
+    {"word": "movie", "correct": "映画", "dummy": ["ドラマ", "アニメ", "ミュージックビデオ"]},
+    {"word": "film", "correct": "フィルム", "dummy": ["映画", "写真", "ドキュメンタリー"]},
+    {"word": "song", "correct": "歌", "dummy": ["詩", "曲", "メロディ"]},
+    {"word": "dance", "correct": "踊り", "dummy": ["歌", "演劇", "曲"]},
+    {"word": "game", "correct": "ゲーム", "dummy": ["スポーツ", "競技", "遊び"]},
+    {"word": "sport", "correct": "スポーツ", "dummy": ["ゲーム", "運動", "レクリエーション"]},
+    {"word": "ball", "correct": "ボール", "dummy": ["円", "球", "ドーム"]},
+    {"word": "goal", "correct": "ゴール", "dummy": ["得点", "勝利", "シュート"]},
+    {"word": "team", "correct": "チーム", "dummy": ["グループ", "個人", "クラブ"]},
+    {"word": "coach", "correct": "コーチ", "dummy": ["監督", "選手", "指導者"]},
+    {"word": "player", "correct": "選手", "dummy": ["観客", "コーチ", "審判"]},
+    {"word": "score", "correct": "得点", "dummy": ["点数", "結果", "評価"]}
 ]
 
+
+def get_level_and_segment(idx):
+    # 例: 1レベル=30問, 1セグメント=10問（必要に応じて調整）
+    level = idx // 30 + 1
+    segment = (idx % 30) // 10 + 1
+    return level, segment
+
 def load_sample_data():
-    """サンプルデータを読み込む"""
     print("サンプル単語データを読み込んでいます...")
-    
-    for word_data in sample_words:
-        # 既存の単語をチェック
+    for idx, word_data in enumerate(sample_words):
         if Word.objects.filter(text=word_data['word']).exists():
             print(f"単語 '{word_data['word']}' は既に存在します。スキップします。")
             continue
-        
-        # 単語を作成（新しいモデル構造に合わせて調整）
+        level, segment = get_level_and_segment(idx)
         word = Word.objects.create(
             text=word_data['word'],
-            level=word_data['level'],
-            segment=word_data['level'],  # segmentもlevelに合わせる
-            difficulty=0.3 if word_data['difficulty'] == 'beginner' else 0.5 if word_data['difficulty'] == 'intermediate' else 0.8
+            level=level,
+            segment=segment,
+            difficulty=0.3 if level == 1 else 0.5 if level == 2 else 0.8
         )
-        
-        # 翻訳を作成
-        for translation_data in word_data['translations']:
+        # 正解
+        WordTranslation.objects.create(
+            word=word,
+            text=word_data['correct'],
+            is_correct=True
+        )
+        # ダミー
+        for dummy in word_data['dummy']:
             WordTranslation.objects.create(
                 word=word,
-                text=translation_data['translation'],
-                is_correct=translation_data['is_correct']
+                text=dummy,
+                is_correct=False
             )
-        
         print(f"単語 '{word.text}' を追加しました。")
-    
     print(f"サンプルデータの読み込みが完了しました。")
     print(f"総単語数: {Word.objects.count()}")
     print(f"総翻訳数: {WordTranslation.objects.count()}")

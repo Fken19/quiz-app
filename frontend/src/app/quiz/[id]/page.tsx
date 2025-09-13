@@ -2,7 +2,7 @@
 
 import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { QuizSet, QuizItem, WordTranslation } from '@/types/quiz';
 
@@ -16,8 +16,16 @@ export default function QuizPage() {
   const [quizItems, setQuizItems] = useState<QuizItem[]>([]);
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
-  const [responses, setResponses] = useState<Record<string, { translation_id: string; start_time: number }>>({});
+  const [responses, setResponses] = useState<Record<string, { translation_id: string; start_time: number; outcome?: 'correct' | 'wrong' | 'timeout' }>>({});
   const [startTime, setStartTime] = useState<number>(0);
+  const [shuffledChoices, setShuffledChoices] = useState<WordTranslation[]>([]);
+  const [timer, setTimer] = useState(10);
+  const [showJudge, setShowJudge] = useState(false);
+  const [judgeResult, setJudgeResult] = useState<'correct' | 'wrong' | 'timeout' | null>(null);
+  const [judgeText, setJudgeText] = useState('');
+  const [judgeIcon, setJudgeIcon] = useState('');
+  const [judgeDisabled, setJudgeDisabled] = useState(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,61 +46,62 @@ export default function QuizPage() {
 
   const fetchQuizData = async () => {
     try {
-      // TODO: 実際のAPIコールに置き換え
-      // const quizSet = await getQuizSet(quizId);
-      // const quizItems = await getQuizItems(quizId);
-      
-      // デモデータ
+      // 実際のバックエンドからクイズデータを取得
+      const backendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080').replace(/\/$/, '');
+      const endpoint = `${backendUrl}/api/quiz-sets/${quizId}/`;
+
+      const headers: Record<string,string> = { 'Content-Type': 'application/json' };
+      if (session && (session as any).backendAccessToken) {
+        headers['Authorization'] = `Bearer ${(session as any).backendAccessToken}`;
+      }
+
+      const resp = await fetch(endpoint, { method: 'GET', headers });
+      if (!resp.ok) throw new Error(`Failed to fetch quiz data: ${resp.status}`);
+      const body = await resp.json();
+
+      // API から quiz_set / quiz_items を期待
+      if (body && (body.quiz_set || body.id || body.quiz_items)) {
+        // 一部バックエンドではトップレベルに quiz_set を入れずに返す場合があるためハンドリング
+        const qs = body.quiz_set ? body.quiz_set : body;
+        // quiz_items は body.quiz_items または qs.quiz_items に入る可能性がある
+        const rawItems = (body.quiz_items ?? (qs && (qs as any).quiz_items) ?? []) as QuizItem[];
+
+        // 正規化: フロントは quizItem.translations を期待しているが、バックエンドは
+        // quizItem.word.translations に格納する設計のため、ここで translations を保証する
+        const normalizedItems = rawItems.map((item: any) => ({
+          ...item,
+          translations: (item.translations ?? item.word?.translations ?? []).map((t: any) => ({
+            id: t.id,
+            word_id: t.word_id ?? item.word?.id ?? t.word?.id,
+            ja: t.text ?? t.ja ?? '',
+            is_correct: t.is_correct ?? false
+          }))
+        })) as QuizItem[];
+
+        setQuizSet(qs as QuizSet);
+        setQuizItems(normalizedItems);
+        return;
+      }
+
+      // フォールバック: デモデータ（最悪のケース）
+      console.warn('Backend returned unexpected quiz payload, falling back to demo data');
       const demoQuizSet: QuizSet = {
         id: quizId,
         mode: 'default',
         level: 2,
         segment: 1,
-        question_count: 10,
+        question_count: 2,
         started_at: new Date().toISOString()
       };
-
       const demoQuizItems: QuizItem[] = [
         {
-          id: 'item1',
-          quiz_set_id: quizId,
-          word_id: 'word1',
-          word: {
-            id: 'word1',
-            text: 'beautiful',
-            pos: 'adjective',
-            level: 2,
-            tags: ['basic']
-          },
-          translations: [
-            { id: 'trans1', word_id: 'word1', ja: '美しい', is_correct: true },
-            { id: 'trans2', word_id: 'word1', ja: '大きい', is_correct: false },
-            { id: 'trans3', word_id: 'word1', ja: '小さい', is_correct: false },
-            { id: 'trans4', word_id: 'word1', ja: '早い', is_correct: false },
-          ],
+          id: 'item1', quiz_set_id: quizId, word_id: 'word1',
+          word: { id: 'word1', text: 'beautiful', pos: 'adjective', level: 2, tags: ['basic'] },
+          translations: [ { id: 'trans1', word_id: 'word1', ja: '美しい', is_correct: true } ],
           order_no: 1
         },
-        {
-          id: 'item2',
-          quiz_set_id: quizId,
-          word_id: 'word2',
-          word: {
-            id: 'word2',
-            text: 'knowledge',
-            pos: 'noun',
-            level: 2,
-            tags: ['academic']
-          },
-          translations: [
-            { id: 'trans5', word_id: 'word2', ja: '時間', is_correct: false },
-            { id: 'trans6', word_id: 'word2', ja: '知識', is_correct: true },
-            { id: 'trans7', word_id: 'word2', ja: '経験', is_correct: false },
-            { id: 'trans8', word_id: 'word2', ja: '技術', is_correct: false },
-          ],
-          order_no: 2
-        }
+        { id: 'item2', quiz_set_id: quizId, word_id: 'word2', word: { id: 'word2', text: 'knowledge', pos: 'noun', level: 2, tags: ['academic'] }, translations: [ { id: 'trans6', word_id: 'word2', ja: '知識', is_correct: true } ], order_no: 2 }
       ];
-
       setQuizSet(demoQuizSet);
       setQuizItems(demoQuizItems);
     } catch (err) {
@@ -103,12 +112,28 @@ export default function QuizPage() {
     }
   };
 
+  // 選択肢をランダム化
+  const shuffleChoices = (choices: WordTranslation[]) => {
+    const arr = [...choices];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+
+  // クイズ開始
   const handleStartQuiz = async () => {
     try {
       setQuizStarted(true);
       setStartTime(Date.now());
-      // 最初の問題の回答開始時刻を記録
-      const currentItem = quizItems[currentItemIndex];
+      setTimer(10);
+      setShowJudge(false);
+      setJudgeResult(null);
+      setJudgeDisabled(false);
+      // 最初の問題の選択肢をランダム化
+      const currentItem = quizItems[0];
+      setShuffledChoices(shuffleChoices(currentItem.translations));
       setResponses(prev => ({
         ...prev,
         [currentItem.id]: { translation_id: '', start_time: Date.now() }
@@ -119,42 +144,123 @@ export default function QuizPage() {
     }
   };
 
-  const handleAnswerSelect = (translationId: string) => {
+  // タイマー管理
+  useEffect(() => {
+    if (!quizStarted || showJudge) return;
+    if (timer === 0) {
+      handleJudge('timeout');
+      return;
+    }
+    timerRef.current = setTimeout(() => setTimer((t) => t - 1), 1000);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [timer, quizStarted, showJudge]);
+
+  // 選択肢選択時
+  const handleAnswerSelect = async (translationId: string) => {
+    if (showJudge || judgeDisabled) return;
     setSelectedAnswer(translationId);
+    
+    try {
+      // サーバーに回答を送信して正誤判定を取得
+      const backendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080').replace(/\/$/, '');
+      const headers: Record<string,string> = { 'Content-Type': 'application/json' };
+      // テスト用に認証をスキップ
+      // if (session && (session as any).backendAccessToken) {
+      //   headers['Authorization'] = `Bearer ${(session as any).backendAccessToken}`;
+      // }
+
+      const response = await fetch(`${backendUrl}/api/quiz-sets/${quizId}/submit_answer/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          quiz_item_id: currentItem.id,
+          selected_translation_id: translationId,
+          reaction_time_ms: Date.now() - responses[currentItem.id]?.start_time || 0
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        handleJudge(result.is_correct ? 'correct' : 'wrong', translationId);
+      } else {
+        // サーバーエラーの場合はクライアント側判定にフォールバック
+        console.warn('Server submission failed, falling back to client-side judgment');
+        handleJudge(
+          shuffledChoices.find((t) => t.id === translationId)?.is_correct ? 'correct' : 'wrong',
+          translationId
+        );
+      }
+    } catch (error) {
+      console.error('Failed to submit answer to server:', error);
+      // エラーの場合はクライアント側判定にフォールバック
+      handleJudge(
+        shuffledChoices.find((t) => t.id === translationId)?.is_correct ? 'correct' : 'wrong',
+        translationId
+      );
+    }
+  };
+
+  // 判定処理
+  const handleJudge = (result: 'correct' | 'wrong' | 'timeout', translationId?: string) => {
+    setShowJudge(true);
+    setJudgeResult(result);
+    setJudgeDisabled(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    let text = '';
+    let icon = '';
+    if (result === 'correct') {
+      text = '正解！';
+      icon = '◯';
+    } else if (result === 'wrong') {
+      text = '不正解';
+      icon = '×';
+    } else {
+      text = '時間切れ';
+      icon = '⏱️';
+    }
+    setJudgeText(text);
+    setJudgeIcon(icon);
+    // 回答記録
     const currentItem = quizItems[currentItemIndex];
-    setResponses(prev => ({
+    setResponses((prev) => ({
       ...prev,
       [currentItem.id]: {
         ...prev[currentItem.id],
-        translation_id: translationId
+        translation_id: translationId || '',
+        outcome: result
       }
     }));
   };
 
+  // 次の問題へ（判定画面でどこでもタップ）
   const handleNextQuestion = () => {
+    if (!showJudge) return;
+    setJudgeDisabled(true);
+    setShowJudge(false);
+    setJudgeResult(null);
+    setJudgeText('');
+    setJudgeIcon('');
+    setSelectedAnswer('');
     if (currentItemIndex < quizItems.length - 1) {
-      setCurrentItemIndex(currentItemIndex + 1);
-      const nextItem = quizItems[currentItemIndex + 1];
-      
-      // 次の問題の回答開始時刻を記録
-      if (!responses[nextItem.id]) {
-        setResponses(prev => ({
-          ...prev,
-          [nextItem.id]: { translation_id: '', start_time: Date.now() }
-        }));
-      }
-      
-      setSelectedAnswer(responses[nextItem.id]?.translation_id || '');
+      const nextIndex = currentItemIndex + 1;
+      setCurrentItemIndex(nextIndex);
+      setTimer(10);
+      setJudgeDisabled(false);
+      // 次の問題の選択肢をランダム化
+      setShuffledChoices(shuffleChoices(quizItems[nextIndex].translations));
+      setResponses((prev) => ({
+        ...prev,
+        [quizItems[nextIndex].id]: { translation_id: '', start_time: Date.now() }
+      }));
+    } else {
+      // 最後の問題ならクイズ提出
+      handleSubmitQuiz();
     }
   };
 
-  const handlePrevQuestion = () => {
-    if (currentItemIndex > 0) {
-      setCurrentItemIndex(currentItemIndex - 1);
-      const prevItem = quizItems[currentItemIndex - 1];
-      setSelectedAnswer(responses[prevItem.id]?.translation_id || '');
-    }
-  };
+  // 前の問題ボタンは要件上不要なので削除
 
   const handleSubmitQuiz = async () => {
     setSubmitting(true);
@@ -363,22 +469,31 @@ export default function QuizPage() {
               {currentItem.word.pos}
             </p>
           </div>
-          
+
+          {/* タイマー */}
+          <div className="flex justify-center mb-6">
+            <div className="flex items-center gap-2 text-lg font-semibold">
+              <span className="text-indigo-600">残り</span>
+              <span className="text-2xl text-indigo-700">{timer}</span>
+              <span className="text-indigo-600">秒</span>
+            </div>
+          </div>
+
           <p className="text-lg text-gray-700 mb-6 text-center">
             この英単語の意味として正しいものを選択してください
           </p>
 
-          {/* 選択肢 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-            {currentItem.translations.map((translation, index) => (
+          {/* 選択肢（縦4つ・スクロール禁止） */}
+          <div className="flex flex-col gap-4 mb-8">
+            {shuffledChoices.map((translation, index) => (
               <button
                 key={translation.id}
                 onClick={() => handleAnswerSelect(translation.id)}
-                className={`p-6 rounded-lg border-2 transition-colors text-left ${
-                  selectedAnswer === translation.id
-                    ? 'border-indigo-500 bg-indigo-50'
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                }`}
+                disabled={showJudge || judgeDisabled}
+                className={`p-6 rounded-lg border-2 transition-colors text-left w-full text-lg font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400
+                  ${selectedAnswer === translation.id ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}
+                  ${showJudge ? 'opacity-60 pointer-events-none' : ''}`}
+                style={{ minHeight: '56px' }}
               >
                 <span className="font-bold text-lg text-gray-700 mr-3">
                   {String.fromCharCode(65 + index)}.
@@ -388,41 +503,24 @@ export default function QuizPage() {
             ))}
           </div>
 
-          {/* ナビゲーションボタン */}
-          <div className="flex justify-between">
-            <button
-              onClick={handlePrevQuestion}
-              disabled={currentItemIndex === 0}
-              className="px-6 py-3 text-gray-600 bg-gray-200 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          {/* 判定画面（◯/×/Timeout） */}
+          {showJudge && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30"
+              onClick={handleNextQuestion}
+              style={{ cursor: 'pointer' }}
             >
-              前の問題
-            </button>
-            
-            {currentItemIndex === quizItems.length - 1 ? (
-              <button
-                onClick={handleSubmitQuiz}
-                disabled={submitting || !selectedAnswer}
-                className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium disabled:opacity-50 flex items-center"
-              >
-                {submitting ? (
-                  <>
-                    <LoadingSpinner size="small" className="mr-2" />
-                    提出中...
-                  </>
-                ) : (
-                  'クイズを提出'
-                )}
-              </button>
-            ) : (
-              <button
-                onClick={handleNextQuestion}
-                disabled={!selectedAnswer}
-                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                次の問題
-              </button>
-            )}
-          </div>
+              <div className="bg-white rounded-lg shadow-lg p-10 flex flex-col items-center">
+                <div className="text-6xl mb-4">
+                  {judgeIcon}
+                </div>
+                <div className="text-2xl font-bold mb-2">
+                  {judgeText}
+                </div>
+                <div className="text-gray-600 text-lg">画面のどこでもタップして次へ</div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
