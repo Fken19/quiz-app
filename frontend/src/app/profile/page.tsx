@@ -74,11 +74,24 @@ export default function ProfilePage() {
         
         // avatar_url が存在する場合はそれを使用、なければavatarフィールドのURLを使用
         const avatarUrl = userData.avatar_url || (userData.avatar && userData.avatar.startsWith('http') ? userData.avatar : null);
-  // DEBUG
-  console.debug('profile fetch userData.avatar_url=', userData.avatar_url);
-  console.debug('profile fetch userData.avatar=', userData.avatar);
-  console.debug('computed avatarUrl=', avatarUrl);
-  setAvatarPreview(avatarUrl);
+        // Normalize URLs that point to the Docker internal hostname 'backend'
+        let normalizedAvatarUrl = avatarUrl;
+        if (normalizedAvatarUrl) {
+          try {
+            const parsed = new URL(normalizedAvatarUrl);
+            if (parsed.hostname === 'backend') {
+              // replace internal docker hostname with host-accessible origin and port
+              const publicHost = window.location.hostname || 'localhost';
+              // backend listens on 8080 in docker-compose
+              parsed.hostname = publicHost;
+              parsed.port = '8080';
+              normalizedAvatarUrl = parsed.toString();
+            }
+          } catch (e) {
+            // keep original if URL parsing fails
+          }
+        }
+        setAvatarPreview(normalizedAvatarUrl);
         
       } else {
         const errorData = await profileRes.json();
