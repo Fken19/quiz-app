@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { User } from '@/types/quiz';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import InviteCodeInput from '@/components/InviteCodeInput';
 
 interface InstructorInfo {
   id: string;
@@ -408,6 +409,40 @@ export default function ProfilePage() {
                 </button>
               </div>
             </form>
+          </div>
+
+          {/* 招待コード入力 */}
+          <div className="mt-6 bg-white rounded-lg shadow">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">講師からの招待</h3>
+              <p className="text-sm text-gray-600 mt-1">講師から受け取った招待コードを入力してください</p>
+            </div>
+            <div className="p-6">
+              <InviteCodeInput 
+                onSuccess={(teacherName: string) => {
+                  setSuccess(`${teacherName}との紐付けが完了しました`);
+                  // 講師一覧を更新（実際のAPIでは再取得が必要）
+                  const newInstructor: InstructorInfo = {
+                    id: Date.now().toString(),
+                    name: teacherName,
+                    email: 'teacher@example.com',
+                    joined_at: new Date().toISOString()
+                  };
+                  setInstructors(prev => [...prev, newInstructor]);
+                  
+                  // 履歴に追加
+                  const newHistory: ApprovalHistory = {
+                    id: Date.now().toString(),
+                    instructor_name: teacherName,
+                    instructor_email: 'teacher@example.com',
+                    action: 'approved',
+                    date: new Date().toISOString()
+                  };
+                  setApprovalHistory(prev => [newHistory, ...prev]);
+                }}
+                onError={setError}
+              />
+            </div>
           </div>
 
           {/* 管理中の講師一覧 */}

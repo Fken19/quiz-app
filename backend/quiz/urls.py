@@ -9,6 +9,11 @@ from . import views
 router = DefaultRouter()
 router.register(r'words', views.WordViewSet)
 router.register(r'quiz-sets', views.QuizSetViewSet, basename='quiz-set')
+# 講師・生徒管理API
+router.register(r'teacher/invite-codes', views.TeacherInviteCodeViewSet, basename='teacher-invite-code')
+router.register(r'teacher/students', views.TeacherStudentViewSet, basename='teacher-student')
+router.register(r'student/invite', views.StudentInviteCodeView, basename='student-invite')
+router.register(r'student/teachers', views.StudentTeacherViewSet, basename='student-teacher')
 
 def test_view(request):
     return JsonResponse({'message': 'New URL pattern is working!'})
@@ -26,6 +31,9 @@ urlpatterns = [
     # 個別API エンドポイント
     path('auth/google/', views.google_auth, name='google_auth'),
     path('auth/google-simple/', views.google_auth_simple, name='google_auth_simple'),  # テスト用
+    path('auth/check-teacher/', views.check_teacher_permission, name='check_teacher_permission'),
+    path('debug/auth/', views.debug_auth, name='debug_auth'),  # デバッグ用
+    path('debug/create-user/', views.create_test_user, name='create_test_user'),  # デバッグ用
     path('dashboard/stats/', views.dashboard_stats, name='dashboard_stats'),
     path('quiz/history/', views.quiz_history, name='quiz_history'),
     path('quiz/result/<str:quiz_set_id>/', views.quiz_result, name='quiz_result'),

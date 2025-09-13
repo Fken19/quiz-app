@@ -1,43 +1,39 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useSession, signIn } from 'next-auth/react';
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import AdminLayout from '@/components/AdminLayout';
+import InviteCodeManagement from '@/components/InviteCodeManagement';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { apiGet, apiPost } from '@/lib/api-utils';
 
-interface Student {
+interface TeacherStudentLink {
   id: string;
-  email: string;
-  display_name: string;
-  status: 'active' | 'pending';
-  school: string;
-  grade: string;
-  class_name: string;
-  groups: string[];
-  total_quiz_count: number;
-  average_score: number;
-  last_activity: string;
-  joined_at: string;
-}
-
-interface InviteToken {
-  id: string;
-  token: string;
-  expires_at: string;
-  used: boolean;
-  created_at: string;
+  teacher: {
+    id: string;
+    email: string;
+    display_name: string;
+  };
+  student: {
+    id: string;
+    email: string;
+    display_name: string;
+    quiz_count: number;
+    total_score: number;
+    average_score: number;
+  };
+  status: 'pending' | 'active' | 'revoked';
+  linked_at: string;
+  revoked_at?: string;
 }
 
 export default function StudentsPage() {
   const { data: session, status } = useSession();
-  const [students, setStudents] = useState<Student[]>([]);
-  const [inviteTokens, setInviteTokens] = useState<InviteToken[]>([]);
+  const [activeTab, setActiveTab] = useState<'students' | 'invites'>('students');
+  const [students, setStudents] = useState<TeacherStudentLink[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'active'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'pending'>('all');
-  const [showCreateInvite, setShowCreateInvite] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -46,136 +42,103 @@ export default function StudentsPage() {
     }
     if (status === "authenticated") {
       fetchStudents();
-      fetchInviteTokens();
     }
   }, [status]);
 
   const fetchStudents = async () => {
     try {
-      // デモデータ（実際のAPIと置き換え予定）
+      const data = await apiGet('/teacher/students/');
+      setStudents(data);
+    } catch (error) {
+      console.error('生徒データ取得エラー:', error);
+      // デモデータをフォールバック
       setStudents([
         {
           id: '1',
-          email: 'student1@example.com',
-          display_name: '田中太郎',
+          teacher: { id: '1', email: 'teacher@example.com', display_name: '田中先生' },
+          student: {
+            id: '1',
+            email: 'student1@example.com',
+            display_name: '田中太郎',
+            quiz_count: 25,
+            total_score: 196,
+            average_score: 78.4
+          },
           status: 'active',
-          school: '〇〇中学校',
-          grade: '中学2年',
-          class_name: 'A組',
-          groups: ['数学A 高校1年', '物理基礎'],
-          total_quiz_count: 25,
-          average_score: 78.5,
-          last_activity: '2024-01-20T15:30:00Z',
-          joined_at: '2024-01-16T09:00:00Z'
+          linked_at: '2024-01-16T09:00:00Z'
         },
         {
           id: '2',
-          email: 'student2@example.com',
-          display_name: '佐藤花子',
+          teacher: { id: '1', email: 'teacher@example.com', display_name: '田中先生' },
+          student: {
+            id: '2',
+            email: 'student2@example.com',
+            display_name: '佐藤花子',
+            quiz_count: 30,
+            total_score: 247,
+            average_score: 82.3
+          },
           status: 'active',
-          school: '〇〇中学校',
-          grade: '中学3年',
-          class_name: 'B組',
-          groups: ['英語初級', '数学A 高校1年'],
-          total_quiz_count: 30,
-          average_score: 82.3,
-          last_activity: '2024-01-20T16:45:00Z',
-          joined_at: '2024-01-17T10:00:00Z'
-        },
-        {
-          id: '3',
-          email: 'student3@example.com',
-          display_name: '鈴木次郎',
-          status: 'pending',
-          school: '〇〇中学校',
-          grade: '中学1年',
-          class_name: 'C組',
-          groups: ['数学A 高校1年'],
-          total_quiz_count: 18,
-          average_score: 65.8,
-          last_activity: '2024-01-19T20:10:00Z',
-          joined_at: '2024-01-18T11:00:00Z'
-        },
-        {
-          id: '4',
-          email: 'student4@example.com',
-          display_name: '高橋美咲',
-          status: 'active',
-          school: '△△中学校',
-          grade: '中学2年',
-          class_name: 'A組',
-          groups: ['英語初級', '物理基礎'],
-          total_quiz_count: 35,
-          average_score: 88.7,
-          last_activity: '2024-01-20T17:20:00Z',
-          joined_at: '2024-01-15T08:00:00Z'
+          linked_at: '2024-01-17T10:00:00Z'
         }
       ]);
-    } catch (err) {
-      console.error('Failed to fetch students:', err);
-      setError('生徒データの取得に失敗しました');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchInviteTokens = async () => {
+  const revokeStudentLink = async (linkId: string) => {
+    if (!confirm('この生徒との紐付けを解除しますか？解除後は成績が閲覧できなくなります。')) {
+      return;
+    }
+
     try {
-      // デモデータ
-      setInviteTokens([
-        {
-          id: '1',
-          token: 'ABC123',
-          expires_at: '2024-01-25T23:59:59Z',
-          used: false,
-          created_at: '2024-01-20T10:00:00Z'
-        },
-        {
-          id: '2', 
-          token: 'DEF456',
-          expires_at: '2024-01-22T23:59:59Z',
-          used: true,
-          created_at: '2024-01-18T14:00:00Z'
-        }
-      ]);
+      await apiPost(`/teacher/students/${linkId}/revoke/`, {});
+      setStudents(prev => prev.map(link => 
+        link.id === linkId 
+          ? { ...link, status: 'revoked' as const, revoked_at: new Date().toISOString() }
+          : link
+      ));
+      alert('生徒との紐付けを解除しました');
     } catch (error) {
-      console.error('Failed to fetch invite tokens:', error);
+      console.error('紐付け解除エラー:', error);
+      alert('紐付け解除に失敗しました');
     }
   };
 
-  const createInviteToken = async () => {
-    try {
-      // 実際のAPIコール（プロトタイプではデモ）
-      const newToken: InviteToken = {
-        id: Date.now().toString(),
-        token: generateToken(),
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        used: false,
-        created_at: new Date().toISOString()
-      };
-      setInviteTokens([newToken, ...inviteTokens]);
-      setShowCreateInvite(false);
-    } catch (error) {
-      console.error('Failed to create invite token:', error);
+  const filteredStudents = students.filter(link => {
+    const matchesSearch = link.student.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         link.student.email.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    let matchesStatus = true;
+    if (statusFilter === 'all') {
+      matchesStatus = link.status !== 'revoked';
+    } else {
+      matchesStatus = link.status === statusFilter;
     }
-  };
-
-  const generateToken = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let result = '';
-    for (let i = 0; i < 6; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  };
-
-  const filteredStudents = students.filter(student => {
-    const matchesSearch = student.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         student.groups.some(group => group.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesStatus = filterStatus === 'all' || student.status === filterStatus;
+    
     return matchesSearch && matchesStatus;
   });
+
+  const getStatusBadge = (status: string) => {
+    const badges = {
+      pending: 'bg-yellow-100 text-yellow-800',
+      active: 'bg-green-100 text-green-800',
+      revoked: 'bg-gray-100 text-gray-800'
+    };
+    
+    const labels = {
+      pending: '承認待ち',
+      active: '有効',
+      revoked: '解除済み'
+    };
+
+    return (
+      <span className={`px-2 py-1 text-xs font-medium rounded-full ${badges[status as keyof typeof badges] || badges.active}`}>
+        {labels[status as keyof typeof labels] || status}
+      </span>
+    );
+  };
 
   if (status === "loading" || loading) {
     return (
@@ -193,53 +156,32 @@ export default function StudentsPage() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* ヘッダー */}
-        <div className="md:flex md:items-center md:justify-between">
-          <div className="flex-1 min-w-0">
-            <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
-              生徒管理
-            </h2>
-            <p className="mt-2 text-gray-600">
-              全ての生徒の成績と進捗を確認できます。
-            </p>
-          </div>
-          <div className="mt-4 flex md:mt-0 md:ml-4">
-            <button
-              onClick={() => setShowCreateInvite(true)}
-              className="ml-3 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
-            >
-              招待コード作成
-            </button>
-          </div>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">生徒管理</h1>
+          <p className="mt-2 text-gray-600">
+            生徒の招待・紐付け状況の確認・成績管理
+          </p>
         </div>
 
-        {error && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-            <p className="text-yellow-800">{error}</p>
-            <p className="text-sm text-yellow-600 mt-1">
-              デモデータを表示しています。
-            </p>
-          </div>
-        )}
-
         {/* 統計カード */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="p-5">
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                    <span className="text-white text-sm">✓</span>
+                    <span className="text-white text-sm font-medium">✓</span>
                   </div>
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                      アクティブ生徒
+                      有効な生徒
                     </dt>
                     <dd className="text-lg font-medium text-gray-900">
-                      {students.filter(s => s.status === 'active').length}
+                      {students.filter(s => s.status === 'active').length}名
                     </dd>
                   </dl>
                 </div>
@@ -252,7 +194,7 @@ export default function StudentsPage() {
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-                    <span className="text-white text-sm">⏳</span>
+                    <span className="text-white text-sm font-medium">⏳</span>
                   </div>
                 </div>
                 <div className="ml-5 w-0 flex-1">
@@ -261,7 +203,7 @@ export default function StudentsPage() {
                       承認待ち
                     </dt>
                     <dd className="text-lg font-medium text-gray-900">
-                      {students.filter(s => s.status === 'pending').length}
+                      {students.filter(s => s.status === 'pending').length}名
                     </dd>
                   </dl>
                 </div>
@@ -274,7 +216,7 @@ export default function StudentsPage() {
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                    <span className="text-white text-sm">�</span>
+                    <span className="text-white text-sm font-medium">📈</span>
                   </div>
                 </div>
                 <div className="ml-5 w-0 flex-1">
@@ -284,7 +226,7 @@ export default function StudentsPage() {
                     </dt>
                     <dd className="text-lg font-medium text-gray-900">
                       {students.filter(s => s.status === 'active').length > 0 
-                        ? (students.filter(s => s.status === 'active').reduce((sum, s) => sum + s.average_score, 0) / students.filter(s => s.status === 'active').length).toFixed(1)
+                        ? (students.filter(s => s.status === 'active').reduce((sum, s) => sum + s.student.average_score, 0) / students.filter(s => s.status === 'active').length).toFixed(1)
                         : 0
                       }%
                     </dd>
@@ -299,16 +241,16 @@ export default function StudentsPage() {
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
-                    <span className="text-white text-sm">�</span>
+                    <span className="text-white text-sm font-medium">🎯</span>
                   </div>
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                      有効な招待コード
+                      総クイズ回数
                     </dt>
                     <dd className="text-lg font-medium text-gray-900">
-                      {inviteTokens.filter(t => !t.used && new Date(t.expires_at) > new Date()).length}
+                      {students.filter(s => s.status === 'active').reduce((sum, s) => sum + s.student.quiz_count, 0)}回
                     </dd>
                   </dl>
                 </div>
@@ -317,237 +259,195 @@ export default function StudentsPage() {
           </div>
         </div>
 
-        {/* 検索・フィルター */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label htmlFor="search" className="block text-sm font-medium text-gray-700">
-                検索
-              </label>
-              <input
-                type="text"
-                name="search"
-                id="search"
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                placeholder="名前、メール、グループ名"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="status" className="block text-sm font-medium text-gray-700">
-                ステータス
-              </label>
-              <select
-                id="status"
-                name="status"
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value as 'all' | 'active' | 'pending')}
-              >
-                <option value="all">すべて</option>
-                <option value="active">アクティブ</option>
-                <option value="pending">承認待ち</option>
-              </select>
-            </div>
-          </div>
+        {/* タブナビゲーション */}
+        <div className="border-b border-gray-200 mb-8">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('students')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'students'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              生徒一覧
+              <span className="ml-2 py-0.5 px-2 text-xs bg-gray-100 text-gray-600 rounded-full">
+                {students.filter(s => s.status === 'active').length}
+              </span>
+            </button>
+            
+            <button
+              onClick={() => setActiveTab('invites')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'invites'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              招待コード管理
+            </button>
+          </nav>
         </div>
 
-        {/* 生徒一覧 */}
-        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-          <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-            <h3 className="text-lg leading-6 font-medium text-gray-900">
-              生徒一覧 ({filteredStudents.length}名)
-            </h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    生徒
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ステータス
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    所属グループ
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    クイズ回数
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    平均スコア
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    最終活動
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    操作
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredStudents.map((student) => (
-                  <tr key={student.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {student.display_name}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {student.email}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                          {student.school} {student.grade} {student.class_name}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        student.status === 'active' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {student.status === 'active' ? 'アクティブ' : '承認待ち'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-wrap gap-1">
-                        {student.groups.map((group, index) => (
-                          <span
-                            key={index}
-                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                          >
-                            {group}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {student.total_quiz_count} 回
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        student.average_score >= 80 
-                          ? 'bg-green-100 text-green-800'
-                          : student.average_score >= 60
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {student.average_score.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {student.status === 'active' 
-                        ? new Date(student.last_activity).toLocaleDateString('ja-JP')
-                        : '未活動'
-                      }
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <Link
-                        href={`/admin-dashboard/students/${student.id}`}
-                        className="text-indigo-600 hover:text-indigo-900"
-                      >
-                        詳細
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {filteredStudents.length === 0 && (
-            <div className="text-center py-12">
-              <div className="text-gray-400 text-6xl mb-4">🔍</div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                {searchTerm ? '検索結果がありません' : '生徒がいません'}
-              </h3>
-              <p className="text-gray-600">
-                {searchTerm 
-                  ? '検索条件に一致する生徒がありません。'
-                  : 'グループに生徒を追加してください。'
-                }
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* 招待コード一覧 */}
-        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-          <div className="px-4 py-5 sm:px-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900">
-              招待コード
-            </h3>
-            <p className="mt-1 max-w-2xl text-sm text-gray-500">
-              生徒の招待に使用するコード一覧
-            </p>
-          </div>
-          <div className="border-t border-gray-200">
-            <ul className="divide-y divide-gray-200">
-              {inviteTokens.map((token) => (
-                <li key={token.id} className="px-4 py-4 sm:px-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="text-sm font-mono font-bold text-gray-900 bg-gray-100 px-2 py-1 rounded">
-                        {token.token}
-                      </div>
-                      <div className="ml-4">
-                        <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          token.used
-                            ? 'bg-gray-100 text-gray-800'
-                            : new Date(token.expires_at) > new Date()
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                        }`}>
-                          {token.used ? '使用済み' : new Date(token.expires_at) > new Date() ? '有効' : '期限切れ'}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm text-gray-900">
-                        作成日: {new Date(token.created_at).toLocaleDateString('ja-JP')}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        有効期限: {new Date(token.expires_at).toLocaleDateString('ja-JP')}
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        {/* 招待コード作成モーダル */}
-        {showCreateInvite && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-              <div className="mt-3 text-center">
-                <h3 className="text-lg font-medium text-gray-900">新しい招待コードを作成</h3>
-                <div className="mt-2 px-7 py-3">
-                  <p className="text-sm text-gray-500">
-                    新しい招待コードを作成しますか？コードは7日間有効です。
-                  </p>
+        {/* タブコンテンツ */}
+        {activeTab === 'students' ? (
+          <div className="space-y-6">
+            {/* 検索・フィルター */}
+            <div className="bg-white p-4 rounded-lg shadow-sm border">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
+                    検索
+                  </label>
+                  <input
+                    type="text"
+                    id="search"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="生徒名・メールアドレスで検索"
+                  />
                 </div>
-                <div className="flex justify-center space-x-4 px-4 py-3">
-                  <button
-                    onClick={() => setShowCreateInvite(false)}
-                    className="px-4 py-2 bg-gray-500 text-white text-base font-medium rounded-md shadow-sm hover:bg-gray-600"
-                  >
-                    キャンセル
-                  </button>
-                  <button
-                    onClick={createInviteToken}
-                    className="px-4 py-2 bg-indigo-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-indigo-700"
-                  >
-                    作成する
-                  </button>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    ステータス
+                  </label>
+                  <div className="flex space-x-2">
+                    {[
+                      { key: 'all', label: '全て' },
+                      { key: 'active', label: '有効' },
+                      { key: 'pending', label: '承認待ち' }
+                    ].map(({ key, label }) => (
+                      <button
+                        key={key}
+                        onClick={() => setStatusFilter(key as any)}
+                        className={`px-3 py-1 text-sm rounded-full ${
+                          statusFilter === key
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
+
+            {/* 生徒リスト */}
+            <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+              <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900">
+                  紐付けされた生徒 ({filteredStudents.length}名)
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  招待コードで紐付けされた生徒の一覧と成績情報
+                </p>
+              </div>
+
+              {filteredStudents.length === 0 ? (
+                <div className="p-8 text-center">
+                  <div className="text-gray-400 text-6xl mb-4">👥</div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    {searchTerm ? '検索結果がありません' : '紐付けされた生徒はいません'}
+                  </h3>
+                  <p className="text-gray-500 mb-4">
+                    {searchTerm 
+                      ? '検索条件に一致する生徒がありません。'
+                      : '招待コードを発行して生徒を招待してください。'
+                    }
+                  </p>
+                  {!searchTerm && (
+                    <button
+                      onClick={() => setActiveTab('invites')}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+                    >
+                      招待コードを発行
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          生徒情報
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          状態
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          学習実績
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          紐付け日時
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          アクション
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {filteredStudents.map((link) => (
+                        <tr key={link.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {link.student.display_name || '未設定'}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {link.student.email}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {getStatusBadge(link.status)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">
+                              クイズ: {link.student.quiz_count}回
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              平均: {Math.round(link.student.average_score)}%
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(link.linked_at).toLocaleDateString('ja-JP')}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                            {link.status === 'active' && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    // 成績詳細ページへの遷移（今後実装）
+                                    alert('成績詳細機能は今後実装予定です');
+                                  }}
+                                  className="text-blue-600 hover:text-blue-900"
+                                >
+                                  成績詳細
+                                </button>
+                                <button
+                                  onClick={() => revokeStudentLink(link.id)}
+                                  className="text-red-600 hover:text-red-900"
+                                >
+                                  紐付け解除
+                                </button>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
+        ) : (
+          <InviteCodeManagement />
         )}
       </div>
     </AdminLayout>

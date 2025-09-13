@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
+import TeacherGuard from './TeacherGuard';
 import {
   Bars3Icon,
   XMarkIcon,
@@ -39,7 +40,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   }
 
   return (
-    <div className="h-screen flex overflow-hidden bg-gray-100">
+    <TeacherGuard>
+      <div className="h-screen flex overflow-hidden bg-gray-100">
       {/* Mobile sidebar */}
       <div className={`${sidebarOpen ? 'block' : 'hidden'} fixed inset-0 flex z-40 md:hidden`}>
         <div
@@ -185,6 +187,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           </div>
         </main>
       </div>
-    </div>
+      </div>
+    </TeacherGuard>
   );
 }

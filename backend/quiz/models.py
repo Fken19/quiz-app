@@ -35,6 +35,16 @@ class User(AbstractUser):
         if self.quiz_count == 0:
             return 0
         return (self.total_score / (self.quiz_count * 10)) * 100  # 仮定：各クイズ10問
+    
+    @property
+    def is_teacher(self):
+        """講師権限があるかどうか"""
+        return self.role == 'teacher' or self.is_staff
+    
+    @property
+    def is_admin_user(self):
+        """管理者権限があるかどうか"""
+        return self.role == 'admin' or self.is_superuser
 
 
 class Word(models.Model):
@@ -327,3 +337,77 @@ class DailyGroupStats(models.Model):
 
     def __str__(self):
         return f"{self.group.name} - {self.date}"
+
+
+class InviteCode(models.Model):
+    """招待コード（認証コード）モデル"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.CharField(max_length=9, unique=True)  # 'ABCD-EF12' 形式
+    issued_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='issued_codes')
+    issued_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='used_codes')
+    used_at = models.DateTimeField(null=True, blank=True)
+    revoked = models.BooleanField(default=False)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['code']),
+            models.Index(fields=['issued_by', 'issued_at']),
+            models.Index(fields=['expires_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.code} (by {self.issued_by.email})"
+    
+    @property
+    def is_expired(self):
+        """期限切れかどうか"""
+        return timezone.now() > self.expires_at
+    
+    @property
+    def is_valid(self):
+        """使用可能かどうか"""
+        return not self.revoked and not self.is_expired and self.used_by is None
+    
+    @property
+    def status(self):
+        """状態を文字列で返す"""
+        if self.revoked:
+            return 'revoked'
+        elif self.used_by:
+            return 'used'
+        elif self.is_expired:
+            return 'expired'
+        else:
+            return 'active'
+
+
+class TeacherStudentLink(models.Model):
+    """講師↔生徒紐付けモデル"""
+    STATUS_CHOICES = [
+        ('pending', '承認待ち'),
+        ('active', '有効'),
+        ('revoked', '解除済み'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    teacher = models.ForeignKey(User, on_delete=models.CASCADE, related_name='student_links')
+    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='teacher_links')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
+    linked_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='revoked_links')
+    invite_code = models.ForeignKey(InviteCode, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    class Meta:
+        unique_together = ['teacher', 'student']
+        indexes = [
+            models.Index(fields=['teacher', 'status']),
+            models.Index(fields=['student', 'status']),
+            models.Index(fields=['linked_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.teacher.email} → {self.student.email} ({self.status})"

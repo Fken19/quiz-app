@@ -222,7 +222,7 @@ export default function AdminDashboardHome() {
       </div>
 
       {/* 管理メニュー */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <Link
           href="/admin-dashboard/groups"
           className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
@@ -249,6 +249,21 @@ export default function AdminDashboardHome() {
             <div>
               <h3 className="text-lg font-semibold text-gray-900">生徒管理</h3>
               <p className="text-gray-600 text-sm">生徒の追加・成績確認</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link
+          href="/admin-dashboard/invite-codes"
+          className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
+        >
+          <div className="flex items-center space-x-4">
+            <div className="bg-orange-100 p-3 rounded-lg">
+              <span className="text-2xl">🎫</span>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">招待コード</h3>
+              <p className="text-gray-600 text-sm">生徒招待・紐付け管理</p>
             </div>
           </div>
         </Link>

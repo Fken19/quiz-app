@@ -1,7 +1,9 @@
 from rest_framework import serializers
 from .models import (
-    User, Word, WordTranslation, QuizSet, QuizItem, QuizResponse, Group
+    User, Word, WordTranslation, QuizSet, QuizItem, QuizResponse, Group,
+    InviteCode, TeacherStudentLink
 )
+from .utils import generate_invite_code, normalize_invite_code, get_code_expiry_time
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -191,3 +193,96 @@ class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
         fields = ['id', 'name', 'owner_admin', 'created_at']
+
+
+# 招待コード関連シリアライザー
+class InviteCodeSerializer(serializers.ModelSerializer):
+    issued_by = UserSerializer(read_only=True)
+    used_by = UserSerializer(read_only=True)
+    status = serializers.ReadOnlyField()
+    is_valid = serializers.ReadOnlyField()
+    is_expired = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = InviteCode
+        fields = [
+            'id', 'code', 'issued_by', 'issued_at', 'expires_at',
+            'used_by', 'used_at', 'revoked', 'revoked_at',
+            'status', 'is_valid', 'is_expired'
+        ]
+        read_only_fields = [
+            'id', 'issued_at', 'used_by', 'used_at', 'revoked_at'
+        ]
+
+
+class CreateInviteCodeSerializer(serializers.Serializer):
+    count = serializers.IntegerField(default=1, min_value=1, max_value=50)
+    expires_hours = serializers.IntegerField(default=1, min_value=1, max_value=24)
+    
+    def create(self, validated_data):
+        user = self.context['request'].user
+        count = validated_data['count']
+        expires_hours = validated_data['expires_hours']
+        
+        codes = []
+        for _ in range(count):
+            # ユニークなコードを生成
+            code = generate_invite_code()
+            while InviteCode.objects.filter(code=code).exists():
+                code = generate_invite_code()
+            
+            invite_code = InviteCode.objects.create(
+                code=code,
+                issued_by=user,
+                expires_at=get_code_expiry_time(expires_hours)
+            )
+            codes.append(invite_code)
+        
+        return codes
+
+
+class AcceptInviteCodeSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=9)
+    agreed = serializers.BooleanField(default=False)
+    
+    def validate_code(self, value):
+        normalized = normalize_invite_code(value)
+        if not normalized:
+            raise serializers.ValidationError('無効なコード形式です')
+        return normalized
+    
+    def validate(self, attrs):
+        if not attrs.get('agreed'):
+            raise serializers.ValidationError({'agreed': 'データ閲覧に同意する必要があります'})
+        
+        code = attrs['code']
+        try:
+            invite_code = InviteCode.objects.get(code=code)
+        except InviteCode.DoesNotExist:
+            raise serializers.ValidationError({'code': '無効なコードです'})
+        
+        if not invite_code.is_valid:
+            if invite_code.revoked:
+                raise serializers.ValidationError({'code': 'このコードは無効化されています'})
+            elif invite_code.used_by:
+                raise serializers.ValidationError({'code': 'このコードは既に使用済みです'})
+            elif invite_code.is_expired:
+                raise serializers.ValidationError({'code': '期限切れのコードです'})
+        
+        attrs['invite_code'] = invite_code
+        return attrs
+
+
+# 講師↔生徒紐付け関連シリアライザー
+class TeacherStudentLinkSerializer(serializers.ModelSerializer):
+    teacher = UserSerializer(read_only=True)
+    student = UserSerializer(read_only=True)
+    revoked_by = UserSerializer(read_only=True)
+    
+    class Meta:
+        model = TeacherStudentLink
+        fields = [
+            'id', 'teacher', 'student', 'status', 'linked_at',
+            'revoked_at', 'revoked_by'
+        ]
+        read_only_fields = ['id', 'linked_at', 'revoked_at', 'revoked_by']

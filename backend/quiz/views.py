@@ -17,12 +17,18 @@ import uuid
 import json
 import logging
 
-from .models import User, Word, WordTranslation, QuizSet, QuizItem, QuizResponse
+from .models import (
+    User, Word, WordTranslation, QuizSet, QuizItem, QuizResponse,
+    InviteCode, TeacherStudentLink
+)
 from .serializers import (
     UserSerializer, WordSerializer, WordTranslationSerializer,
     QuizSetSerializer, QuizItemSerializer, QuizResponseSerializer,
-    QuizSetListSerializer, DashboardStatsSerializer
+    QuizSetListSerializer, DashboardStatsSerializer,
+    InviteCodeSerializer, CreateInviteCodeSerializer, AcceptInviteCodeSerializer,
+    TeacherStudentLinkSerializer
 )
+from .utils import is_teacher_whitelisted
 
 User = get_user_model()
 
@@ -230,6 +236,23 @@ def google_auth(request):
                 'role': 'student'
             }
         )
+        
+        # ホワイトリストチェックに基づいてロールを自動設定
+        if is_teacher_whitelisted(email):
+            if user.role != 'teacher':
+                logger.info(f"Updating user {email} role to teacher (whitelisted)")
+                user.role = 'teacher'
+                user.save(update_fields=['role'])
+        else:
+            if user.role == 'teacher':
+                logger.info(f"Updating user {email} role to student (not whitelisted)")
+                user.role = 'student'
+                user.save(update_fields=['role'])
+        
+        # 表示名を更新（もし変更されていれば）
+        if user.display_name != name and name:
+            user.display_name = name
+            user.save(update_fields=['display_name'])
         
         # APIトークン作成
         token, token_created = Token.objects.get_or_create(user=user)
@@ -454,6 +477,19 @@ def user_profile(request):
     ユーザープロフィール情報（GET）および更新（POST: display_name, email, avatar）
     """
     user = request.user
+    
+    # ホワイトリストチェックに基づいてロールを自動更新
+    if user.email:
+        if is_teacher_whitelisted(user.email):
+            if user.role != 'teacher':
+                logger.info(f"Updating user {user.email} role to teacher (whitelisted)")
+                user.role = 'teacher'
+                user.save(update_fields=['role'])
+        else:
+            if user.role == 'teacher':
+                logger.info(f"Updating user {user.email} role to student (not whitelisted)")
+                user.role = 'student'
+                user.save(update_fields=['role'])
 
     # POST は更新を受け付ける
     if request.method == 'POST':
@@ -720,3 +756,281 @@ def google_auth_simple(request):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
+
+
+# 講師権限チェック用デコレータ
+class IsTeacherPermission(permissions.BasePermission):
+    """講師権限チェック"""
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        return (request.user.is_teacher and 
+                is_teacher_whitelisted(request.user.email))
+
+
+# 講師用API Views
+class TeacherInviteCodeViewSet(viewsets.ModelViewSet):
+    """講師用招待コード管理API"""
+    serializer_class = InviteCodeSerializer
+    permission_classes = [IsTeacherPermission]
+    
+    def get_queryset(self):
+        return InviteCode.objects.filter(issued_by=self.request.user).order_by('-issued_at')
+    
+    def create(self, request):
+        """招待コード発行"""
+        serializer = CreateInviteCodeSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            codes = serializer.save()
+            return Response({
+                'codes': InviteCodeSerializer(codes, many=True).data,
+                'message': f'{len(codes)}件の招待コードを発行しました'
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'])
+    def revoke(self, request, pk=None):
+        """招待コード失効"""
+        invite_code = self.get_object()
+        invite_code.revoked = True
+        invite_code.revoked_at = timezone.now()
+        invite_code.save()
+        
+        return Response({
+            'message': f'招待コード {invite_code.code} を失効しました'
+        })
+
+
+class TeacherStudentViewSet(viewsets.ReadOnlyModelViewSet):
+    """講師用生徒管理API"""
+    serializer_class = TeacherStudentLinkSerializer
+    permission_classes = [IsTeacherPermission]
+    
+    def get_queryset(self):
+        return TeacherStudentLink.objects.filter(
+            teacher=self.request.user
+        ).exclude(status='revoked').order_by('-linked_at')
+    
+    def list(self, request):
+        """生徒一覧（status でフィルタ可能）"""
+        queryset = self.get_queryset()
+        
+        # status パラメータでフィルタ
+        status_filter = request.query_params.get('status')
+        if status_filter in ['pending', 'active']:
+            queryset = queryset.filter(status=status_filter)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['delete'])
+    def revoke(self, request, pk=None):
+        """生徒との紐付け解除"""
+        link = self.get_object()
+        link.status = 'revoked'
+        link.revoked_at = timezone.now()
+        link.revoked_by = request.user
+        link.save()
+        
+        return Response({
+            'message': f'{link.student.display_name or link.student.email} との紐付けを解除しました'
+        })
+
+
+# 生徒用API Views
+class StudentInviteCodeView(viewsets.GenericViewSet):
+    """生徒用招待コード受諾API"""
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['post'])
+    def accept(self, request):
+        """招待コード受諾（紐付け作成）"""
+        serializer = AcceptInviteCodeSerializer(data=request.data)
+        if serializer.is_valid():
+            invite_code = serializer.validated_data['invite_code']
+            
+            # 既存の紐付けチェック
+            existing_link = TeacherStudentLink.objects.filter(
+                teacher=invite_code.issued_by,
+                student=request.user,
+                status__in=['active', 'pending']
+            ).first()
+            
+            if existing_link:
+                return Response({
+                    'error': 'この講師との紐付けは既に存在します'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # 招待コードを使用済みにして紐付け作成
+            with transaction.atomic():
+                invite_code.used_by = request.user
+                invite_code.used_at = timezone.now()
+                invite_code.save()
+                
+                link = TeacherStudentLink.objects.create(
+                    teacher=invite_code.issued_by,
+                    student=request.user,
+                    status='active',
+                    invite_code=invite_code
+                )
+            
+            return Response({
+                'message': f'{invite_code.issued_by.display_name or invite_code.issued_by.email} との紐付けが完了しました',
+                'link': TeacherStudentLinkSerializer(link).data
+            }, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class StudentTeacherViewSet(viewsets.ReadOnlyModelViewSet):
+    """生徒用講師管理API"""
+    serializer_class = TeacherStudentLinkSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return TeacherStudentLink.objects.filter(
+            student=self.request.user,
+            status='active'
+        ).order_by('-linked_at')
+    
+    @action(detail=True, methods=['delete'])
+    def revoke(self, request, pk=None):
+        """講師との紐付け解除"""
+        link = self.get_object()
+        link.status = 'revoked'
+        link.revoked_at = timezone.now()
+        link.revoked_by = request.user
+        link.save()
+        
+        return Response({
+            'message': f'{link.teacher.display_name or link.teacher.email} との紐付けを解除しました'
+        })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_teacher_permission(request):
+    """講師権限チェックAPI"""
+    user = request.user
+    
+    # デバッグログを追加
+    logger.info(f"check_teacher_permission called for user: {user}")
+    logger.info(f"User email: {user.email}")
+    logger.info(f"User role: {user.role}")
+    logger.info(f"User is_authenticated: {user.is_authenticated}")
+    
+    # メールアドレスが存在することを確認
+    if not user.email:
+        logger.warning(f"User {user.id} has no email address")
+        return Response({
+            'error': 'メールアドレスが設定されていません',
+            'is_teacher': False,
+            'is_whitelisted': False,
+            'role': user.role,
+            'email': user.email,
+            'permissions': {
+                'can_access_admin': False,
+                'can_create_invites': False,
+                'can_manage_students': False,
+            }
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # ホワイトリストチェックに基づいてロールを自動更新
+    is_whitelisted = is_teacher_whitelisted(user.email)
+    logger.info(f"Whitelist check for {user.email}: {is_whitelisted}")
+    
+    if is_whitelisted:
+        if user.role != 'teacher':
+            logger.info(f"Updating user {user.email} role to teacher (whitelisted)")
+            user.role = 'teacher'
+            user.save(update_fields=['role'])
+    else:
+        if user.role == 'teacher':
+            logger.info(f"Updating user {user.email} role to student (not whitelisted)")
+            user.role = 'student'
+            user.save(update_fields=['role'])
+    
+    return Response({
+        'is_teacher': user.is_teacher,
+        'is_whitelisted': is_whitelisted,
+        'role': user.role,
+        'email': user.email,
+        'permissions': {
+            'can_access_admin': user.is_teacher and is_whitelisted,
+            'can_create_invites': user.is_teacher and is_whitelisted,
+            'can_manage_students': user.is_teacher and is_whitelisted,
+        }
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def debug_auth(request):
+    """認証デバッグAPI（テスト用）"""
+    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    user_info = {
+        'is_authenticated': request.user.is_authenticated,
+        'user_id': str(request.user.id) if request.user.is_authenticated else None,
+        'email': request.user.email if request.user.is_authenticated else None,
+        'username': request.user.username if request.user.is_authenticated else None,
+        'role': getattr(request.user, 'role', None) if request.user.is_authenticated else None,
+    }
+    
+    logger.info(f"Debug auth - Authorization header: {auth_header[:50]}...")
+    logger.info(f"Debug auth - User info: {user_info}")
+    
+    # ホワイトリストチェック
+    if request.user.is_authenticated and request.user.email:
+        is_whitelisted = is_teacher_whitelisted(request.user.email)
+        logger.info(f"Debug auth - Whitelist check for {request.user.email}: {is_whitelisted}")
+        user_info['is_whitelisted'] = is_whitelisted
+    else:
+        user_info['is_whitelisted'] = False
+    
+    return Response({
+        'message': 'Debug authentication info',
+        'auth_header_present': bool(auth_header),
+        'auth_header_length': len(auth_header),
+        'user': user_info,
+        'request_meta_keys': list(request.META.keys())[:10],  # 最初の10個のキーのみ
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def create_test_user(request):
+    """テスト用ユーザー作成API（デバッグ用）"""
+    email = request.data.get('email')
+    name = request.data.get('name', '')
+    
+    if not email:
+        return Response({'error': 'メールアドレスが必要です'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    user, created = User.objects.get_or_create(
+        email=email,
+        defaults={
+            'username': email,
+            'display_name': name,
+            'role': 'student'
+        }
+    )
+    
+    # ホワイトリストチェックに基づいてロール設定
+    if is_teacher_whitelisted(email):
+        user.role = 'teacher'
+        user.save(update_fields=['role'])
+    
+    # APIトークン作成
+    token, token_created = Token.objects.get_or_create(user=user)
+    
+    return Response({
+        'message': f'ユーザーが{"作成" if created else "取得"}されました',
+        'user': {
+            'id': str(user.id),
+            'email': user.email,
+            'display_name': user.display_name,
+            'role': user.role
+        },
+        'access_token': token.key,
+        'is_whitelisted': is_teacher_whitelisted(email)
+    })
