@@ -343,53 +343,106 @@ def quiz_history(request):
     user = request.user
     
     # フィルター
-    difficulty = request.GET.get('difficulty')
-    date_range = request.GET.get('date_range')  # 'week', 'month', 'year'
+    level = request.GET.get('level')
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    sort_by = request.GET.get('sort_by', 'date')
+    sort_order = request.GET.get('sort_order', 'desc')
     
     quiz_sets = QuizSet.objects.filter(user=user)
     
-    if difficulty:
-        quiz_sets = quiz_sets.filter(difficulty=difficulty)
+    # レベルフィルター
+    if level:
+        quiz_sets = quiz_sets.filter(level=level)
     
-    if date_range:
-        now = timezone.now()
-        if date_range == 'week':
-            start_date = now - timedelta(days=7)
-        elif date_range == 'month':
-            start_date = now - timedelta(days=30)
-        elif date_range == 'year':
-            start_date = now - timedelta(days=365)
-        else:
-            start_date = None
+    # 日付フィルター
+    if date_from:
+        try:
+            from_date = timezone.datetime.strptime(date_from, '%Y-%m-%d').date()
+            quiz_sets = quiz_sets.filter(created_at__date__gte=from_date)
+        except ValueError:
+            pass
             
-        if start_date:
-            quiz_sets = quiz_sets.filter(created_at__gte=start_date)
+    if date_to:
+        try:
+            to_date = timezone.datetime.strptime(date_to, '%Y-%m-%d').date()
+            quiz_sets = quiz_sets.filter(created_at__date__lte=to_date)
+        except ValueError:
+            pass
     
-    quiz_sets = quiz_sets.order_by('-created_at')
+    # 完了済みのクイズセットのみ（回答があるもの）
+    quiz_sets = quiz_sets.filter(quiz_responses__isnull=False).distinct()
+    
+    # ソート
+    if sort_by == 'date':
+        order_field = 'created_at'
+    elif sort_by == 'level':
+        order_field = 'level'
+    else:
+        order_field = 'created_at'  # デフォルト
+        
+    if sort_order == 'desc':
+        order_field = '-' + order_field
+        
+    quiz_sets = quiz_sets.order_by(order_field)
     
     # 各クイズセットの統計を含める
     history_data = []
     for quiz_set in quiz_sets:
-        responses = QuizResponse.objects.filter(
-            user=user,
-            quiz_item__quiz_set=quiz_set
-        )
+        # このクイズセットの全回答を取得
+        responses = QuizResponse.objects.filter(quiz_set=quiz_set)
+        quiz_items = QuizItem.objects.filter(quiz_set=quiz_set)
         
-        total_questions = responses.count()
+        total_questions = quiz_items.count()
+        total_responses = responses.count()
         correct_answers = responses.filter(is_correct=True).count()
         
+        # 完了率チェック
+        if total_responses == 0:
+            continue
+            
+        # スコア計算
         score = (correct_answers / total_questions * 100) if total_questions > 0 else 0
         
-        history_data.append({
-            'id': quiz_set.id,
-            'title': quiz_set.title,
-            'difficulty': quiz_set.difficulty,
-            'score': round(score, 1),
+        # 所要時間計算
+        total_duration_ms = responses.aggregate(
+            total=Sum('reaction_time_ms')
+        )['total'] or 0
+        
+        # 平均反応時間
+        avg_reaction_time_ms = responses.aggregate(
+            avg=Avg('reaction_time_ms')
+        )['avg'] or 0
+        
+        # QuizResultフォーマットに合わせたレスポンス
+        quiz_result = {
+            'quiz_set': {
+                'id': str(quiz_set.id),
+                'mode': quiz_set.mode,
+                'level': quiz_set.level,
+                'segment': quiz_set.segment,
+                'question_count': quiz_set.question_count,
+                'started_at': quiz_set.started_at.isoformat() if quiz_set.started_at else quiz_set.created_at.isoformat(),
+                'finished_at': quiz_set.finished_at.isoformat() if quiz_set.finished_at else None,
+                'score': round(score)
+            },
+            'quiz_items': [],  # 詳細は必要時に別途取得
+            'quiz_responses': [],  # 詳細は必要時に別途取得
+            'total_score': correct_answers,
             'total_questions': total_questions,
-            'correct_answers': correct_answers,
-            'completed_at': quiz_set.created_at,
-            'duration': sum(r.response_time for r in responses) if responses else 0
-        })
+            'total_duration_ms': total_duration_ms,
+            'average_latency_ms': round(avg_reaction_time_ms)
+        }
+        
+        history_data.append(quiz_result)
+    
+    # スコアソートの場合は後処理で行う
+    if sort_by == 'score':
+        reverse = sort_order == 'desc'
+        history_data.sort(
+            key=lambda x: x['total_score'] / x['total_questions'] if x['total_questions'] > 0 else 0,
+            reverse=reverse
+        )
     
     return Response(history_data)
 

@@ -20,7 +20,6 @@ export default function HistoryPage() {
   const router = useRouter();
   
   const [results, setResults] = useState<QuizResult[]>([]);
-  const [filteredResults, setFilteredResults] = useState<QuizResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<HistoryFilters>({
@@ -40,132 +39,49 @@ export default function HistoryPage() {
     }
 
     fetchHistory();
-  }, [session, status, router]);
+  }, [session, status, router, filters]); // filtersを依存配列に追加
 
-  useEffect(() => {
-    applyFilters();
-  }, [results, filters]);
+  // applyFiltersは不要になるため削除
+  // useEffect(() => {
+  //   applyFilters();
+  // }, [results, filters]);
 
   const fetchHistory = async () => {
     try {
-      // TODO: 実際のAPIコールに置き換え
-      // const history = await getUserQuizHistory();
-      
-      // デモデータ
-      const demoResults: QuizResult[] = [
-        {
-          quiz_set: {
-            id: 'quiz1',
-            mode: 'default',
-            level: 2,
-            segment: 1,
-            question_count: 10,
-            started_at: new Date(Date.now() - 86400000).toISOString(), // 1日前
-            finished_at: new Date(Date.now() - 86400000 + 600000).toISOString(),
-            score: 80
-          },
-          quiz_items: [],
-          quiz_responses: [],
-          total_score: 8,
-          total_questions: 10,
-          total_duration_ms: 600000,
-          average_latency_ms: 2500
-        },
-        {
-          quiz_set: {
-            id: 'quiz2',
-            mode: 'random',
-            level: 1,
-            segment: 2,
-            question_count: 5,
-            started_at: new Date(Date.now() - 172800000).toISOString(), // 2日前
-            finished_at: new Date(Date.now() - 172800000 + 300000).toISOString(),
-            score: 60
-          },
-          quiz_items: [],
-          quiz_responses: [],
-          total_score: 3,
-          total_questions: 5,
-          total_duration_ms: 300000,
-          average_latency_ms: 3200
-        },
-        {
-          quiz_set: {
-            id: 'quiz3',
-            mode: 'default',
-            level: 3,
-            segment: 1,
-            question_count: 20,
-            started_at: new Date(Date.now() - 259200000).toISOString(), // 3日前
-            finished_at: new Date(Date.now() - 259200000 + 1200000).toISOString(),
-            score: 90
-          },
-          quiz_items: [],
-          quiz_responses: [],
-          total_score: 18,
-          total_questions: 20,
-          total_duration_ms: 1200000,
-          average_latency_ms: 2100
-        }
-      ];
+      const token = session?.backendAccessToken;
+      if (!token) {
+        setError('認証トークンが見つかりません');
+        return;
+      }
 
-      setResults(demoResults);
+      // クエリパラメータを構築
+      const params = new URLSearchParams();
+      if (filters.dateFrom) params.append('date_from', filters.dateFrom);
+      if (filters.dateTo) params.append('date_to', filters.dateTo);
+      if (filters.level) params.append('level', filters.level);
+      params.append('sort_by', filters.sortBy);
+      params.append('sort_order', filters.sortOrder);
+
+      // 実際のAPIコール
+      const response = await fetch(`/api/history?${params.toString()}`, {
+        headers: {
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const historyData = await response.json();
+      setResults(historyData);
     } catch (err) {
       console.error('Failed to fetch history:', err);
       setError('履歴データの取得に失敗しました');
     } finally {
       setLoading(false);
     }
-  };
-
-  const applyFilters = () => {
-    let filtered = [...results];
-
-    // 日付フィルター
-    if (filters.dateFrom) {
-      const fromDate = new Date(filters.dateFrom);
-      filtered = filtered.filter(result => 
-        new Date(result.quiz_set.started_at!) >= fromDate
-      );
-    }
-
-    if (filters.dateTo) {
-      const toDate = new Date(filters.dateTo);
-      toDate.setHours(23, 59, 59, 999);
-      filtered = filtered.filter(result => 
-        new Date(result.quiz_set.started_at!) <= toDate
-      );
-    }
-
-    // レベルフィルター
-    if (filters.level) {
-      filtered = filtered.filter(result => 
-        result.quiz_set.level.toString() === filters.level
-      );
-    }
-
-    // ソート
-    filtered.sort((a, b) => {
-      let comparison = 0;
-      
-      switch (filters.sortBy) {
-        case 'date':
-          comparison = new Date(a.quiz_set.started_at!).getTime() - 
-                      new Date(b.quiz_set.started_at!).getTime();
-          break;
-        case 'score':
-          comparison = (a.total_score / a.total_questions) - 
-                      (b.total_score / b.total_questions);
-          break;
-        case 'level':
-          comparison = a.quiz_set.level - b.quiz_set.level;
-          break;
-      }
-
-      return filters.sortOrder === 'asc' ? comparison : -comparison;
-    });
-
-    setFilteredResults(filtered);
   };
 
   const handleFilterChange = (key: keyof HistoryFilters, value: string) => {
@@ -217,8 +133,8 @@ export default function HistoryPage() {
     );
   }
 
-  const averageScore = filteredResults.length > 0 ? 
-    filteredResults.reduce((sum, result) => sum + (result.total_score / result.total_questions), 0) / filteredResults.length * 100 : 0;
+  const averageScore = results.length > 0 ? 
+    results.reduce((sum: number, result: QuizResult) => sum + (result.total_score / result.total_questions), 0) / results.length * 100 : 0;
 
   return (
     <div className="space-y-6">
@@ -239,7 +155,7 @@ export default function HistoryPage() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">総受験回数</p>
-              <p className="text-2xl font-bold text-gray-900">{filteredResults.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{results.length}</p>
             </div>
           </div>
         </div>
@@ -264,8 +180,8 @@ export default function HistoryPage() {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">最高スコア</p>
               <p className="text-2xl font-bold text-gray-900">
-                {filteredResults.length > 0 ? 
-                  Math.max(...filteredResults.map(r => Math.round((r.total_score / r.total_questions) * 100))) + '%' : 
+                {results.length > 0 ? 
+                  Math.max(...results.map((r: QuizResult) => Math.round((r.total_score / r.total_questions) * 100))) + '%' : 
                   '0%'
                 }
               </p>
@@ -281,7 +197,7 @@ export default function HistoryPage() {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">総問題数</p>
               <p className="text-2xl font-bold text-gray-900">
-                {filteredResults.reduce((sum, result) => sum + result.total_questions, 0)}
+                {results.reduce((sum: number, result: QuizResult) => sum + result.total_questions, 0)}
               </p>
             </div>
           </div>
@@ -368,11 +284,11 @@ export default function HistoryPage() {
       <div className="bg-white rounded-lg shadow">
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">
-            受験履歴 ({filteredResults.length}件)
+            受験履歴 ({results.length}件)
           </h3>
         </div>
         
-        {filteredResults.length === 0 ? (
+        {results.length === 0 ? (
           <div className="text-center py-12">
             <span className="text-4xl mb-4 block">📊</span>
             <h3 className="text-lg font-medium text-gray-900 mb-2">
@@ -390,7 +306,7 @@ export default function HistoryPage() {
           </div>
         ) : (
           <div className="divide-y divide-gray-200">
-            {filteredResults.map((result) => {
+            {results.map((result: QuizResult) => {
               const scorePercentage = Math.round((result.total_score / result.total_questions) * 100);
               return (
                 <div key={result.quiz_set.id} className="p-6 hover:bg-gray-50">
