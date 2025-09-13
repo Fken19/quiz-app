@@ -37,6 +37,23 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // Normalize avatar URLs returned by backend (replace Docker-internal host)
+  const normalizeAvatarUrl = (avatarUrl: string | null | undefined) => {
+    if (!avatarUrl) return null;
+    try {
+      const parsed = new URL(avatarUrl);
+      if (parsed.hostname === 'backend') {
+        const publicHost = window.location.hostname || 'localhost';
+        parsed.hostname = publicHost;
+        parsed.port = '8080';
+        return parsed.toString();
+      }
+      return avatarUrl;
+    } catch (e) {
+      return avatarUrl;
+    }
+  };
+
   useEffect(() => {
     if (status === 'loading') return;
     
@@ -199,24 +216,27 @@ export default function ProfilePage() {
       if (response.success) {
         setSuccess(response.message || 'プロフィールを更新しました');
         const updatedUser = response.user;
-        
+
+        // Normalize avatar URL if needed
+        const normalizedAvatar = normalizeAvatarUrl(updatedUser?.avatar_url || updatedUser?.avatar);
+
         // ユーザー情報を更新
         if (user && updatedUser) {
           setUser({
             ...user,
             display_name: updatedUser.display_name || displayName,
-            avatar_url: updatedUser.avatar_url || user.avatar_url,
+            avatar_url: normalizedAvatar || user.avatar_url,
           });
         }
 
         // アバター画像の表示を更新
-        if (updatedUser.avatar_url) {
-          setAvatarPreview(updatedUser.avatar_url);
+        if (normalizedAvatar) {
+          setAvatarPreview(normalizedAvatar);
         }
-        
+
         // ファイル選択をリセット
         setAvatarFile(null);
-        
+
       } else {
         // APIからエラーメッセージが返された場合
         setError(response.message || 'プロフィールの更新に失敗しました');
