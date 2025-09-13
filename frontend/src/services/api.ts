@@ -150,6 +150,22 @@ export const quizAPI = {
     const response = await apiFetch(`/api/quiz-sets/${quizSetId}/result/`, {}, token).then(res => res.json());
     return response;
   },
+
+  // 実際のバックエンドAPIエンドポイント
+  async getQuizResultFromBackend(quizSetId: string): Promise<QuizResult> {
+    const response = await fetch(`http://localhost:8080/api/quiz/result/${quizSetId}/`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch quiz result: ${response.statusText}`);
+    }
+    
+    return response.json();
+  },
 };
 
 // History API

@@ -265,15 +265,15 @@ export default function QuizPage() {
   const handleSubmitQuiz = async () => {
     setSubmitting(true);
     try {
-      // 回答をチェックして採点
+      // 回答をチェックして採点（サーバの判定結果を使用）
       let correctAnswers = 0;
       let totalLatency = 0;
       
       quizItems.forEach(item => {
         const response = responses[item.id];
         if (response?.translation_id) {
-          const selectedTranslation = item.translations.find(t => t.id === response.translation_id);
-          if (selectedTranslation?.is_correct) {
+          // サーバの判定結果（outcome）を使用
+          if (response.outcome === 'correct') {
             correctAnswers++;
           }
           // 反応時間は実際のAPI実装時に正確に計算

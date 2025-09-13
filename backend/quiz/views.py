@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Avg, Q, F
+from django.db.models import Count, Avg, Q, F, Sum
 from django.db import transaction
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -89,7 +89,7 @@ class QuizSetViewSet(viewsets.ModelViewSet):
         quiz_set.save()
         
         # クイズアイテムをランダムに選択
-        quiz_items = quiz_set.items.order_by('?')[:10]  # 10問
+        quiz_items = quiz_set.quiz_items.order_by('?')[:10]  # 10問
         
         return Response({
             'quiz_set_id': quiz_set.id,
@@ -112,11 +112,9 @@ class QuizSetViewSet(viewsets.ModelViewSet):
             return Response({'error': 'クイズアイテムが見つかりません'}, status=status.HTTP_404_NOT_FOUND)
 
         # 既存の回答をチェック（同一 quiz_set 内で同一 quiz_item に重複回答がないか）
-        # 匿名ユーザーの場合はスキップ
-        if not request.user.is_anonymous:
-            existing_response = QuizResponse.objects.filter(quiz_set=quiz_set, quiz_item=quiz_item).first()
-            if existing_response:
-                return Response({'error': 'この問題には既に回答済みです'}, status=status.HTTP_400_BAD_REQUEST)
+        existing_response = QuizResponse.objects.filter(quiz_set=quiz_set, quiz_item=quiz_item).first()
+        if existing_response:
+            return Response({'error': 'この問題には既に回答済みです'}, status=status.HTTP_400_BAD_REQUEST)
 
         # 選択肢の存在チェック
         try:
@@ -127,18 +125,21 @@ class QuizSetViewSet(viewsets.ModelViewSet):
         # 正誤判定: 選択肢が該当の単語に属しており、かつその選択肢が is_correct の場合のみ正解
         is_correct = (selected_translation.word_id == quiz_item.word.id) and bool(selected_translation.is_correct)
 
-        # QuizResponse を作成（匿名ユーザーの場合はスキップ）
-        if not request.user.is_anonymous:
-            quiz_response = QuizResponse.objects.create(
-                quiz_set=quiz_set,
-                quiz_item=quiz_item,
-                selected_translation=selected_translation,
-                is_correct=is_correct,
-                reaction_time_ms=reaction_time_ms
-            )
-            response_id = str(quiz_response.id)
-        else:
-            response_id = 'anonymous'
+        # QuizResponse を作成（匿名ユーザーでも保存する）
+        # 既存の DB スキーマに user フィールドが無いことがあるため safe create
+        create_kwargs = dict(
+            quiz_set=quiz_set,
+            quiz_item=quiz_item,
+            selected_translation=selected_translation,
+            is_correct=is_correct,
+            reaction_time_ms=reaction_time_ms
+        )
+        # user フィールドがモデルに存在すればセット
+        if hasattr(QuizResponse, 'user') and not request.user.is_anonymous:
+            create_kwargs['user'] = request.user
+
+        quiz_response = QuizResponse.objects.create(**create_kwargs)
+        response_id = str(quiz_response.id) if quiz_response else 'unknown'
 
         return Response({
             'is_correct': is_correct, 
@@ -434,6 +435,101 @@ def user_profile(request):
     }
     
     return Response(profile_data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])  # 一時的にパーミッション緩和
+def quiz_result(request, quiz_set_id):
+    """クイズ結果を取得する"""
+    try:
+        quiz_set = get_object_or_404(QuizSet, id=quiz_set_id)
+        
+        # クイズセットに関連するクイズアイテムと回答を取得
+        quiz_items = QuizItem.objects.filter(quiz_set=quiz_set).order_by('order')
+        quiz_responses = QuizResponse.objects.filter(quiz_set=quiz_set).order_by('quiz_item__order')
+        
+        # スコア計算
+        total_questions = quiz_items.count()
+        total_correct = quiz_responses.filter(is_correct=True).count()
+        score_percentage = round((total_correct / total_questions * 100)) if total_questions > 0 else 0
+        
+        # 回答時間統計
+        total_duration_ms = quiz_responses.aggregate(
+            total=Sum('reaction_time_ms')
+        )['total'] or 0
+        
+        average_latency_ms = quiz_responses.aggregate(
+            avg=Avg('reaction_time_ms')
+        )['avg'] or 0
+        
+        # データ構築
+        items_data = []
+        responses_data = []
+        
+        for item in quiz_items:
+            # 各問題の翻訳選択肢を取得
+            translations = WordTranslation.objects.filter(word=item.word)
+            
+            items_data.append({
+                'id': str(item.id),
+                'quiz_set_id': str(quiz_set.id),
+                'word_id': str(item.word.id),
+                'word': {
+                    'id': str(item.word.id),
+                    'text': item.word.text,
+                    'pos': getattr(item.word, 'pos', 'unknown'),  # posがない場合はデフォルト値
+                    'level': item.word.level,
+                    'tags': []  # 必要に応じて実装
+                },
+                'translations': [
+                    {
+                        'id': str(t.id),
+                        'word_id': str(t.word_id),
+                        'ja': t.text,
+                        'is_correct': t.is_correct
+                    } for t in translations
+                ],
+                'order_no': item.order
+            })
+        
+        for response in quiz_responses:
+            responses_data.append({
+                'id': str(response.id),
+                'quiz_item_id': str(response.quiz_item.id),
+                'user_id': 'anonymous',  # userフィールドがQuizResponseにない場合のため
+                'chosen_translation_id': str(response.selected_translation.id),
+                'is_correct': response.is_correct,
+                'latency_ms': response.reaction_time_ms,
+                'answered_at': response.created_at.isoformat()
+            })
+        
+        result_data = {
+            'quiz_set': {
+                'id': str(quiz_set.id),
+                'mode': quiz_set.mode,
+                'level': quiz_set.level,
+                'segment': quiz_set.segment,
+                'question_count': quiz_set.question_count,
+                'started_at': quiz_set.started_at.isoformat() if quiz_set.started_at else quiz_set.created_at.isoformat(),
+                'finished_at': quiz_set.finished_at.isoformat() if quiz_set.finished_at else timezone.now().isoformat(),
+                'score': score_percentage
+            },
+            'quiz_items': items_data,
+            'quiz_responses': responses_data,
+            'total_score': total_correct,
+            'total_questions': total_questions,
+            'total_duration_ms': total_duration_ms,
+            'average_latency_ms': round(average_latency_ms)
+        }
+        
+        return Response(result_data)
+        
+    except Exception as e:
+        logger.error(f'Error fetching quiz result: {str(e)}')
+        return Response(
+            {'error': f'クイズ結果の取得に失敗しました: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['POST'])

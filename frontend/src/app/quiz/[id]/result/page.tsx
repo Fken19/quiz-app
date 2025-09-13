@@ -30,88 +30,10 @@ export default function QuizResultPage() {
 
   const fetchQuizResult = async () => {
     try {
-      // TODO: 実際のAPIコールに置き換え
-      // const result = await getQuizResult(quizId);
-      
-      // デモデータ
-      const demoResult: QuizResult = {
-        quiz_set: {
-          id: quizId,
-          mode: 'default',
-          level: 2,
-          segment: 1,
-          question_count: 2,
-          started_at: new Date(Date.now() - 300000).toISOString(), // 5分前
-          finished_at: new Date().toISOString(),
-          score: 50
-        },
-        quiz_items: [
-          {
-            id: 'item1',
-            quiz_set_id: quizId,
-            word_id: 'word1',
-            word: {
-              id: 'word1',
-              text: 'beautiful',
-              pos: 'adjective',
-              level: 2,
-              tags: ['basic']
-            },
-            translations: [
-              { id: 'trans1', word_id: 'word1', ja: '美しい', is_correct: true },
-              { id: 'trans2', word_id: 'word1', ja: '大きい', is_correct: false },
-              { id: 'trans3', word_id: 'word1', ja: '小さい', is_correct: false },
-              { id: 'trans4', word_id: 'word1', ja: '早い', is_correct: false },
-            ],
-            order_no: 1
-          },
-          {
-            id: 'item2',
-            quiz_set_id: quizId,
-            word_id: 'word2',
-            word: {
-              id: 'word2',
-              text: 'knowledge',
-              pos: 'noun',
-              level: 2,
-              tags: ['academic']
-            },
-            translations: [
-              { id: 'trans5', word_id: 'word2', ja: '時間', is_correct: false },
-              { id: 'trans6', word_id: 'word2', ja: '知識', is_correct: true },
-              { id: 'trans7', word_id: 'word2', ja: '経験', is_correct: false },
-              { id: 'trans8', word_id: 'word2', ja: '技術', is_correct: false },
-            ],
-            order_no: 2
-          }
-        ],
-        quiz_responses: [
-          {
-            id: 'resp1',
-            quiz_item_id: 'item1',
-            user_id: 'user1',
-            chosen_translation_id: 'trans1',
-            is_correct: true,
-            latency_ms: 2300,
-            answered_at: new Date(Date.now() - 250000).toISOString()
-          },
-          {
-            id: 'resp2',
-            quiz_item_id: 'item2',
-            user_id: 'user1',
-            chosen_translation_id: 'trans7',
-            is_correct: false,
-            latency_ms: 3100,
-            answered_at: new Date(Date.now() - 200000).toISOString()
-          }
-        ],
-        total_score: 1,
-        total_questions: 2,
-        total_duration_ms: 295000,
-        average_latency_ms: 2700
-      };
-
-      setResult(demoResult);
+      const { quizAPI } = await import('@/services/api');
+      const result = await quizAPI.getQuizResultFromBackend(quizId);
+      console.log('Fetched quiz result:', result);
+      setResult(result);
     } catch (err) {
       console.error('Failed to fetch quiz result:', err);
       setError('結果データの取得に失敗しました');

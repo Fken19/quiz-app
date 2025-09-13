@@ -28,6 +28,7 @@ urlpatterns = [
     path('auth/google-simple/', views.google_auth_simple, name='google_auth_simple'),  # テスト用
     path('dashboard/stats/', views.dashboard_stats, name='dashboard_stats'),
     path('quiz/history/', views.quiz_history, name='quiz_history'),
+    path('quiz/result/<str:quiz_set_id>/', views.quiz_result, name='quiz_result'),
     path('user/profile/', views.user_profile, name='user_profile'),
     path('quiz/generate/', views.generate_quiz_set, name='generate_quiz_set'),
 ]

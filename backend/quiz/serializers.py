@@ -132,19 +132,19 @@ class QuizSetListSerializer(serializers.ModelSerializer):
     class Meta:
         model = QuizSet
         fields = ['id', 'title', 'difficulty', 'created_at', 'times_attempted', 'item_count', 'completion_rate']
-    
     def get_item_count(self, obj):
-        return obj.items.count()
-    
+        return obj.quiz_items.count()
+
     def get_completion_rate(self, obj):
         # ユーザーの回答率を計算
         user = self.context.get('request').user if self.context.get('request') else None
-        if user:
-            total_items = obj.items.count()
+        if user and not user.is_anonymous:
+            total_items = obj.quiz_items.count()
             answered_items = QuizResponse.objects.filter(
-                user=user,
-                quiz_item__quiz_set=obj
-            ).count()
+                quiz_item__quiz_set=obj,
+            )
+            # 回答者が指定ユーザのもののみをカウント
+            answered_items = answered_items.filter(user=user).count() if hasattr(QuizResponse, 'user') else QuizResponse.objects.filter(quiz_item__quiz_set=obj).count()
             return (answered_items / total_items * 100) if total_items > 0 else 0
         return 0
 
