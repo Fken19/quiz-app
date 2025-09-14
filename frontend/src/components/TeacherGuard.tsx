@@ -22,7 +22,7 @@ export default function TeacherGuard({ children, fallback }: TeacherGuardProps) 
     if (status === 'loading') return;
 
     if (!session) {
-      signIn('google');
+      signIn('google', { callbackUrl: '/admin-top' });
       return;
     }
 
@@ -69,7 +69,7 @@ export default function TeacherGuard({ children, fallback }: TeacherGuardProps) 
           <h1 className="text-2xl font-bold text-gray-900 mb-4">認証が必要です</h1>
           <p className="text-gray-600 mb-6">講師機能にアクセスするには、Googleアカウントでログインしてください。</p>
           <button
-            onClick={() => signIn('google')}
+            onClick={() => signIn('google', { callbackUrl: '/admin-top' })}
             className="bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700"
           >
             Googleでログイン
@@ -97,7 +97,7 @@ export default function TeacherGuard({ children, fallback }: TeacherGuardProps) 
               生徒ダッシュボードに戻る
             </button>
             <button
-              onClick={() => signIn('google', { callbackUrl: '/admin-dashboard' })}
+              onClick={() => signIn('google', { callbackUrl: '/admin-top' })}
               className="w-full bg-gray-600 text-white px-6 py-3 rounded-md hover:bg-gray-700"
             >
               別のアカウントでログイン

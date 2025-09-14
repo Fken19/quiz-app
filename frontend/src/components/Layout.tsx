@@ -143,7 +143,7 @@ export default function Layout({ children }: LayoutProps) {
                     {session.user?.name}
                   </span>
                   <button
-                    onClick={() => signOut()}
+                    onClick={() => signOut({ callbackUrl: '/admin-top' })}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-md text-sm font-medium"
                   >
                     ログアウト

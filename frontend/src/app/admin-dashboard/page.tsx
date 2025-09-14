@@ -109,7 +109,7 @@ export default function AdminDashboardHome() {
           <h1 className="text-2xl font-bold mb-4 text-indigo-700">管理者用ダッシュボード</h1>
           <p className="mb-6 text-gray-700">この画面は管理者専用です。<br />Googleアカウントでサインインしてください。</p>
           <button
-            onClick={() => signIn('google')}
+            onClick={() => signIn('google', { callbackUrl: '/admin-top' })}
             className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-full shadow"
           >
             Googleでサインイン

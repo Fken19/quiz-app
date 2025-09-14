@@ -159,12 +159,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                       <p className="text-xs text-indigo-600 font-medium">管理者</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => signOut()}
-                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md text-sm font-medium"
-                  >
-                    ログアウト
-                  </button>
+                              <button
+                                onClick={() => signOut({ callbackUrl: '/admin-top' })}
+                                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md text-sm font-medium"
+                              >
+                                ログアウト
+                              </button>
                 </div>
               ) : (
                 <Link
