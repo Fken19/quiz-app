@@ -414,3 +414,20 @@ class TeacherStudentLink(models.Model):
     
     def __str__(self):
         return f"{self.teacher.email} → {self.student.email} ({self.status})"
+
+
+class TeacherWhitelist(models.Model):
+    """講師用メールホワイトリスト（DB管理）"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField(unique=True)
+    note = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_whitelists')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['email']),
+        ]
+
+    def __str__(self):
+        return self.email

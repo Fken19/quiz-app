@@ -1,21 +1,44 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
-    User, Group, GroupMembership, Question, Option, 
-    AssignedTest, QuizSession, QuizResult, 
-    DailyUserStats, DailyGroupStats
+    User,
+    Group,
+    GroupMembership,
+    Question,
+    Option,
+    AssignedTest,
+    QuizSession,
+    QuizResult,
+    DailyUserStats,
+    DailyGroupStats,
+    # 追加登録
+    Word,
+    WordTranslation,
+    QuizSet,
+    QuizItem,
+    QuizResponse,
+    InviteCode,
+    TeacherStudentLink,
+    TeacherWhitelist,
 )
 
 
 class CustomUserAdmin(BaseUserAdmin):
     """カスタムユーザー管理"""
-    list_display = ('email', 'display_name', 'is_staff', 'is_active', 'created_at')
+    list_display = (
+        'email', 'display_name', 'role', 'is_staff', 'is_active', 'created_at'
+    )
     list_filter = ('is_staff', 'is_active', 'created_at')
     search_fields = ('email', 'display_name')
     ordering = ('-created_at',)
     
     fieldsets = BaseUserAdmin.fieldsets + (
-        ('追加情報', {'fields': ('display_name',)}),
+        ('追加情報', {
+            'fields': (
+                'display_name', 'organization', 'bio', 'avatar', 'avatar_url',
+                'role', 'level_preference', 'quiz_count', 'total_score',
+            )
+        }),
     )
 
 
@@ -44,6 +67,19 @@ class QuestionAdmin(admin.ModelAdmin):
     list_filter = ('level', 'segment', 'created_at')
     search_fields = ('text',)
     inlines = [OptionInline]
+
+
+class WordTranslationInline(admin.TabularInline):
+    model = WordTranslation
+    extra = 4
+
+
+@admin.register(Word)
+class WordAdmin(admin.ModelAdmin):
+    list_display = ('text', 'level', 'segment', 'difficulty', 'created_at')
+    list_filter = ('level', 'segment', 'created_at')
+    search_fields = ('text',)
+    inlines = [WordTranslationInline]
 
 
 @admin.register(AssignedTest)
@@ -82,3 +118,50 @@ class DailyGroupStatsAdmin(admin.ModelAdmin):
 
 
 admin.site.register(User, CustomUserAdmin)
+
+
+# 追加: クイズ進行系モデル（参照用）
+@admin.register(QuizSet)
+class QuizSetAdmin(admin.ModelAdmin):
+    list_display = ('user', 'mode', 'level', 'segment', 'question_count', 'score', 'created_at')
+    list_filter = ('mode', 'level', 'segment', 'created_at')
+    search_fields = ('user__email',)
+
+
+@admin.register(QuizItem)
+class QuizItemAdmin(admin.ModelAdmin):
+    list_display = ('quiz_set', 'order', 'word', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('quiz_set__user__email', 'word__text')
+
+
+@admin.register(QuizResponse)
+class QuizResponseAdmin(admin.ModelAdmin):
+    list_display = ('quiz_set', 'quiz_item', 'is_correct', 'reaction_time_ms', 'created_at')
+    list_filter = ('is_correct', 'created_at')
+    search_fields = ('quiz_set__user__email', 'quiz_item__word__text')
+
+
+# 追加: 招待コード・講師-生徒リンク・ホワイトリスト
+@admin.register(InviteCode)
+class InviteCodeAdmin(admin.ModelAdmin):
+    list_display = ('code', 'issued_by', 'status', 'issued_at', 'expires_at', 'used_by')
+    list_filter = ('revoked', 'issued_at', 'expires_at')
+    search_fields = ('code', 'issued_by__email', 'used_by__email')
+    readonly_fields = ('issued_at', 'used_at', 'revoked_at')
+
+
+@admin.register(TeacherStudentLink)
+class TeacherStudentLinkAdmin(admin.ModelAdmin):
+    list_display = ('teacher', 'student', 'status', 'linked_at', 'revoked_at')
+    list_filter = ('status', 'linked_at')
+    search_fields = ('teacher__email', 'student__email')
+    readonly_fields = ('linked_at',)
+
+
+@admin.register(TeacherWhitelist)
+class TeacherWhitelistAdmin(admin.ModelAdmin):
+    list_display = ('email', 'note', 'created_by', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('email', 'note', 'created_by__email')
+    readonly_fields = ('created_at',)

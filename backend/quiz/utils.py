@@ -31,19 +31,28 @@ def get_code_expiry_time(hours=1):
     return timezone.now() + timedelta(hours=hours)
 
 
-def is_teacher_whitelisted(email):
-    """講師ホワイトリストチェック（環境変数ベース）"""
+def is_teacher_whitelisted(email: str) -> bool:
+    """講師ホワイトリストチェック
+    優先度: DBのTeacherWhitelist > 環境変数TEACHER_WHITELIST > デフォルト
+    """
+    if not email:
+        return False
+
+    email_l = email.strip().lower()
+
+    # 1) DBベースのホワイトリスト
+    try:
+        from .models import TeacherWhitelist  # 遅延インポートで循環回避
+        if TeacherWhitelist.objects.filter(email__iexact=email_l).exists():
+            return True
+    except Exception:
+        # マイグレーション前やDB未準備のケースは無視してフォールバック
+        pass
+
+    # 2) 環境変数ベース（DBにレコードが無い場合のフォールバック）
     import os
-    
-    # デフォルトのホワイトリスト（kentaf0926@gmail.com）
-    default_whitelist = ['kentaf0926@gmail.com']
-    
-    # 環境変数からホワイトリストを取得
     whitelist_env = os.environ.get('TEACHER_WHITELIST', '')
-    env_emails = [email.strip().lower() for email in whitelist_env.split(',') if email.strip()]
-    
-    # デフォルトと環境変数のメールアドレスを結合
-    whitelist = default_whitelist + env_emails
-    whitelist = [email.lower() for email in whitelist]
-    
-    return email.lower() in whitelist
+    env_emails = [e.strip().lower() for e in whitelist_env.split(',') if e.strip()]
+
+    # DB に無く、かつ環境変数にもない場合は許可しない
+    return email_l in set(env_emails)
