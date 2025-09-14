@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
@@ -32,12 +32,71 @@ interface AdminLayoutProps {
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { data: session } = useSession();
+  const [profile, setProfile] = useState<any | null>(null);
   const pathname = usePathname();
 
   // 認証ページではレイアウトを表示しない
   if (pathname?.startsWith('/auth')) {
     return <>{children}</>;
   }
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      // localStorage からキャッシュを読み込んで即時表示
+      try {
+        const cached = localStorage.getItem('profile.cached');
+        if (cached) {
+          const p = JSON.parse(cached);
+          if (mounted) setProfile(p);
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      try {
+  const { apiGet } = await import('@/lib/api-utils');
+  const data = await apiGet('/user/profile/');
+        const p = data?.user || data;
+        // normalize avatar URL if it contains Docker-internal hostname
+        if (p && p.avatar_url) {
+          try {
+            const parsed = new URL(p.avatar_url);
+            if (parsed.hostname === 'backend') {
+              parsed.hostname = window.location.hostname || 'localhost';
+              parsed.port = '8080';
+            }
+            parsed.searchParams.set('t', String(Date.now()));
+            p.avatar_url = parsed.toString();
+          } catch (e) {
+            p.avatar_url = p.avatar_url + (p.avatar_url.includes('?') ? '&' : '?') + 't=' + Date.now();
+          }
+        }
+        if (mounted) {
+          setProfile(p);
+          try { localStorage.setItem('profile.cached', JSON.stringify(p)); } catch(e) {}
+        }
+      } catch (err) {
+        console.debug('admin layout profile fetch failed', err);
+      }
+    };
+    load();
+
+    const onProfileUpdated = (e: any) => {
+      try {
+        const d = e?.detail;
+        if (d) setProfile(d);
+      } catch (err) {
+        console.debug('admin layout profileUpdated handler error', err);
+      }
+    };
+    window.addEventListener('profileUpdated', onProfileUpdated as EventListener);
+
+    return () => {
+      mounted = false;
+      window.removeEventListener('profileUpdated', onProfileUpdated as EventListener);
+    };
+  }, []);
 
   return (
     <TeacherGuard>
@@ -85,6 +144,24 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 );
               })}
             </nav>
+            {/* モバイルサイドバー下部: プロフィールとログアウト */}
+            <div className="absolute bottom-0 w-full p-4 border-t bg-white">
+              <Link href="/admin-dashboard/profile" className="flex items-center mb-4 cursor-pointer">
+                {(profile?.avatar_url || session?.user?.image) && (
+                  <img src={profile?.avatar_url || session?.user?.image} alt="プロフィール" className="w-10 h-10 rounded-full mr-3" />
+                )}
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{profile?.display_name || session?.user?.name || session?.user?.email}</p>
+                  <p className="text-xs text-indigo-600 font-medium">管理者</p>
+                </div>
+              </Link>
+              <button
+                onClick={() => signOut({ callbackUrl: '/admin-top' })}
+                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
+              >
+                ログアウト
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -120,6 +197,25 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                   );
                 })}
               </nav>
+            {/* デスクトップサイドバー下部: プロフィールとログアウト */}
+            <div className="p-4 border-t bg-white">
+              <Link href="/admin-dashboard/profile" className="flex items-center mb-4 cursor-pointer">
+                {(profile?.avatar_url || session?.user?.image) && (
+                  <img src={profile?.avatar_url || session?.user?.image} alt="プロフィール" className="w-10 h-10 rounded-full mr-3" />
+                )}
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{profile?.display_name || session?.user?.name || session?.user?.email}</p>
+                  <p className="text-xs text-indigo-600 font-medium">管理者</p>
+                </div>
+              </Link>
+
+              <button
+                onClick={() => signOut({ callbackUrl: '/admin-top' })}
+                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
+              >
+                ログアウト
+              </button>
+            </div>
             </div>
           </div>
         </div>
@@ -137,46 +233,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           </button>
         </div>
 
-        {/* Top header */}
-        <div className="relative z-10 flex-shrink-0 flex h-16 bg-white shadow">
-          <div className="flex-1 px-4 flex justify-between">
-            <div className="flex-1 flex"></div>
-            <div className="ml-4 flex items-center md:ml-6">
-              {session ? (
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                    {session.user?.image && (
-                      <img
-                        src={session.user.image}
-                        alt="プロフィール"
-                        className="w-8 h-8 rounded-full"
-                      />
-                    )}
-                    <div>
-                      <span className="text-sm text-gray-700">
-                        {session.user?.name}
-                      </span>
-                      <p className="text-xs text-indigo-600 font-medium">管理者</p>
-                    </div>
-                  </div>
-                              <button
-                                onClick={() => signOut({ callbackUrl: '/admin-top' })}
-                                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md text-sm font-medium"
-                              >
-                                ログアウト
-                              </button>
-                </div>
-              ) : (
-                <Link
-                  href="/auth/signin"
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-md text-sm font-medium"
-                >
-                  ログイン
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
+  {/* ヘッダーを削除：管理画面では空白ヘッダーは表示しない */}
 
         {/* Main content area */}
         <main className="flex-1 relative overflow-y-auto focus:outline-none">

@@ -29,11 +29,23 @@ export default function RootLayout({
   const vscDomain = process.env.NEXT_PUBLIC_VSC_DOMAIN ?? '';
 
   return (
-    <html lang="ja" style={{ ['--vsc-domain' as any]: vscDomain }}>
+    <html lang="ja">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        {/* client-only setter to avoid hydration mismatch */}
         <ClientWrapper>
+          {/* VscDomainSetter sets --vsc-domain on client mount */}
+          {/* eslint-disable-next-line @next/next/no-server-import-in-client */}
+          {/* import dynamically to avoid bundling in server bundle */}
+          <script dangerouslySetInnerHTML={{ __html: `(${String(() => {
+            try {
+              const domain = (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_VSC_DOMAIN)
+                ? process.env.NEXT_PUBLIC_VSC_DOMAIN
+                : (typeof window !== 'undefined' ? window.location.hostname : '');
+              document.documentElement.style.setProperty('--vsc-domain', domain || '');
+            } catch (e) {}
+          })})()` }} />
           {children}
         </ClientWrapper>
       </body>

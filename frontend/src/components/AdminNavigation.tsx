@@ -1,14 +1,72 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
+import { apiGet } from '@/lib/api-utils';
 
 export default function AdminNavigation() {
   const { data: session, status } = useSession();
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [profile, setProfile] = useState<any | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      // localStorage のキャッシュを優先表示
+      try {
+        const cached = localStorage.getItem('profile.cached');
+        if (cached) {
+          const p = JSON.parse(cached);
+          if (mounted) setProfile(p);
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      try {
+        const data = await apiGet('/user/profile/');
+        const p = data?.user || data;
+        if (p && p.avatar_url) {
+          try {
+            const parsed = new URL(p.avatar_url);
+            if (parsed.hostname === 'backend') {
+              parsed.hostname = window.location.hostname || 'localhost';
+              parsed.port = '8080';
+            }
+            parsed.searchParams.set('t', String(Date.now()));
+            p.avatar_url = parsed.toString();
+          } catch (e) {
+            p.avatar_url = p.avatar_url + (p.avatar_url.includes('?') ? '&' : '?') + 't=' + Date.now();
+          }
+        }
+        if (mounted) {
+          setProfile(p);
+          try { localStorage.setItem('profile.cached', JSON.stringify(p)); } catch(e) {}
+        }
+      } catch (err) {
+        console.debug('admin profile fetch failed', err);
+      }
+    };
+    load();
+
+    const onProfileUpdated = (e: any) => {
+      try {
+        const d = e?.detail;
+        if (d) setProfile(d);
+      } catch (err) {
+        console.debug('admin profileUpdated handler error', err);
+      }
+    };
+
+    window.addEventListener('profileUpdated', onProfileUpdated as EventListener);
+    return () => {
+      mounted = false;
+      window.removeEventListener('profileUpdated', onProfileUpdated as EventListener);
+    };
+  }, []);
 
   if (status === 'loading') {
     return null; // ローディング中はナビゲーションを表示しない
@@ -106,16 +164,16 @@ export default function AdminNavigation() {
               href="/admin-dashboard/profile"
               className="flex items-center mb-4 cursor-pointer"
             >
-              {session.user?.image && (
+              {(profile?.avatar_url || session.user?.image) && (
                 <img
-                  src={session.user.image}
+                  src={profile?.avatar_url || session.user.image}
                   alt="プロフィール"
                   className="w-10 h-10 rounded-full mr-3"
                 />
               )}
               <div>
                 <p className="text-sm font-medium text-gray-800">
-                  {session.user?.name || session.user?.email}
+                  {profile?.display_name || session.user?.name || session.user?.email}
                 </p>
                 <p className="text-xs text-indigo-600 font-medium">管理者</p>
               </div>
@@ -174,16 +232,16 @@ export default function AdminNavigation() {
 
             <div className="absolute bottom-0 w-full p-4 border-t">
               <div className="flex items-center mb-4">
-                {session.user?.image && (
+                {(profile?.avatar_url || session.user?.image) && (
                   <img
-                    src={session.user.image}
+                    src={profile?.avatar_url || session.user.image}
                     alt="プロフィール"
                     className="w-10 h-10 rounded-full mr-3"
                   />
                 )}
                 <div>
                   <p className="text-sm font-medium text-gray-800">
-                    {session.user?.name || session.user?.email}
+                    {profile?.display_name || session.user?.name || session.user?.email}
                   </p>
                   <p className="text-xs text-indigo-600 font-medium">管理者</p>
                 </div>

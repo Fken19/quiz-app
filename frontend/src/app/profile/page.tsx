@@ -2,7 +2,6 @@
 
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { User } from '@/types/quiz';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -163,6 +162,21 @@ export default function ProfilePage() {
         formData.append('avatar', avatarFile);
       }
 
+      // --- 楽観的プレビュー: 送信前にローカル画像を即時反映 ---
+      let optimisticUrl: string | null = null;
+      if (avatarFile) {
+        optimisticUrl = URL.createObjectURL(avatarFile);
+        setAvatarPreview(optimisticUrl);
+      }
+
+      // 楽観的に UI を更新（display name と avatar）
+      setUser((prev) => prev ? { ...prev, display_name: displayName, avatar_url: optimisticUrl || prev.avatar_url } : prev);
+      try {
+        window.dispatchEvent(new CustomEvent('profileUpdated', { detail: { display_name: displayName, avatar_url: optimisticUrl, email: session?.user?.email || '' } }));
+      } catch (e) {
+        // ignore
+      }
+
       const res = await fetch('/api/user/profile/', {
         method: 'POST',
         body: formData,
@@ -201,6 +215,42 @@ export default function ProfilePage() {
 
         // ファイル選択をリセット
         setAvatarFile(null);
+
+        // 全体にプロフィール更新を通知（サイドバー等で即時反映させるため）
+        try {
+          const bust = (u: string | null | undefined) => {
+            if (!u) return u;
+            try {
+              const url = new URL(u);
+              // append timestamp param to bust cache
+              url.searchParams.set('t', String(Date.now()));
+              return url.toString();
+            } catch (e) {
+              return u + (u.includes('?') ? '&' : '?') + 't=' + Date.now();
+            }
+          };
+
+          const eventDetail = {
+            display_name: updatedUser.display_name || displayName,
+            avatar_url: bust(normalizedAvatar || updatedUser.avatar_url || updatedUser.avatar),
+            email: updatedUser.email || (user ? user.email : ''),
+          };
+          window.dispatchEvent(new CustomEvent('profileUpdated', { detail: eventDetail }));
+        } catch (e) {
+          // ブラウザ非対応の場合は無視
+          console.debug('profileUpdated dispatch failed', e);
+        }
+
+        // 楽観的に作成した object URL を解放してメモリリークを防ぐ
+        try {
+          if (typeof optimisticUrl !== 'undefined' && optimisticUrl) {
+            URL.revokeObjectURL(optimisticUrl);
+            // optimisticUrl をクリア
+            optimisticUrl = null as any;
+          }
+        } catch (e) {
+          // ignore
+        }
 
       } else {
         // APIからエラーメッセージが返された場合
@@ -394,16 +444,14 @@ export default function ProfilePage() {
                 <div className="space-y-4">
                   {teacherLinks.map((link) => (
                     <div key={link.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                      <Link href={`/teachers/${link.teacher.id}`} className="flex-1 min-w-0 no-underline">
-                        <div>
-                          <h4 className="font-medium text-black">{link.teacher.display_name || link.teacher.email}</h4>
-                          <p className="text-sm text-black">{link.teacher.email}</p>
-                          <p className="text-xs text-black">紐付け日: {new Date(link.linked_at).toLocaleDateString('ja-JP')}</p>
-                          {link.invite_code && (
-                            <p className="text-xs text-black">コード: {link.invite_code.code}</p>
-                          )}
-                        </div>
-                      </Link>
+                      <div>
+                        <h4 className="font-medium text-black">{link.teacher.display_name || link.teacher.email}</h4>
+                        <p className="text-sm text-black">{link.teacher.email}</p>
+                        <p className="text-xs text-black">紐付け日: {new Date(link.linked_at).toLocaleDateString('ja-JP')}</p>
+                        {link.invite_code && (
+                          <p className="text-xs text-black">コード: {link.invite_code.code}</p>
+                        )}
+                      </div>
                       <button
                         onClick={() => handleRemoveTeacher(link.id)}
                         className="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700"
@@ -477,9 +525,7 @@ export default function ProfilePage() {
                         link.status === 'active' ? 'bg-green-500' : 'bg-red-500'
                       }`}></div>
                       <div className="flex-1 min-w-0">
-                        <Link href={`/teachers/${link.teacher.id}`} className="text-sm font-medium text-black truncate no-underline">
-                          {link.teacher.display_name || link.teacher.email}
-                        </Link>
+                        <p className="text-sm font-medium text-black truncate">{link.teacher.display_name || link.teacher.email}</p>
                         <p className="text-xs text-black">{link.status === 'active' ? '紐付け' : '解除'} - {new Date(link.status === 'active' ? link.linked_at : (link.revoked_at || link.linked_at)).toLocaleDateString('ja-JP')}</p>
                       </div>
                     </div>
