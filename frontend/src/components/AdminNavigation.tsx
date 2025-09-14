@@ -101,30 +101,33 @@ export default function AdminNavigation() {
           </Link>
         </div>
 
-        <div className="absolute bottom-0 w-full p-4 border-t">
-          <div className="flex items-center mb-4">
-            {session.user?.image && (
-              <img
-                src={session.user.image}
-                alt="プロフィール"
-                className="w-10 h-10 rounded-full mr-3"
-              />
-            )}
-            <div>
-              <p className="text-sm font-medium text-gray-800">
-                {session.user?.name || session.user?.email}
-              </p>
-              <p className="text-xs text-indigo-600 font-medium">管理者</p>
-            </div>
+          <div className="absolute bottom-0 w-full p-4 border-t">
+            <Link
+              href="/admin-dashboard/profile"
+              className="flex items-center mb-4 cursor-pointer"
+            >
+              {session.user?.image && (
+                <img
+                  src={session.user.image}
+                  alt="プロフィール"
+                  className="w-10 h-10 rounded-full mr-3"
+                />
+              )}
+              <div>
+                <p className="text-sm font-medium text-gray-800">
+                  {session.user?.name || session.user?.email}
+                </p>
+                <p className="text-xs text-indigo-600 font-medium">管理者</p>
+              </div>
+            </Link>
+
+            <button
+              onClick={() => signOut({ callbackUrl: '/' })}
+              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
+            >
+              ログアウト
+            </button>
           </div>
-          
-          <button
-            onClick={() => signOut({ callbackUrl: '/' })}
-            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
-          >
-            ログアウト
-          </button>
-        </div>
       </nav>
 
       {/* Mobile menu overlay */}

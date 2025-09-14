@@ -2,6 +2,7 @@
 
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { User } from '@/types/quiz';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -393,14 +394,16 @@ export default function ProfilePage() {
                 <div className="space-y-4">
                   {teacherLinks.map((link) => (
                     <div key={link.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                      <div>
-                        <h4 className="font-medium text-black">{link.teacher.display_name || link.teacher.email}</h4>
-                        <p className="text-sm text-black">{link.teacher.email}</p>
-                        <p className="text-xs text-black">紐付け日: {new Date(link.linked_at).toLocaleDateString('ja-JP')}</p>
-                        {link.invite_code && (
-                          <p className="text-xs text-black">コード: {link.invite_code.code}</p>
-                        )}
-                      </div>
+                      <Link href={`/teachers/${link.teacher.id}`} className="flex-1 min-w-0 no-underline">
+                        <div>
+                          <h4 className="font-medium text-black">{link.teacher.display_name || link.teacher.email}</h4>
+                          <p className="text-sm text-black">{link.teacher.email}</p>
+                          <p className="text-xs text-black">紐付け日: {new Date(link.linked_at).toLocaleDateString('ja-JP')}</p>
+                          {link.invite_code && (
+                            <p className="text-xs text-black">コード: {link.invite_code.code}</p>
+                          )}
+                        </div>
+                      </Link>
                       <button
                         onClick={() => handleRemoveTeacher(link.id)}
                         className="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700"
@@ -474,7 +477,9 @@ export default function ProfilePage() {
                         link.status === 'active' ? 'bg-green-500' : 'bg-red-500'
                       }`}></div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-black truncate">{link.teacher.display_name || link.teacher.email}</p>
+                        <Link href={`/teachers/${link.teacher.id}`} className="text-sm font-medium text-black truncate no-underline">
+                          {link.teacher.display_name || link.teacher.email}
+                        </Link>
                         <p className="text-xs text-black">{link.status === 'active' ? '紐付け' : '解除'} - {new Date(link.status === 'active' ? link.linked_at : (link.revoked_at || link.linked_at)).toLocaleDateString('ja-JP')}</p>
                       </div>
                     </div>

@@ -10,6 +10,9 @@ class User(AbstractUser):
     display_name = models.CharField(max_length=100, blank=True)
     avatar = models.ImageField(blank=True, null=True, upload_to='avatars/')
     avatar_url = models.URLField(blank=True, null=True)
+    # 追加: 講師の所属と自己紹介
+    organization = models.CharField(max_length=200, blank=True)
+    bio = models.TextField(blank=True)
     role = models.CharField(max_length=20, choices=[
         ('student', '生徒'),
         ('teacher', '教師'),

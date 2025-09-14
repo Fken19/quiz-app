@@ -495,6 +495,8 @@ def user_profile(request):
     if request.method == 'POST':
         display_name = request.POST.get('display_name')
         email = request.POST.get('email')
+        organization = request.POST.get('organization')
+        bio = request.POST.get('bio')
         avatar_file = request.FILES.get('avatar')
 
         changed = False
@@ -506,6 +508,14 @@ def user_profile(request):
             
         if email is not None and email != user.email:
             user.email = email
+            changed = True
+
+        if organization is not None and organization != getattr(user, 'organization', ''):
+            user.organization = organization
+            changed = True
+
+        if bio is not None and bio != getattr(user, 'bio', ''):
+            user.bio = bio
             changed = True
             
         if avatar_file is not None:
