@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import AdminLayout from '@/components/AdminLayout';
+import { apiGet } from '@/lib/api-utils';
 
 interface AdminStats {
   total_students: number;
@@ -44,32 +45,25 @@ export default function AdminDashboardHome() {
 
   const fetchAdminData = async () => {
     try {
-      // デモデータ（実際のAPIと置き換え予定）
+      // 生徒リンクから統計算出
+      const links = await apiGet('/teacher/students/');
+      const activeLinks = Array.isArray(links) ? links.filter((l: any) => l.status === 'active') : [];
+      const pendingLinks = Array.isArray(links) ? links.filter((l: any) => l.status === 'pending') : [];
+
+      // 簡易平均（teacher側で生徒の平均スコアはUser.average_scoreとして提供される）
+      const avgScore = activeLinks.length > 0
+        ? activeLinks.reduce((sum: number, l: any) => sum + (l.student?.average_score || 0), 0) / activeLinks.length
+        : 0;
+
       setStats({
-        total_students: 45,
-        total_groups: 8,
-        active_sessions_today: 12,
-        average_score: 78.5
+        total_students: activeLinks.length,
+        total_groups: 0, // グループ機能は未実装
+        active_sessions_today: 0, // 集計API未実装
+        average_score: Number(avgScore.toFixed(1))
       });
 
-      setRecentGroups([
-        {
-          id: '1',
-          name: '数学A 高校1年',
-          description: '基礎的な数学クラス',
-          student_count: 15,
-          created_at: '2024-01-15T10:00:00Z',
-          created_by: session?.user?.email || 'admin@example.com'
-        },
-        {
-          id: '2', 
-          name: '英語初級',
-          description: '英語の基礎を学ぶクラス',
-          student_count: 12,
-          created_at: '2024-01-20T14:00:00Z',
-          created_by: session?.user?.email || 'admin@example.com'
-        }
-      ]);
+      // 直近グループは一旦空（将来のGroup APIに接続）
+      setRecentGroups([]);
     } catch (err) {
       console.error('Failed to fetch admin data:', err);
       setError('データの取得に失敗しました');
@@ -121,12 +115,9 @@ export default function AdminDashboardHome() {
 
   return (
     <AdminLayout>
-      {error && (
+  {error && (
         <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
           <p className="text-yellow-800">{error}</p>
-          <p className="text-sm text-yellow-600 mt-1">
-            デモデータを表示しています。
-          </p>
         </div>
       )}
 

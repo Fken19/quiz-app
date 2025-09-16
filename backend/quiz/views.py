@@ -1,6 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Avg, Q, F, Sum
-from django.db import transaction
+from django.db.models import Case, When, IntegerField
+from django.db.models.functions import TruncDate, TruncWeek, TruncMonth
+from django.db import transaction, connection
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -16,6 +18,7 @@ from datetime import datetime, timedelta
 import uuid
 import json
 import logging
+from collections import defaultdict, deque
 
 from .models import (
     User, Word, WordTranslation, QuizSet, QuizItem, QuizResponse,
@@ -432,6 +435,367 @@ def dashboard_stats(request):
     }
     
     return Response(stats_data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def learning_metrics(request):
+    """
+    学習ダッシュボード用メトリクス
+    - 日/週/月の積み上げ棒グラフ用データ（正解/不正解/Timeout）
+    - Streak（連続達成日数: その日の正解率>=70%）
+    - 直近7日ヒートマップ（総回答数/正解数）
+    """
+    user = request.user
+    now = timezone.now()
+
+    # ユーザーの回答
+    base_qs = QuizResponse.objects.filter(user=user)
+
+    # Timeout の定義: 不正解 かつ (reaction_time_ms が 0 or NULL or selected_answer='Unknown')
+    timeout_expr = Case(
+        When(Q(is_correct=False) & (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0) | Q(selected_answer='Unknown')), then=1),
+        default=0,
+        output_field=IntegerField()
+    )
+    incorrect_non_timeout_expr = Case(
+        When(Q(is_correct=False) & ~ (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0) | Q(selected_answer='Unknown')), then=1),
+        default=0,
+        output_field=IntegerField()
+    )
+    correct_expr = Case(
+        When(is_correct=True, then=1),
+        default=0,
+        output_field=IntegerField()
+    )
+
+    def aggregate_by(trunc_func, qs):
+        grouped = (
+            qs.annotate(bucket=trunc_func('created_at'))
+              .values('bucket')
+              .annotate(
+                  correct=Sum(correct_expr),
+                  incorrect=Sum(incorrect_non_timeout_expr),
+                  timeout=Sum(timeout_expr),
+                  total=Count('id')
+              )
+              .order_by('bucket')
+        )
+        out = []
+        for row in grouped:
+            b = row['bucket']
+            out.append({
+                'bucket': b.isoformat() if hasattr(b, 'isoformat') else str(b),
+                'correct': row['correct'] or 0,
+                'incorrect': row['incorrect'] or 0,
+                'timeout': row['timeout'] or 0,
+                'total': row['total'] or 0,
+            })
+        return out
+
+    # 期間フィルタ（要件）
+    last_15_days = now - timezone.timedelta(days=15)
+    last_8_weeks = now - timezone.timedelta(weeks=8)
+    last_12_months = now - timezone.timedelta(days=365)
+
+    daily = aggregate_by(TruncDate, base_qs.filter(created_at__gte=last_15_days))
+    weekly = aggregate_by(TruncWeek, base_qs.filter(created_at__gte=last_8_weeks))
+    monthly = aggregate_by(TruncMonth, base_qs.filter(created_at__gte=last_12_months))
+
+    # Streak: 直近から遡って、その日に1件でも回答があれば連続カウント
+    streak = 0
+    # 過去90日分を計算ベースに
+    max_days = 90
+    for i in range(max_days):
+        day = (now - timezone.timedelta(days=i)).date()
+        day_qs = base_qs.filter(created_at__date=day)
+        if not day_qs.exists():
+            if i == 0:
+                # 今日が未回答でも streak は継続可能性ありなのでスキップ
+                continue
+            break
+        # その日に1件でも回答があればOK
+        streak += 1
+
+    # 直近7日ヒートマップ
+    heatmap7 = []
+    for i in range(6, -1, -1):
+        day = (now - timezone.timedelta(days=i)).date()
+        day_qs = base_qs.filter(created_at__date=day)
+        total = day_qs.count()
+        correct = day_qs.filter(is_correct=True).count()
+        heatmap7.append({
+            'date': day.isoformat(),
+            'total': total,
+            'correct': correct,
+        })
+
+    return Response({
+        'daily': daily,
+        'weekly': weekly,
+        'monthly': monthly,
+        'streak': streak,
+        'heatmap7': heatmap7,
+    })
+
+
+def _fetch_last_two_by_word(user_id, word_ids):
+    """DB側（PostgreSQLウィンドウ関数）で各単語ごと最新2件の回答を取得
+    戻り値: { word_id: [ {is_correct, reaction_time_ms, selected_answer}, ...最新→過去 ] }
+    """
+    result = {}
+    if not word_ids:
+        return result
+    # 動的プレースホルダを生成
+    placeholders = ','.join(['%s'] * len(word_ids))
+    params = [user_id] + list(word_ids)
+    sql = f"""
+        WITH ranked AS (
+            SELECT
+                r.id,
+                qi.word_id AS word_id,
+                r.is_correct AS is_correct,
+                r.response_time_ms AS reaction_time_ms,
+                r.selected_answer AS selected_answer,
+                r.created_at AS created_at,
+                ROW_NUMBER() OVER (PARTITION BY qi.word_id ORDER BY r.created_at DESC) AS rn
+            FROM quiz_quiz_response r
+            JOIN quiz_quiz_item qi ON r.quiz_item_id = qi.id
+            WHERE r.user_id = %s AND qi.word_id IN ({placeholders})
+        )
+        SELECT word_id, is_correct, reaction_time_ms, selected_answer, rn
+        FROM ranked
+        WHERE rn <= 2
+        ORDER BY word_id, rn
+    """
+    with connection.cursor() as cur:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+        # rows: (word_id, is_correct, reaction_time_ms, selected_answer, rn) with rn=1 latest
+        for word_id, is_correct, reaction_time_ms, selected_answer, rn in rows:
+            lst = result.setdefault(int(word_id), [])
+            # rn=1 が先頭（最新）になるようにappend。ORDER BY rn 昇順なので先に最新が来る
+            lst.append({
+                'is_correct': bool(is_correct),
+                'reaction_time_ms': reaction_time_ms,
+                'selected_answer': selected_answer or ''
+            })
+    return result
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def focus_status_counts(request):
+    """
+    フォーカス学習用のステータス別件数を返す。
+    クエリ:
+      - level: int | 'all' （未指定はユーザのlevel_preference）
+    ルール（直近履歴ベース／相互排他）:
+      - 未学習: QuizResponse がまだない
+      - 苦手: 直近1回が不正解 or Timeout（Timeout=不正解 かつ 反応時間0/NULL or Unknown）
+      - 学習済み: 直近1回は正解 だが 直近2回連続正解ではない
+      - 得意: 直近2回が連続正解
+    返却: { level_counts: { level: {unseen, weak, learned, strong} }, total: {...} }
+    """
+    user = request.user
+    level_param = request.query_params.get('level')
+    levels = []
+    if level_param in (None, '', 'auto'):
+        levels = [int(getattr(user, 'level_preference', 1) or 1)]
+    elif level_param == 'all':
+        # 既存のWordのgradeから存在するレベルを拾う（上限5程度）
+        levels = list(
+            Word.objects.values_list('grade', flat=True).distinct().order_by('grade')[:50]
+        )
+    else:
+        try:
+            levels = [int(level_param)]
+        except ValueError:
+            return Response({'error': 'invalid level parameter'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 全対象単語IDを取得（レベル別に）
+    words_by_level = {
+        lv: list(Word.objects.filter(grade=lv).values_list('id', flat=True)) for lv in levels
+    }
+
+    # 全対象単語ID集合
+    all_word_ids = set()
+    for arr in words_by_level.values():
+        all_word_ids.update(arr)
+    if not all_word_ids:
+        return Response({'level_counts': {lv: {'unseen': 0, 'weak': 0, 'learned': 0, 'strong': 0} for lv in levels}, 'total': {'unseen': 0, 'weak': 0, 'learned': 0, 'strong': 0}})
+    # DB側で各単語ごと最新2件のみ取得
+    last_two_by_word = _fetch_last_two_by_word(user.id, list(all_word_ids))
+
+    def is_timeout(rec):
+        return (not rec['is_correct']) and (
+            rec['reaction_time_ms'] in (None, 0) or rec['selected_answer'] == 'Unknown'
+        )
+
+    def classify(word_id: int) -> str:
+        arr = last_two_by_word.get(word_id)
+        if not arr or len(arr) == 0:
+            return 'unseen'
+        # 直近1件は配列の先頭（rn=1）
+        last = arr[0]
+        if (not last['is_correct']) or is_timeout(last):
+            return 'weak'
+        # 直近1回が正解
+        if len(arr) >= 2 and arr[1]['is_correct'] and (not is_timeout(arr[1])):
+            return 'strong'
+        return 'learned'
+
+    result = {}
+    total = {'unseen': 0, 'weak': 0, 'learned': 0, 'strong': 0}
+    for lv, word_ids in words_by_level.items():
+        counts = {'unseen': 0, 'weak': 0, 'learned': 0, 'strong': 0}
+        for wid in word_ids:
+            c = classify(wid)
+            counts[c] += 1
+        result[lv] = counts
+        for k in total:
+            total[k] += counts[k]
+
+    return Response({'level_counts': result, 'total': total})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def focus_start(request):
+    """
+    フォーカス学習を開始してクイズセットを生成。
+    入力(JSON): { status: 'unseen'|'weak'|'learned'|'strong', level: int|'all', count?: int=10,
+                   extend?: boolean, extend_levels?: [int], pos_filter?: [str] }
+    仕様:
+      - まず選択レベル内で指定statusの単語を抽出。
+      - 足りなければ extend=true の場合、extend_levels（指定がなければ全レベル）で補完。
+      - それでも足りなければ足りない件数を明示しつつ、そのまま開始可能。
+    戻り値: { requested: n, available: m, started: boolean, message, quiz_set?: QuizSetSerializer }
+    """
+    user = request.user
+    body = request.data or {}
+    status_key = body.get('status')
+    level_param = body.get('level')
+    target_count = int(body.get('count', 10))
+    extend = bool(body.get('extend', False))
+    extend_levels = body.get('extend_levels')
+
+    if status_key not in ('unseen', 'weak', 'learned', 'strong'):
+        return Response({'error': 'invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # レベル集合決定
+    if level_param in (None, '', 'auto'):
+        base_levels = [int(getattr(user, 'level_preference', 1) or 1)]
+    elif str(level_param) == 'all':
+        base_levels = list(Word.objects.values_list('grade', flat=True).distinct())
+    else:
+        try:
+            base_levels = [int(level_param)]
+        except ValueError:
+            return Response({'error': 'invalid level parameter'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if extend and not extend_levels:
+        extend_levels = list(Word.objects.values_list('grade', flat=True).distinct())
+
+    # 対象候補単語IDを列挙する関数（focus_status_counts と同ロジック）
+    def collect_ids_for_levels(levels_list):
+        words_by_level = {
+            lv: list(Word.objects.filter(grade=lv).values_list('id', flat=True)) for lv in levels_list
+        }
+        all_ids = set()
+        for ids in words_by_level.values():
+            all_ids.update(ids)
+
+        last_two_by_word = _fetch_last_two_by_word(user.id, list(all_ids))
+
+        def is_timeout(rec):
+            return (not rec['is_correct']) and (
+                rec['reaction_time_ms'] in (None, 0) or rec['selected_answer'] == 'Unknown'
+            )
+
+        def classify(word_id: int) -> str:
+            arr = last_two_by_word.get(word_id)
+            if not arr or len(arr) == 0:
+                return 'unseen'
+            last = arr[0]
+            if (not last['is_correct']) or is_timeout(last):
+                return 'weak'
+            if len(arr) >= 2 and arr[1]['is_correct'] and (not is_timeout(arr[1])):
+                return 'strong'
+            return 'learned'
+
+        # 指定 status のものだけ集める
+        candidates = [wid for wid in all_ids if classify(wid) == status_key]
+        return candidates
+
+    # まずベースレベルから
+    candidate_ids = collect_ids_for_levels(base_levels)
+    available_base = len(candidate_ids)
+
+    # 足りなければ拡張（extend_levelsの中で base_levels に無いものを追加）
+    if available_base < target_count and extend and extend_levels:
+        extra_levels = [lv for lv in extend_levels if lv not in base_levels]
+        extra_ids = collect_ids_for_levels(extra_levels)
+        candidate_ids = list(candidate_ids) + [wid for wid in extra_ids if wid not in candidate_ids]
+
+    available_total = len(candidate_ids)
+
+    # 候補が0の場合は開始せず件数のみ返す
+    if available_total == 0:
+        return Response({
+            'requested': target_count,
+            'available': 0,
+            'started': False,
+            'message': f"選択された条件（status={status_key}）に該当する単語がありません"
+        })
+
+    # ランダム抽出（重複なし）
+    import random
+    random.shuffle(candidate_ids)
+    selected_word_ids = candidate_ids[:target_count]
+
+    # QuizSet を作って QuizItem を単語から生成（pos_filterは現状未使用）
+    with transaction.atomic():
+        quiz_set = QuizSet.objects.create(
+            user=user,
+            name=f"Focus {status_key} ({'all' if str(level_param)=='all' else ','.join(map(str, base_levels))})",
+            grade=base_levels[0] if base_levels else 1,
+            total_questions=len(selected_word_ids),
+            pos_filter={'focus': status_key}
+        )
+
+        # 各単語に対して QuizItem を作成
+        words = list(Word.objects.filter(id__in=selected_word_ids))
+        # id の順ではなくランダム順を保ったまま order を振る
+        wid_to_word = {w.id: w for w in words}
+        for idx, wid in enumerate(selected_word_ids, start=1):
+            word = wid_to_word.get(wid)
+            if not word:
+                continue
+            correct_translation = word.translations.filter(is_correct=True).first()
+            correct_answer = correct_translation.text if correct_translation else word.text
+            # 選択肢（正答 + ダミー）
+            all_translations = list(word.translations.all()[:4])
+            if len(all_translations) < 4:
+                dummy_translations = WordTranslation.objects.exclude(word=word).order_by('?')[:4 - len(all_translations)]
+                all_translations.extend(dummy_translations)
+            choices = [{"text": t.text, "is_correct": (t.word_id == word.id and t.is_correct)} for t in all_translations]
+
+            QuizItem.objects.create(
+                quiz_set=quiz_set,
+                word=word,
+                question_number=idx,
+                choices=choices,
+                correct_answer=correct_answer,
+            )
+
+    return Response({
+        'requested': target_count,
+        'available': available_total,
+        'started': True,
+        'message': f"{min(target_count, available_total)}問で開始します（要求{target_count}問、対象{available_total}問）",
+        'quiz_set': QuizSetSerializer(quiz_set, context={'request': request}).data
+    })
 
 
 @api_view(['GET'])

@@ -1,66 +1,86 @@
 // API呼び出し用のユーティリティ関数
-import { getSession } from 'next-auth/react';
+import { API_BASE_URL } from './constants';
+import { getBackendToken } from './auth-client';
 
-const API_BASE_URL = 'http://localhost:8080/api';
+export class ApiError extends Error {
+  status: number;
+  body?: any;
+  constructor(message: string, status: number, body?: any) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
 
 export async function apiRequest(endpoint: string, options: RequestInit = {}) {
-  const session = await getSession();
-  
-  if (!session?.user?.email) {
-    throw new Error('認証が必要です');
-  }
-
-  // DjangoでGoogle認証からアクセストークンを取得
-  let token = (session as any)?.backendAccessToken;
-  
-  if (!token) {
+  const devLog = (...args: any[]) => {
     try {
-      // Djangoのデバッグ用ユーザー作成エンドポイントを使ってトークンを取得
-      const authResponse = await fetch(`${API_BASE_URL}/debug/create-user/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: session.user.email,
-          name: session.user.name || ''
-        }),
-      });
-      
-      if (authResponse.ok) {
-        const authData = await authResponse.json();
-        token = authData.access_token;
-        
-        // セッションにトークンを保存（簡易的）
-        (session as any).backendAccessToken = token;
-      } else {
-        throw new Error('Django認証に失敗しました');
-      }
-    } catch (error) {
-      console.error('Django認証エラー:', error);
-      throw new Error('認証に失敗しました');
-    }
-  }
+      // eslint-disable-next-line no-console
+      console.log('[timing-api]', ...args);
+    } catch (_) {}
+  };
+
+  const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+
+  // Obtain backend token from shared auth-client (uses memo + optional localStorage).
+  const token = await getBackendToken();
 
   const defaultHeaders = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${token}`,
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      ...defaultHeaders,
-      ...options.headers,
-    },
-  });
+  // actual API request timing
+  const tFetchStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        ...defaultHeaders,
+        ...options.headers,
+      },
+    });
+  } catch (err: any) {
+    // ネットワークや CORS エラーなど
+    throw new Error(`Network error calling ${endpoint}: ${err?.message || String(err)}`);
+  }
+  const tFetchEnd = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  devLog('request-fetch', Math.round(tFetchEnd - tFetchStart), 'ms', endpoint);
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  const tTotal = Math.round(( (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) - t0 ));
+  devLog('request-total', tTotal, 'ms', endpoint);
+
+  // 204 No Content を安全に処理
+  if (response.status === 204) {
+    return null;
   }
 
-  return response.json();
+  const contentType = response.headers.get('content-type') || '';
+
+  if (!response.ok) {
+    // JSON のときは JSON を試みて、失敗したらテキストを読む
+    if (contentType.includes('application/json')) {
+      const errorBody = await response.json().catch(() => null);
+      const message =
+        errorBody?.error || errorBody?.message || (errorBody ? JSON.stringify(errorBody) : undefined) ||
+        `HTTP ${response.status} ${response.statusText}`;
+      throw new ApiError(`API ${endpoint} error: ${message}`, response.status, errorBody || undefined);
+    }
+
+    // JSON 以外（HTML など）の場合はテキストで取得して要約を返す
+    const text = await response.text().catch(() => '');
+    const short = text ? (text.length > 200 ? text.slice(0, 200) + '...' : text) : `${response.status} ${response.statusText}`;
+    throw new ApiError(`API ${endpoint} error: HTTP ${response.status} ${response.statusText}: ${short}`, response.status, { text });
+  }
+
+  // 成功時のレスポンスも content-type を見て JSON またはテキストを返す
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+
+  return response.text();
 }
 
 export async function apiPost(endpoint: string, data: any) {

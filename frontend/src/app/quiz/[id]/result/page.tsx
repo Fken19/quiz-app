@@ -250,6 +250,19 @@ export default function QuizResultPage() {
         >
           別のクイズに挑戦
         </Link>
+        {/* フォーカス学習への導線 */}
+        <Link
+          href="/quiz/start?focus=weak"
+          className="flex-1 text-center py-3 px-4 bg-pink-100 text-pink-700 rounded-md hover:bg-pink-200 transition-colors"
+        >
+          苦手だけ10問
+        </Link>
+        <Link
+          href="/quiz/start?focus=unseen"
+          className="flex-1 text-center py-3 px-4 bg-yellow-100 text-yellow-800 rounded-md hover:bg-yellow-200 transition-colors"
+        >
+          未学習だけ10問
+        </Link>
         <Link
           href="/history"
           className="flex-1 text-center py-3 px-4 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors"

@@ -177,6 +177,20 @@ export const quizAPI = {
     
     return response.json();
   },
+
+  // フォーカス学習: ステータス別件数
+  async getFocusStatusCounts(params: { level?: number | 'all' }, token: string): Promise<{ level_counts: any; total: any }>{
+    const search = new URLSearchParams();
+    if (params?.level !== undefined) search.set('level', String(params.level));
+    const response = await apiFetch(`/api/focus/status-counts/?${search.toString()}`, {}, token).then(res => res.json());
+    return response;
+  },
+
+  // フォーカス学習開始
+  async startFocus(data: { status: 'unseen'|'weak'|'learned'|'strong'; level: number|'all'; count?: number; extend?: boolean; extend_levels?: number[] }, token: string) {
+    const response = await apiFetch('/api/focus/start/', { method: 'POST', body: JSON.stringify(data) }, token).then(res => res.json());
+    return response;
+  }
 };
 
 // History API

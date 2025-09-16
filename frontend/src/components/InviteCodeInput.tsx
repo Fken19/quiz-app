@@ -85,7 +85,7 @@ export default function InviteCodeInput({ onSuccess, onError }: InviteCodeInputP
 
       // レスポンスにmessageがあれば成功とみなす
       if (response.message) {
-        const teacherName = response.link?.teacher?.display_name || response.link?.teacher?.email || '講師';
+  const teacherName = response.link?.teacher?.display_name || '講師';
         onSuccess(teacherName);
         setCode('');
         setAgreed(false);

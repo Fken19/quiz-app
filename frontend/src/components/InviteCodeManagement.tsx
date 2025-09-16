@@ -232,7 +232,7 @@ export default function InviteCodeManagement() {
                       {new Date(code.issued_at).toLocaleString('ja-JP')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {code.used_by ? code.used_by.display_name || code.used_by.email : '-'}
+                      {code.used_by ? (code.used_by.display_name || '-') : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                       <button

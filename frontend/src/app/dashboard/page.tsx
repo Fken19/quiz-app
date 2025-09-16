@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { DashboardStats } from '@/types/quiz';
+import { apiGet } from '@/lib/api-utils';
+import { normalizeAvatarUrl } from '@/lib/avatar';
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
@@ -13,6 +15,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<any | null>(null);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -22,20 +25,31 @@ export default function Dashboard() {
       return;
     }
 
-    // ダッシュボード統計を取得（現在はデモデータ）
+    // プロフィールとダッシュボード統計を取得
     const fetchStats = async () => {
       try {
-        // TODO: 実際のAPIコールに置き換え
-        // const data = await dashboardAPI.getStats();
-        const demoData: DashboardStats = {
-          total_quiz_sets: 15,
-          total_correct_answers: 127,
-          total_questions: 150,
-          average_score: 84.7,
-          average_latency_ms: 2340,
-          recent_results: []
+        try {
+          const pData = await apiGet('/user/profile/');
+          const p = pData?.user || pData;
+          p.avatar_url = normalizeAvatarUrl(p?.avatar_url || p?.avatar) || null;
+          setProfile(p);
+        } catch (_) {}
+
+        const data = await apiGet('/dashboard/stats/');
+        // バックエンドは { total_quizzes, average_score, current_streak, weekly_activity, level, monthly_progress, recent_quiz_sets }
+        // フロントのDashboardStatsへ最低限マップ
+        const mapped: DashboardStats = {
+          total_quiz_sets: Number(data?.total_quizzes || 0),
+          total_correct_answers: 0, // 集計未提供
+          total_questions: 0, // 集計未提供
+          average_score: Number(data?.average_score || 0),
+          average_latency_ms: 0, // 集計未提供
+          recent_results: [],
+          streak_days: Number(data?.current_streak || 0),
+          today_quiz_count: Number(data?.weekly_activity || 0),
+          today_correct_count: 0,
         };
-        setStats(demoData);
+        setStats(mapped);
       } catch (err) {
         console.error('Failed to fetch dashboard stats:', err);
         setError('統計データの取得に失敗しました');
@@ -64,10 +78,10 @@ export default function Dashboard() {
       {/* ヘッダー */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">
-          ダッシュボード
+          ホーム
         </h1>
         <p className="mt-2 text-gray-600">
-          こんにちは、{session.user?.name}さん！英単語クイズで学習を進めましょう。
+          こんにちは、{profile?.display_name || session.user?.name}さん！英単語クイズで学習を進めましょう。
         </p>
       </div>
 

@@ -5,7 +5,8 @@ import { useSession, signIn } from 'next-auth/react';
 import AdminLayout from '@/components/AdminLayout';
 import InviteCodeManagement from '@/components/InviteCodeManagement';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { apiGet, apiPost } from '@/lib/api-utils';
+import { apiGet, apiPost, apiDelete } from '@/lib/api-utils';
+import { normalizeAvatarUrl } from '@/lib/avatar';
 
 interface TeacherStudentLink {
   id: string;
@@ -18,6 +19,8 @@ interface TeacherStudentLink {
     id: string;
     email: string;
     display_name: string;
+  avatar_url?: string | null;
+  avatar?: string | null;
     quiz_count: number;
     total_score: number;
     average_score: number;
@@ -48,40 +51,25 @@ export default function StudentsPage() {
   const fetchStudents = async () => {
     try {
       const data = await apiGet('/teacher/students/');
-      setStudents(data);
+      // 生徒のアバターURLを正規化
+      const normalized = Array.isArray(data)
+        ? data.map((link: any) => ({
+            ...link,
+            student: {
+              ...link.student,
+              avatar_url: normalizeAvatarUrl(link.student?.avatar_url || link.student?.avatar),
+            },
+          }))
+        : data;
+      setStudents(normalized);
     } catch (error) {
       console.error('生徒データ取得エラー:', error);
-      // デモデータをフォールバック
-      setStudents([
-        {
-          id: '1',
-          teacher: { id: '1', email: 'teacher@example.com', display_name: '田中先生' },
-          student: {
-            id: '1',
-            email: 'student1@example.com',
-            display_name: '田中太郎',
-            quiz_count: 25,
-            total_score: 196,
-            average_score: 78.4
-          },
-          status: 'active',
-          linked_at: '2024-01-16T09:00:00Z'
-        },
-        {
-          id: '2',
-          teacher: { id: '1', email: 'teacher@example.com', display_name: '田中先生' },
-          student: {
-            id: '2',
-            email: 'student2@example.com',
-            display_name: '佐藤花子',
-            quiz_count: 30,
-            total_score: 247,
-            average_score: 82.3
-          },
-          status: 'active',
-          linked_at: '2024-01-17T10:00:00Z'
-        }
-      ]);
+      // エラーメッセージのみ提示（フォールバックはしない）
+      try {
+        // @ts-ignore
+        const msg = error?.message || String(error);
+        alert(`生徒データ取得エラー: ${msg}`);
+      } catch (_) {}
     } finally {
       setLoading(false);
     }
@@ -93,7 +81,7 @@ export default function StudentsPage() {
     }
 
     try {
-      await apiPost(`/teacher/students/${linkId}/revoke/`, {});
+      await apiDelete(`/teacher/students/${linkId}/revoke/`);
       setStudents(prev => prev.map(link => 
         link.id === linkId 
           ? { ...link, status: 'revoked' as const, revoked_at: new Date().toISOString() }
@@ -107,8 +95,7 @@ export default function StudentsPage() {
   };
 
   const filteredStudents = students.filter(link => {
-    const matchesSearch = link.student.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         link.student.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = link.student.display_name.toLowerCase().includes(searchTerm.toLowerCase());
     
     let matchesStatus = true;
     if (statusFilter === 'all') {
@@ -301,7 +288,7 @@ export default function StudentsPage() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="生徒名・メールアドレスで検索"
+                    placeholder="生徒名で検索"
                   />
                 </div>
                 
@@ -371,9 +358,18 @@ export default function StudentsPage() {
                               {filteredStudents.map((link) => (
                                 <tr key={link.id} className="hover:bg-gray-50">
                                   <td className="px-6 py-4">
-                                    <div>
-                                      <div className="text-sm font-medium text-black">{link.student.display_name || '未設定'}</div>
-                                      <div className="text-sm text-black">{link.student.email}</div>
+                                    <div className="flex items-center gap-3">
+                                      {link.student.avatar_url ? (
+                                        <img src={link.student.avatar_url} alt="avatar" className="w-10 h-10 rounded-full object-cover border" />
+                                      ) : (
+                                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">
+                                          {link.student.display_name?.[0]?.toUpperCase() || 'S'}
+                                        </div>
+                                      )}
+                                      <div>
+                                        <div className="text-sm font-medium text-black">{link.student.display_name || '未設定'}</div>
+                                        {/* プライバシー保護のためメールは表示しない */}
+                                      </div>
                                     </div>
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(link.status)}</td>

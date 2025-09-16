@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { apiGet } from '@/lib/api-utils';
+import { normalizeAvatarUrl } from '@/lib/avatar';
 
 interface Student {
   id: string;
@@ -39,6 +41,7 @@ export default function StudentDetailPage() {
   const [quizSessions, setQuizSessions] = useState<QuizSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<any | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -46,6 +49,14 @@ export default function StudentDetailPage() {
       return;
     }
     if (status === "authenticated") {
+      (async () => {
+        try {
+          const data = await apiGet('/user/profile/');
+          const p = data?.user || data;
+          p.avatar_url = normalizeAvatarUrl(p?.avatar_url || p?.avatar) || null;
+          setProfile(p);
+        } catch (_) {}
+      })();
       fetchStudentDetails();
     }
   }, [status, studentId]);
@@ -191,9 +202,9 @@ export default function StudentDetailPage() {
               </span>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-700">{session.user?.name}</span>
+              <span className="text-sm text-gray-700">{profile?.display_name || session.user?.name}</span>
               <img
-                src={session.user?.image || "/default-avatar.png"}
+                src={profile?.avatar_url || session.user?.image || "/default-avatar.png"}
                 alt="avatar"
                 className="w-8 h-8 rounded-full border"
               />
@@ -231,10 +242,7 @@ export default function StudentDetailPage() {
                   <dt className="text-sm font-medium text-gray-500">表示名</dt>
                   <dd className="mt-1 text-sm text-gray-900">{student.display_name}</dd>
                 </div>
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">メールアドレス</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{student.email}</dd>
-                </div>
+                {/* プライバシー保護のためメールは表示しない */}
                 <div>
                   <dt className="text-sm font-medium text-gray-500">参加日</dt>
                   <dd className="mt-1 text-sm text-gray-900">

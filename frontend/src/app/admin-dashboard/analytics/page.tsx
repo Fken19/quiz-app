@@ -5,6 +5,8 @@ import { useSession, signIn } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { apiGet } from '@/lib/api-utils';
+import { normalizeAvatarUrl } from '@/lib/avatar';
 
 interface Analytics {
   total_students: number;
@@ -34,6 +36,7 @@ export default function AnalyticsPage() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<any | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -41,60 +44,70 @@ export default function AnalyticsPage() {
       return;
     }
     if (status === "authenticated") {
+      // プロフィールの取得（表示名/アバター）
+      (async () => {
+        try {
+          const data = await apiGet('/user/profile/');
+          const p = data?.user || data;
+          p.avatar_url = normalizeAvatarUrl(p?.avatar_url || p?.avatar) || null;
+          setProfile(p);
+        } catch (_) {
+          // ignore -> セッションのフォールバックを使う
+        }
+      })();
       fetchAnalytics();
     }
   }, [status]);
 
   const fetchAnalytics = async () => {
     try {
-      // デモデータ（実際のAPIと置き換え予定）
+      const links = await apiGet('/teacher/students/');
+      const activeLinks = Array.isArray(links) ? links.filter((l: any) => l.status === 'active') : [];
+
+      const totalStudents = activeLinks.length;
+      const averageScore = totalStudents > 0
+        ? activeLinks.reduce((sum: number, l: any) => sum + (l.student?.average_score || 0), 0) / totalStudents
+        : 0;
+
+      // 簡易分布（スコア閾値でカウント）
+      const scores = activeLinks.map((l: any) => Number(l.student?.average_score || 0));
+      const bins = [
+        { range: '90-100%', min: 90, max: 100 },
+        { range: '80-89%', min: 80, max: 89.999 },
+        { range: '70-79%', min: 70, max: 79.999 },
+        { range: '60-69%', min: 60, max: 69.999 },
+        { range: '0-59%', min: 0, max: 59.999 }
+      ];
+      const score_distribution = bins.map(b => {
+        const count = scores.filter(s => s >= b.min && s <= b.max).length;
+        const percentage = totalStudents > 0 ? Number(((count / totalStudents) * 100).toFixed(1)) : 0;
+        return { range: b.range, count, percentage };
+      });
+
+      // グループは未実装のため空
+      const group_performance: any[] = [];
+
+      // 日別活動は集計API未実装のためダミー0を構築（UI表示は維持）
+      const days = 7;
+      const today = new Date();
+      const daily_activity = Array.from({ length: days }).map((_, i) => {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        return {
+          date: d.toISOString().slice(0, 10),
+          quiz_sessions: 0,
+          active_students: 0,
+        };
+      }).reverse();
+
       setAnalytics({
-        total_students: 45,
-        total_groups: 8,
-        total_quiz_sessions: 312,
-        average_score: 76.8,
-        score_distribution: [
-          { range: '90-100%', count: 8, percentage: 17.8 },
-          { range: '80-89%', count: 15, percentage: 33.3 },
-          { range: '70-79%', count: 12, percentage: 26.7 },
-          { range: '60-69%', count: 7, percentage: 15.6 },
-          { range: '0-59%', count: 3, percentage: 6.7 }
-        ],
-        group_performance: [
-          {
-            group_name: '数学A 高校1年',
-            student_count: 15,
-            average_score: 78.5,
-            total_sessions: 125
-          },
-          {
-            group_name: '英語初級',
-            student_count: 12,
-            average_score: 82.3,
-            total_sessions: 96
-          },
-          {
-            group_name: '物理基礎',
-            student_count: 8,
-            average_score: 71.5,
-            total_sessions: 64
-          },
-          {
-            group_name: '化学基礎',
-            student_count: 10,
-            average_score: 68.9,
-            total_sessions: 27
-          }
-        ],
-        daily_activity: [
-          { date: '2024-01-20', quiz_sessions: 28, active_students: 15 },
-          { date: '2024-01-19', quiz_sessions: 22, active_students: 12 },
-          { date: '2024-01-18', quiz_sessions: 31, active_students: 18 },
-          { date: '2024-01-17', quiz_sessions: 19, active_students: 10 },
-          { date: '2024-01-16', quiz_sessions: 25, active_students: 14 },
-          { date: '2024-01-15', quiz_sessions: 33, active_students: 20 },
-          { date: '2024-01-14', quiz_sessions: 17, active_students: 9 }
-        ]
+        total_students: totalStudents,
+        total_groups: 0,
+        total_quiz_sessions: 0,
+        average_score: Number(averageScore.toFixed(1)),
+        score_distribution,
+        group_performance,
+        daily_activity,
       });
     } catch (err) {
       console.error('Failed to fetch analytics:', err);
@@ -130,9 +143,9 @@ export default function AnalyticsPage() {
                 <span className="text-indigo-600 font-medium">成績分析</span>
               </div>
               <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-700">{session.user?.name}</span>
+                <span className="text-sm text-gray-700">{profile?.display_name || session.user?.name}</span>
                 <img
-                  src={session.user?.image || "/default-avatar.png"}
+                  src={profile?.avatar_url || session.user?.image || "/default-avatar.png"}
                   alt="avatar"
                   className="w-8 h-8 rounded-full border"
                 />
@@ -156,9 +169,6 @@ export default function AnalyticsPage() {
             {error && (
               <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
                 <p className="text-yellow-800">{error}</p>
-                <p className="text-sm text-yellow-600 mt-1">
-                  デモデータを表示しています。
-                </p>
               </div>
             )}
 

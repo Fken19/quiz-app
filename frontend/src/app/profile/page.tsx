@@ -7,6 +7,8 @@ import { User } from '@/types/quiz';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import InviteCodeInput from '@/components/InviteCodeInput';
 import { apiGet, apiDelete } from '@/lib/api-utils';
+import { normalizeAvatarUrl } from '@/lib/avatar';
+import Link from 'next/link';
 
 interface TeacherLink {
   id: string;
@@ -51,21 +53,7 @@ export default function ProfilePage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   // Normalize avatar URLs returned by backend (replace Docker-internal host)
-  const normalizeAvatarUrl = (avatarUrl: string | null | undefined) => {
-    if (!avatarUrl) return null;
-    try {
-      const parsed = new URL(avatarUrl);
-      if (parsed.hostname === 'backend') {
-        const publicHost = window.location.hostname || 'localhost';
-        parsed.hostname = publicHost;
-        parsed.port = '8080';
-        return parsed.toString();
-      }
-      return avatarUrl;
-    } catch (e) {
-      return avatarUrl;
-    }
-  };
+  const normalizeAvatarUrlLocal = (avatarUrl: string | null | undefined) => normalizeAvatarUrl(avatarUrl) as string | null;
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -89,25 +77,10 @@ export default function ProfilePage() {
       setDisplayName(userData.display_name || '');
       
       // avatar_url が存在する場合はそれを使用、なければavatarフィールドのURLを使用
-      const avatarUrl = userData.avatar_url || (userData.avatar && userData.avatar.startsWith('http') ? userData.avatar : null);
+  const avatarUrl = userData.avatar_url || (userData.avatar && userData.avatar.startsWith('http') ? userData.avatar : null);
       // Normalize URLs that point to the Docker internal hostname 'backend'
-      let normalizedAvatarUrl = avatarUrl;
-      if (normalizedAvatarUrl) {
-        try {
-          const parsed = new URL(normalizedAvatarUrl);
-          if (parsed.hostname === 'backend') {
-            // replace internal docker hostname with host-accessible origin and port
-            const publicHost = window.location.hostname || 'localhost';
-            // backend listens on 8080 in docker-compose
-            parsed.hostname = publicHost;
-            parsed.port = '8080';
-            normalizedAvatarUrl = parsed.toString();
-          }
-        } catch (e) {
-          // keep original if URL parsing fails
-        }
-      }
-      setAvatarPreview(normalizedAvatarUrl);
+  const normalizedAvatarUrl = normalizeAvatarUrlLocal(avatarUrl);
+  setAvatarPreview(normalizedAvatarUrl);
 
       // 生徒用の講師リンク一覧を取得
       try {
@@ -270,7 +243,7 @@ export default function ProfilePage() {
     if (!link) return;
 
     const confirmed = window.confirm(
-      `${link.teacher.display_name || link.teacher.email}との紐付けを解除しますか？この操作により、講師からの管理対象から外れます。`
+      `${link.teacher.display_name || '講師'}との紐付けを解除しますか？この操作により、講師からの管理対象から外れます。`
     );
     
     if (!confirmed) return;
@@ -442,24 +415,36 @@ export default function ProfilePage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {teacherLinks.map((link) => (
-                    <div key={link.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                      <div>
-                        <h4 className="font-medium text-black">{link.teacher.display_name || link.teacher.email}</h4>
-                        <p className="text-sm text-black">{link.teacher.email}</p>
-                        <p className="text-xs text-black">紐付け日: {new Date(link.linked_at).toLocaleDateString('ja-JP')}</p>
-                        {link.invite_code && (
-                          <p className="text-xs text-black">コード: {link.invite_code.code}</p>
-                        )}
+                  {teacherLinks.map((link) => {
+                    const t = link.teacher as any;
+                    const avatar = normalizeAvatarUrlLocal(t?.avatar_url || t?.avatar);
+                    return (
+                      <div key={link.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                        <Link href={`/teachers/${t.id}`} className="flex items-center gap-3">
+                          {avatar ? (
+                            <img src={avatar} alt="講師アバター" className="w-10 h-10 rounded-full object-cover border" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">
+                              {(t.display_name?.[0] || 'T').toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <h4 className="font-medium text-black">{t.display_name || '講師'}</h4>
+                            <p className="text-xs text-black">紐付け日: {new Date(link.linked_at).toLocaleDateString('ja-JP')}</p>
+                            {link.invite_code && (
+                              <p className="text-xs text-black">コード: {link.invite_code.code}</p>
+                            )}
+                          </div>
+                        </Link>
+                        <button
+                          onClick={() => handleRemoveTeacher(link.id)}
+                          className="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700"
+                        >
+                          解除
+                        </button>
                       </div>
-                      <button
-                        onClick={() => handleRemoveTeacher(link.id)}
-                        className="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700"
-                      >
-                        解除
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -525,7 +510,7 @@ export default function ProfilePage() {
                         link.status === 'active' ? 'bg-green-500' : 'bg-red-500'
                       }`}></div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-black truncate">{link.teacher.display_name || link.teacher.email}</p>
+                        <p className="text-sm font-medium text-black truncate">{link.teacher.display_name || '講師'}</p>
                         <p className="text-xs text-black">{link.status === 'active' ? '紐付け' : '解除'} - {new Date(link.status === 'active' ? link.linked_at : (link.revoked_at || link.linked_at)).toLocaleDateString('ja-JP')}</p>
                       </div>
                     </div>

@@ -162,7 +162,15 @@ class TeacherStudentLinkAdmin(admin.ModelAdmin):
 
 @admin.register(TeacherWhitelist)
 class TeacherWhitelistAdmin(admin.ModelAdmin):
-    list_display = ('email', 'full_name', 'school', 'grade', 'is_active', 'created_at')
-    list_filter = ('is_active', 'grade', 'created_at')
-    search_fields = ('email', 'full_name', 'school')
-    readonly_fields = ('created_at', 'updated_at')
+    # 最小構成（メール中心）。DBに存在する列のみを使用
+    list_display = ('email', 'note', 'created_at', 'created_by')
+    list_filter = ('created_at',)
+    search_fields = ('email', 'note')
+    ordering = ('-created_at',)
+    list_per_page = 25
+
+    readonly_fields = ('created_at',)
+    fieldsets = (
+        (None, {'fields': ('email', 'note')}),
+        ('メタ情報', {'classes': ('collapse',), 'fields': ('created_at', 'created_by')}),
+    )

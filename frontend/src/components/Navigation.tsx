@@ -84,7 +84,8 @@ export default function Navigation() {
   }
 
   const navigation = [
-    { name: 'ダッシュボード', href: '/dashboard', icon: '🏠' },
+    { name: 'ホーム', href: '/dashboard', icon: '🏠' },
+    { name: '学習ダッシュボード', href: '/learning', icon: '📈' },
     { name: 'クイズ開始', href: '/quiz/start', icon: '📝' },
     { name: 'マイ履歴', href: '/history', icon: '📊' },
     { name: 'プロフィール', href: '/profile', icon: '👤' },

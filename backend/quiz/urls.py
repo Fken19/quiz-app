@@ -35,6 +35,10 @@ urlpatterns = [
     path('debug/auth/', views.debug_auth, name='debug_auth'),  # デバッグ用
     path('debug/create-user/', views.create_test_user, name='create_test_user'),  # デバッグ用
     path('dashboard/stats/', views.dashboard_stats, name='dashboard_stats'),
+    path('dashboard/learning-metrics/', views.learning_metrics, name='learning_metrics'),
+    # フォーカス学習API
+    path('focus/status-counts/', views.focus_status_counts, name='focus_status_counts'),
+    path('focus/start/', views.focus_start, name='focus_start'),
     path('quiz/history/', views.quiz_history, name='quiz_history'),
     path('quiz/result/<str:quiz_set_id>/', views.quiz_result, name='quiz_result'),
     path('user/profile/', views.user_profile, name='user_profile'),

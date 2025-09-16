@@ -477,21 +477,19 @@ class TeacherStudentLink(models.Model):
 
 
 class TeacherWhitelist(models.Model):
-    """講師用メールホワイトリスト（DB管理）"""
-    id = models.BigAutoField(primary_key=True, db_column='id')
+    """講師用メールホワイトリスト（最小構成: メール中心）
+    既存テーブル quiz_whitelist_user にマップ。
+    使用カラム: id(uuid), email, note(任意), created_at, created_by
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_column='id')
     email = models.EmailField(unique=True, db_column='email')
-    full_name = models.CharField(max_length=200, blank=True, db_column='full_name')
-    school = models.CharField(max_length=200, blank=True, db_column='school')
-    grade = models.IntegerField(null=True, blank=True, db_column='grade')
-    is_active = models.BooleanField(default=True, db_column='is_active')
+    note = models.CharField(max_length=200, blank=True, db_column='note')
     created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
-    updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
+    created_by = models.ForeignKey('quiz.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='created_whitelists', db_column='created_by_id')
 
     class Meta:
         db_table = 'quiz_whitelist_user'
-        indexes = [
-            models.Index(fields=['email']),
-        ]
+    indexes = [models.Index(fields=['email'])]
 
     def __str__(self):
         return self.email
