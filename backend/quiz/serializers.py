@@ -44,7 +44,8 @@ class UserSerializer(serializers.ModelSerializer):
 
 class WordTranslationSerializer(serializers.ModelSerializer):
     ja = serializers.CharField(source='text', read_only=True)
-    word_id = serializers.UUIDField(source='word.id', read_only=True)
+    # DBはBigAutoField(int)なので整合する型にする
+    word_id = serializers.IntegerField(source='word.id', read_only=True)
 
     class Meta:
         model = WordTranslation
@@ -54,7 +55,7 @@ class WordTranslationSerializer(serializers.ModelSerializer):
 class PublicWordTranslationSerializer(serializers.ModelSerializer):
     """API の公開用: is_correct を含めない"""
     ja = serializers.CharField(source='text', read_only=True)
-    word_id = serializers.UUIDField(source='word.id', read_only=True)
+    word_id = serializers.IntegerField(source='word.id', read_only=True)
 
     class Meta:
         model = WordTranslation
@@ -64,7 +65,7 @@ class PublicWordTranslationSerializer(serializers.ModelSerializer):
 class InternalWordTranslationSerializer(serializers.ModelSerializer):
     """内部/履歴用: is_correct を含む"""
     ja = serializers.CharField(source='text', read_only=True)
-    word_id = serializers.UUIDField(source='word.id', read_only=True)
+    word_id = serializers.IntegerField(source='word.id', read_only=True)
 
     class Meta:
         model = WordTranslation
@@ -75,6 +76,20 @@ class WordSerializer(serializers.ModelSerializer):
     # 公開 API では is_correct を返さないので Public serializer を使用
     translations = PublicWordTranslationSerializer(many=True, read_only=True)
     
+    # 後方互換性のため
+    level = serializers.SerializerMethodField()
+    segment = serializers.SerializerMethodField()
+    difficulty = serializers.SerializerMethodField()
+
+    def get_level(self, obj):
+        return obj.grade  # gradeをlevelとして返す
+
+    def get_segment(self, obj):
+        return 1  # デフォルト値
+
+    def get_difficulty(self, obj):
+        return obj.grade  # gradeを基にした難易度
+
     class Meta:
         model = Word
         fields = ['id', 'text', 'level', 'segment', 'difficulty', 'translations']
@@ -86,35 +101,60 @@ class QuizItemSerializer(serializers.ModelSerializer):
     translations = serializers.SerializerMethodField()
     # フロント側の型名に合わせて order_no を出力
     order_no = serializers.IntegerField(source='order', read_only=True)
+    # デバッグ/フォールバック用にchoicesも返す（通常は使用しない）
+    choices = serializers.JSONField(read_only=True)
 
     class Meta:
         model = QuizItem
-        fields = ['id', 'word', 'translations', 'order_no']
+        fields = ['id', 'word', 'translations', 'order_no', 'choices']
 
     def get_translations(self, obj):
-        # word.translations は既に WordSerializer が提供しているが、
-        # QuizItem の直下に translations 配列を置いた方がフロントが扱いやすい
-        translations = obj.word.translations.all()
-        # 公開 API では is_correct を返さない Public serializer を使う
-        return PublicWordTranslationSerializer(translations, many=True).data
+        # 通常は Word に紐づく翻訳を返す
+        translations_qs = obj.word.translations.all()
+        if translations_qs.exists():
+            return PublicWordTranslationSerializer(translations_qs, many=True).data
+        
+        # フォールバック: DB上に翻訳が無い単語の場合、QuizItem.choices から生成
+        out = []
+        for i, ch in enumerate((obj.choices or [])):
+            out.append({
+                'id': f'c{i}',  # 疑似ID（サーバー送信時は selected_text を使用）
+                'word_id': obj.word.id,
+                'ja': ch.get('text', ''),
+                'is_correct': bool(ch.get('is_correct', False)),
+            })
+        return out
 
 
 class QuizResponseSerializer(serializers.ModelSerializer):
     quiz_item = QuizItemSerializer(read_only=True)
-    # 公開 API では選択された翻訳の is_correct を返さない
-    selected_translation = PublicWordTranslationSerializer(read_only=True)
+    # selected_answerは文字列として保存されている
+    selected_answer = serializers.CharField(read_only=True)
+    # 後方互換性のため、selected_translationフィールドを追加
+    selected_translation = serializers.SerializerMethodField()
+    user = UserSerializer(read_only=True)
 
     class Meta:
         model = QuizResponse
-        # is_correct は GET で露出しない（POST のレスポンスや内部管理で保持）
         fields = [
-            'id', 'quiz_item', 'selected_translation', 'reaction_time_ms', 'created_at'
+            'id', 'quiz_item', 'selected_answer', 'selected_translation', 
+            'reaction_time_ms', 'is_correct', 'user', 'created_at'
         ]
+    
+    def get_selected_translation(self, obj):
+        # 後方互換性のため、selected_answerを翻訳オブジェクトとして返す
+        return {
+            'id': None,
+            'word_id': None,
+            'ja': obj.selected_answer,
+            'is_correct': obj.is_correct
+        }
 
 
 class QuizSetSerializer(serializers.ModelSerializer):
     quiz_items = QuizItemSerializer(many=True, read_only=True)
-    quiz_responses = QuizResponseSerializer(many=True, read_only=True)
+    # QuizSet から直接の related_name はないため、明示的に取得
+    quiz_responses = serializers.SerializerMethodField()
     total_duration_ms = serializers.ReadOnlyField()
     
     class Meta:
@@ -126,16 +166,56 @@ class QuizSetSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'total_duration_ms']
 
+    def get_quiz_responses(self, obj):
+        from .models import QuizResponse
+        qs = QuizResponse.objects.filter(quiz_item__quiz_set=obj).order_by('created_at')
+        return QuizResponseSerializer(qs, many=True, context=self.context).data
+
 
 class QuizSetCreateSerializer(serializers.ModelSerializer):
+    # フロントエンドから受け取るフィールド
+    level = serializers.IntegerField()
+    segment = serializers.IntegerField()
+    question_count = serializers.IntegerField()
+    mode = serializers.CharField(default='default')
+    
     class Meta:
         model = QuizSet
         fields = ['mode', 'level', 'segment', 'question_count']
+    
+    def create(self, validated_data):
+        # デバッグ用ログ
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"QuizSetCreateSerializer.create called with validated_data: {validated_data}")
+        
+        # フロントエンドのフィールドを実際のDBフィールドにマッピング
+        level = validated_data.pop('level', 1)
+        segment = validated_data.pop('segment', 1)
+        question_count = validated_data.pop('question_count', 10)
+        mode = validated_data.pop('mode', 'default')
+        
+        logger.info(f"Extracted values - level: {level}, segment: {segment}, question_count: {question_count}, mode: {mode}")
+        
+        # validated_dataから残りのフィールドをクリア（互換性のないフィールドを削除）
+        validated_data.clear()
+        
+        # QuizSetの作成
+        quiz_set = QuizSet.objects.create(
+            user=self.context['request'].user,
+            name=f"Level {level} Quiz Set",  # 名前を自動生成
+            grade=level,  # levelをgradeにマッピング
+            total_questions=question_count,  # question_countをtotal_questionsにマッピング
+            pos_filter={}  # 空のJSONオブジェクト
+        )
+        logger.info(f"Created QuizSet: {quiz_set.id}")
+        return quiz_set
 
 
 class QuizResponseCreateSerializer(serializers.Serializer):
-    quiz_item_id = serializers.UUIDField()
-    selected_translation_id = serializers.UUIDField()
+    # DBのIDは整数
+    quiz_item_id = serializers.IntegerField()
+    selected_translation_id = serializers.IntegerField()
     reaction_time_ms = serializers.IntegerField()
 
 
@@ -154,6 +234,15 @@ class QuizSetListSerializer(serializers.ModelSerializer):
     """クイズセット一覧用のシリアライザー"""
     item_count = serializers.SerializerMethodField()
     completion_rate = serializers.SerializerMethodField()
+    title = serializers.CharField(source='name')  # nameフィールドをtitleとして出力
+    difficulty = serializers.SerializerMethodField()
+    times_attempted = serializers.SerializerMethodField()
+    
+    def get_difficulty(self, obj):
+        return obj.grade  # gradeを難易度として返す
+    
+    def get_times_attempted(self, obj):
+        return 0  # 後で実装
     
     class Meta:
         model = QuizSet

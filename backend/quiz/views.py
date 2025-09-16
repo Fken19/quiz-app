@@ -24,7 +24,7 @@ from .models import (
 from .serializers import (
     UserSerializer, WordSerializer, WordTranslationSerializer,
     QuizSetSerializer, QuizItemSerializer, QuizResponseSerializer,
-    QuizSetListSerializer, DashboardStatsSerializer,
+    QuizSetListSerializer, QuizSetCreateSerializer, DashboardStatsSerializer,
     InviteCodeSerializer, CreateInviteCodeSerializer, AcceptInviteCodeSerializer,
     TeacherStudentLinkSerializer
 )
@@ -62,7 +62,28 @@ class QuizSetViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'list':
             return QuizSetListSerializer
+        elif self.action == 'create':
+            return QuizSetCreateSerializer
         return QuizSetSerializer
+
+    def create(self, request, *args, **kwargs):
+        """クイズセット作成時は、作成直後の詳細情報（id 等）を返す"""
+        # Create 用シリアライザでバリデーション
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # perform_create 内で QuizItem も作成され、serializer.instance にインスタンスが格納される
+        self.perform_create(serializer)
+
+        created_instance = getattr(serializer, 'instance', None)
+        # 念のためDBから再取得
+        if created_instance is None:
+            return Response({'detail': 'Failed to create quiz set'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # 詳細シリアライザで返す（id を含む）
+        detail_serializer = QuizSetSerializer(created_instance, context=self.get_serializer_context())
+        headers = self.get_success_headers(detail_serializer.data)
+        return Response(detail_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
         # 保存と同時に QuizItem を生成する（トランザクション内）
@@ -70,19 +91,42 @@ class QuizSetViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             quiz_set = serializer.save(user=self.request.user)
+            # DRFは save() 後に serializer.instance に設定するが、念のため保証
+            try:
+                if getattr(serializer, 'instance', None) is None:
+                    serializer.instance = quiz_set
+            except Exception:
+                pass
 
             # 作成時の入力値を参照して問題を選択
             level = serializer.validated_data.get('level', getattr(quiz_set, 'level', 1))
             segment = serializer.validated_data.get('segment', getattr(quiz_set, 'segment', 1))
             question_count = serializer.validated_data.get('question_count', getattr(quiz_set, 'question_count', 10))
 
-            words = list(Word.objects.filter(level=level, segment=segment).order_by('?')[:question_count])
+            words = list(Word.objects.filter(grade=level).order_by('?')[:question_count])
 
             for idx, word in enumerate(words, start=1):
+                # 正答を取得
+                correct_translation = word.translations.filter(is_correct=True).first()
+                correct_answer = correct_translation.text if correct_translation else word.text
+                
+                # 選択肢を生成（正答 + 3つのダミー選択肢）
+                all_translations = list(word.translations.all()[:4])  # 最大4つの選択肢
+                if len(all_translations) < 4:
+                    # 他の単語からダミー選択肢を取得
+                    dummy_translations = WordTranslation.objects.exclude(
+                        word=word
+                    ).order_by('?')[:4-len(all_translations)]
+                    all_translations.extend(dummy_translations)
+                
+                choices = [{"text": t.text, "is_correct": t.word_id == word.id and t.is_correct} for t in all_translations]
+                
                 QuizItem.objects.create(
                     quiz_set=quiz_set,
                     word=word,
-                    order=idx
+                    question_number=idx,
+                    choices=choices,  # JSON形式で選択肢を保存
+                    correct_answer=correct_answer
                 )
 
     @action(detail=True, methods=['post'])
@@ -102,13 +146,14 @@ class QuizSetViewSet(viewsets.ModelViewSet):
             'items': QuizItemSerializer(quiz_items, many=True).data
         })
 
-    @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def submit_answer(self, request, pk=None):
         """回答を送信する"""
         quiz_set = self.get_object()
 
         quiz_item_id = request.data.get('quiz_item_id')
         selected_translation_id = request.data.get('selected_translation_id')
+        selected_answer_text = request.data.get('selected_answer_text')
         reaction_time_ms = int(request.data.get('reaction_time_ms', 0))
 
         # quiz_item の存在確認
@@ -117,32 +162,56 @@ class QuizSetViewSet(viewsets.ModelViewSet):
         except QuizItem.DoesNotExist:
             return Response({'error': 'クイズアイテムが見つかりません'}, status=status.HTTP_404_NOT_FOUND)
 
-        # 既存の回答をチェック（同一 quiz_set 内で同一 quiz_item に重複回答がないか）
-        existing_response = QuizResponse.objects.filter(quiz_set=quiz_set, quiz_item=quiz_item).first()
+        # 既存の回答をチェック（quiz_item に重複回答がないか）
+        # DBスキーマ上はquiz_item_idがユニークなので、既存の回答があるかチェック
+        existing_response = QuizResponse.objects.filter(quiz_item=quiz_item).first()
         if existing_response:
             return Response({'error': 'この問題には既に回答済みです'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 選択肢の存在チェック
+        is_correct = False
+        chosen_text = None
+
+        # 1) 通常ルート: translation ID が数値で取得できる場合
+        selected_id_int = None
         try:
-            selected_translation = WordTranslation.objects.get(id=selected_translation_id)
-        except WordTranslation.DoesNotExist:
-            return Response({'error': '選択肢が見つかりません'}, status=status.HTTP_404_NOT_FOUND)
+            if selected_translation_id is not None:
+                selected_id_int = int(selected_translation_id)
+        except (TypeError, ValueError):
+            selected_id_int = None
 
-        # 正誤判定: 選択肢が該当の単語に属しており、かつその選択肢が is_correct の場合のみ正解
-        is_correct = (selected_translation.word_id == quiz_item.word.id) and bool(selected_translation.is_correct)
+        if selected_id_int is not None:
+            try:
+                selected_translation = WordTranslation.objects.get(id=selected_id_int)
+                chosen_text = selected_translation.text
+                # 正誤判定: 同一単語かつ is_correct
+                is_correct = (selected_translation.word_id == quiz_item.word.id) and bool(selected_translation.is_correct)
+            except WordTranslation.DoesNotExist:
+                return Response({'error': '選択肢が見つかりません'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            # 2) フォールバック: テキストでの判定（QuizItem.choices か correct_answer を利用）
+            chosen_text = (selected_answer_text or '').strip()
+            if not chosen_text:
+                return Response({'error': '選択内容が不正です'}, status=status.HTTP_400_BAD_REQUEST)
+            # choices に一致があればその is_correct を優先
+            try:
+                choices = quiz_item.choices or []
+                match = next((c for c in choices if c.get('text') == chosen_text), None)
+                if match is not None:
+                    is_correct = bool(match.get('is_correct', False))
+                else:
+                    # 最後の手段: correct_answer と文字列一致
+                    is_correct = (chosen_text == (quiz_item.correct_answer or ''))
+            except Exception:
+                is_correct = (chosen_text == (quiz_item.correct_answer or ''))
 
-        # QuizResponse を作成（匿名ユーザーでも保存する）
-        # 既存の DB スキーマに user フィールドが無いことがあるため safe create
+        # QuizResponse を作成（新しいスキーマに対応）
         create_kwargs = dict(
-            quiz_set=quiz_set,
             quiz_item=quiz_item,
-            selected_translation=selected_translation,
+            selected_answer=chosen_text or "Unknown",
             is_correct=is_correct,
-            reaction_time_ms=reaction_time_ms
+            reaction_time_ms=reaction_time_ms,
+            user=request.user
         )
-        # user フィールドがモデルに存在すればセット
-        if hasattr(QuizResponse, 'user') and not request.user.is_anonymous:
-            create_kwargs['user'] = request.user
 
         quiz_response = QuizResponse.objects.create(**create_kwargs)
         response_id = str(quiz_response.id) if quiz_response else 'unknown'
@@ -228,14 +297,20 @@ def google_auth(request):
             )
         
         # ユーザー作成または取得
-        user, created = User.objects.get_or_create(
-            email=email,
-            defaults={
-                'username': email,
-                'display_name': name,
-                'role': 'student'
-            }
-        )
+        try:
+            user, created = User.objects.get_or_create(
+                email=email,
+                defaults={
+                    'username': email,
+                    'display_name': name,
+                    'role': 'student'
+                }
+            )
+        except User.MultipleObjectsReturned:
+            # 重複レコードが既にある場合は最初の1件を採用して継続（非破壊）
+            logger.warning(f"Multiple users returned for email={email}; using first match")
+            user = User.objects.filter(email=email).order_by('id').first()
+            created = False
         
         # ホワイトリストチェックに基づいてロールを自動設定
         if is_teacher_whitelisted(email):
@@ -365,109 +440,36 @@ def quiz_history(request):
     """クイズ履歴の取得"""
     user = request.user
     
-    # フィルター
-    level = request.GET.get('level')
-    date_from = request.GET.get('date_from')
-    date_to = request.GET.get('date_to')
-    sort_by = request.GET.get('sort_by', 'date')
-    sort_order = request.GET.get('sort_order', 'desc')
-    
-    quiz_sets = QuizSet.objects.filter(user=user)
-    
-    # レベルフィルター
-    if level:
-        quiz_sets = quiz_sets.filter(level=level)
-    
-    # 日付フィルター
-    if date_from:
-        try:
-            from_date = timezone.datetime.strptime(date_from, '%Y-%m-%d').date()
-            quiz_sets = quiz_sets.filter(created_at__date__gte=from_date)
-        except ValueError:
-            pass
-            
-    if date_to:
-        try:
-            to_date = timezone.datetime.strptime(date_to, '%Y-%m-%d').date()
-            quiz_sets = quiz_sets.filter(created_at__date__lte=to_date)
-        except ValueError:
-            pass
-    
-    # 完了済みのクイズセットのみ（回答があるもの）
-    quiz_sets = quiz_sets.filter(quiz_responses__isnull=False).distinct()
-    
-    # ソート
-    if sort_by == 'date':
-        order_field = 'created_at'
-    elif sort_by == 'level':
-        order_field = 'level'
-    else:
-        order_field = 'created_at'  # デフォルト
+    # デバッグ用：まずは基本的なクエリで試す
+    try:
+        quiz_sets = QuizSet.objects.filter(user=user).order_by('-created_at')[:10]
         
-    if sort_order == 'desc':
-        order_field = '-' + order_field
+        # 単純なレスポンスを返す
+        history_data = []
+        for quiz_set in quiz_sets:
+            history_data.append({
+                'quiz_set': {
+                    'id': str(quiz_set.id),
+                    'mode': quiz_set.mode,
+                    'level': quiz_set.level,
+                    'segment': quiz_set.segment,
+                    'question_count': quiz_set.question_count,
+                    'created_at': quiz_set.created_at.isoformat(),
+                    'score': quiz_set.score
+                },
+                'total_questions': quiz_set.question_count,
+                'total_score': quiz_set.score,
+                'total_duration_ms': 0,
+                'average_latency_ms': 0
+            })
         
-    quiz_sets = quiz_sets.order_by(order_field)
-    
-    # 各クイズセットの統計を含める
-    history_data = []
-    for quiz_set in quiz_sets:
-        # このクイズセットの全回答を取得
-        responses = QuizResponse.objects.filter(quiz_set=quiz_set)
-        quiz_items = QuizItem.objects.filter(quiz_set=quiz_set)
+        return Response(history_data)
         
-        total_questions = quiz_items.count()
-        total_responses = responses.count()
-        correct_answers = responses.filter(is_correct=True).count()
-        
-        # 完了率チェック
-        if total_responses == 0:
-            continue
-            
-        # スコア計算
-        score = (correct_answers / total_questions * 100) if total_questions > 0 else 0
-        
-        # 所要時間計算
-        total_duration_ms = responses.aggregate(
-            total=Sum('reaction_time_ms')
-        )['total'] or 0
-        
-        # 平均反応時間
-        avg_reaction_time_ms = responses.aggregate(
-            avg=Avg('reaction_time_ms')
-        )['avg'] or 0
-        
-        # QuizResultフォーマットに合わせたレスポンス
-        quiz_result = {
-            'quiz_set': {
-                'id': str(quiz_set.id),
-                'mode': quiz_set.mode,
-                'level': quiz_set.level,
-                'segment': quiz_set.segment,
-                'question_count': quiz_set.question_count,
-                'started_at': quiz_set.started_at.isoformat() if quiz_set.started_at else quiz_set.created_at.isoformat(),
-                'finished_at': quiz_set.finished_at.isoformat() if quiz_set.finished_at else None,
-                'score': round(score)
-            },
-            'quiz_items': [],  # 詳細は必要時に別途取得
-            'quiz_responses': [],  # 詳細は必要時に別途取得
-            'total_score': correct_answers,
-            'total_questions': total_questions,
-            'total_duration_ms': total_duration_ms,
-            'average_latency_ms': round(avg_reaction_time_ms)
-        }
-        
-        history_data.append(quiz_result)
-    
-    # スコアソートの場合は後処理で行う
-    if sort_by == 'score':
-        reverse = sort_order == 'desc'
-        history_data.sort(
-            key=lambda x: x['total_score'] / x['total_questions'] if x['total_questions'] > 0 else 0,
-            reverse=reverse
-        )
-    
-    return Response(history_data)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Quiz history error: {e}")
+        return Response({'error': str(e)}, status=500)
 
 
 @api_view(['GET', 'POST'])
@@ -552,16 +554,16 @@ def user_profile(request):
         })
 
     # GET は従来のプロフィールデータを返す
-    total_responses = QuizResponse.objects.filter(quiz_set__user=user).count()
-    correct_responses = QuizResponse.objects.filter(quiz_set__user=user, is_correct=True).count()
+    total_responses = QuizResponse.objects.filter(user=user).count()
+    correct_responses = QuizResponse.objects.filter(user=user, is_correct=True).count()
 
-    difficulty_stats = QuizSet.objects.filter(user=user).values('level').annotate(
+    difficulty_stats = QuizSet.objects.filter(user=user).values('grade').annotate(
         count=Count('id')
     ).order_by('-count')
 
-    favorite_level = difficulty_stats.first()['level'] if difficulty_stats else 1
+    favorite_level = difficulty_stats.first()['grade'] if difficulty_stats else 1
 
-    avg_response_time = QuizResponse.objects.filter(quiz_set__user=user).aggregate(
+    avg_response_time = QuizResponse.objects.filter(user=user).aggregate(
         avg_time=Avg('reaction_time_ms')
     )['avg_time'] or 0
 
@@ -599,33 +601,33 @@ def quiz_result(request, quiz_set_id):
     """クイズ結果を取得する"""
     try:
         quiz_set = get_object_or_404(QuizSet, id=quiz_set_id)
-        
+
         # クイズセットに関連するクイズアイテムと回答を取得
-        quiz_items = QuizItem.objects.filter(quiz_set=quiz_set).order_by('order')
-        quiz_responses = QuizResponse.objects.filter(quiz_set=quiz_set).order_by('quiz_item__order')
-        
+        quiz_items = QuizItem.objects.filter(quiz_set=quiz_set).order_by('question_number')
+        quiz_responses = QuizResponse.objects.filter(quiz_item__quiz_set=quiz_set).order_by('quiz_item__question_number')
+
         # スコア計算
         total_questions = quiz_items.count()
         total_correct = quiz_responses.filter(is_correct=True).count()
         score_percentage = round((total_correct / total_questions * 100)) if total_questions > 0 else 0
-        
+
         # 回答時間統計
         total_duration_ms = quiz_responses.aggregate(
             total=Sum('reaction_time_ms')
         )['total'] or 0
-        
+
         average_latency_ms = quiz_responses.aggregate(
             avg=Avg('reaction_time_ms')
         )['avg'] or 0
-        
+
         # データ構築
         items_data = []
         responses_data = []
-        
+
         for item in quiz_items:
             # 各問題の翻訳選択肢を取得
             translations = WordTranslation.objects.filter(word=item.word)
-            
+
             items_data.append({
                 'id': str(item.id),
                 'quiz_set_id': str(quiz_set.id),
@@ -634,7 +636,7 @@ def quiz_result(request, quiz_set_id):
                     'id': str(item.word.id),
                     'text': item.word.text,
                     'pos': getattr(item.word, 'pos', 'unknown'),  # posがない場合はデフォルト値
-                    'level': item.word.level,
+                    'level': item.word.grade,  # gradeフィールドを使用
                     'tags': []  # 必要に応じて実装
                 },
                 'translations': [
@@ -647,18 +649,18 @@ def quiz_result(request, quiz_set_id):
                 ],
                 'order_no': item.order
             })
-        
+
         for response in quiz_responses:
             responses_data.append({
                 'id': str(response.id),
                 'quiz_item_id': str(response.quiz_item.id),
-                'user_id': 'anonymous',  # userフィールドがQuizResponseにない場合のため
-                'chosen_translation_id': str(response.selected_translation.id),
+                'user_id': str(response.user.id) if getattr(response, 'user', None) else None,
+                'chosen_translation_text': response.selected_answer,
                 'is_correct': response.is_correct,
                 'latency_ms': response.reaction_time_ms,
                 'answered_at': response.created_at.isoformat()
             })
-        
+
         result_data = {
             'quiz_set': {
                 'id': str(quiz_set.id),
@@ -677,7 +679,7 @@ def quiz_result(request, quiz_set_id):
             'total_duration_ms': total_duration_ms,
             'average_latency_ms': round(average_latency_ms)
         }
-        
+
         return Response(result_data)
         
     except Exception as e:
@@ -1016,14 +1018,19 @@ def create_test_user(request):
     if not email:
         return Response({'error': 'メールアドレスが必要です'}, status=status.HTTP_400_BAD_REQUEST)
     
-    user, created = User.objects.get_or_create(
-        email=email,
-        defaults={
-            'username': email,
-            'display_name': name,
-            'role': 'student'
-        }
-    )
+    try:
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={
+                'username': email,
+                'display_name': name,
+                'role': 'student'
+            }
+        )
+    except User.MultipleObjectsReturned:
+        logger.warning(f"Multiple users returned for email={email} in create_test_user; using first match")
+        user = User.objects.filter(email=email).order_by('id').first()
+        created = False
     
     # ホワイトリストチェックに基づいてロール設定
     if is_teacher_whitelisted(email):

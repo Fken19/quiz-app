@@ -51,87 +51,116 @@ class User(AbstractUser):
 
 
 class Word(models.Model):
-    """英単語モデル"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    text = models.CharField(max_length=100)  # 英単語
-    level = models.IntegerField(choices=[
-        (1, 'レベル1'),
-        (2, 'レベル2'),
-        (3, 'レベル3'),
-        (4, 'レベル4')
-    ])
-    segment = models.IntegerField(choices=[
-        (1, 'セグメント1'),
-        (2, 'セグメント2'),
-        (3, 'セグメント3')
-    ])
-    difficulty = models.FloatField(default=0.5)  # 0.0-1.0の難易度
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    """英単語モデル — 現在の DB スキーマ (lemma/pos/grade/frequency) に合わせてマッピングしています"""
+    # DB 側は bigint identity を主キーとしているため BigAutoField を使用
+    id = models.BigAutoField(primary_key=True, db_column='id')
+    # model attribute name kept as `text` for code readability, but stored in DB column `lemma`
+    text = models.CharField(max_length=100, db_column='lemma')
+    pos = models.CharField(max_length=20, db_column='pos')
+    # grade stored as integer in DB
+    grade = models.IntegerField(db_column='grade')
+    # frequency (existing DB column)
+    frequency = models.IntegerField(default=1, db_column='frequency')
+    created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
+    updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
     
     class Meta:
         indexes = [
-            models.Index(fields=['level', 'segment']),
-            models.Index(fields=['difficulty']),
+            models.Index(fields=['grade'], name='quiz_word_grade_idx'),
+            # use model field name 'text' (db_column='lemma') for indexes
+            models.Index(fields=['text'], name='quiz_word_lemma_idx'),
         ]
-        unique_together = ['text', 'level', 'segment']
+        # DB の unique constraint は (lemma, pos)
+        unique_together = ['text', 'pos']
     
     def __str__(self):
-        return f"{self.text} (L{self.level}-S{self.segment})"
+        return f"{self.text} ({self.pos}) G{self.grade}"
 
 
 class WordTranslation(models.Model):
-    """単語翻訳モデル（選択肢）"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    word = models.ForeignKey(Word, on_delete=models.CASCADE, related_name='translations')
-    text = models.CharField(max_length=200)  # 日本語訳
-    is_correct = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
+    """訳語モデル — DB の既存カラム (translation, is_primary, context) に合わせる"""
+    id = models.BigAutoField(primary_key=True, db_column='id')
+    word = models.ForeignKey(Word, on_delete=models.CASCADE, related_name='translations', db_column='word_id')
+    # keep attribute name `text` for compatibility in code, map to DB column `translation`
+    text = models.CharField(max_length=200, db_column='translation')
+    # DB uses `is_primary` to mark main translation; map to model boolean field
+    is_correct = models.BooleanField(default=False, db_column='is_primary')
+    # some older schema has a context column which is NOT NULL
+    context = models.CharField(max_length=500, blank=True, default='', db_column='context')
+    created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
+    updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
+
     class Meta:
+        db_table = 'quiz_word_translation'
         indexes = [
-            models.Index(fields=['word', 'is_correct']),
+            models.Index(fields=['word', 'is_correct'], name='quiz_wordtr_word_id_3968a8_idx'),
         ]
-    
+
     def __str__(self):
-        return f"{self.text} ({'正解' if self.is_correct else '不正解'})"
+        return f"{self.text} ({'主訳' if self.is_correct else '偽訳'})"
 
 
 class QuizSet(models.Model):
-    """クイズセットモデル"""
-    MODE_CHOICES = [
-        ('default', '順番通り'),
-        ('random', 'ランダム')
-    ]
+    """クイズセットモデル - 実際のDBスキーマに合わせて修正"""
     
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='quiz_sets')
-    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='default')
-    level = models.IntegerField(choices=[
-        (1, 'レベル1'),
-        (2, 'レベル2'),
-        (3, 'レベル3'),
-        (4, 'レベル4')
-    ])
-    segment = models.IntegerField(choices=[
-        (1, 'セグメント1'),
-        (2, 'セグメント2'),
-        (3, 'セグメント3')
-    ])
-    question_count = models.IntegerField()
-    started_at = models.DateTimeField(null=True, blank=True)
-    finished_at = models.DateTimeField(null=True, blank=True)
-    score = models.IntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
+    # 実際のDBはbigintのIDENTITY + UUIDの両方を持っている
+    id = models.BigAutoField(primary_key=True, db_column='id')
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, db_column='uuid')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='quiz_sets', db_column='user_id')
+    name = models.CharField(max_length=255, db_column='name')
+    grade = models.IntegerField(db_column='grade')
+    pos_filter = models.JSONField(blank=True, null=True, db_column='pos_filter')
+    total_questions = models.IntegerField(db_column='total_questions')
+    textbook_scope_id = models.BigIntegerField(null=True, blank=True, db_column='textbook_scope_id')
+    created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
+    updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
     
     class Meta:
-        indexes = [
-            models.Index(fields=['user', 'created_at']),
-            models.Index(fields=['level', 'segment']),
-        ]
+        db_table = 'quiz_quiz_set'
     
     def __str__(self):
-        return f"QuizSet L{self.level}-S{self.segment} ({self.user.email})"
+        return f"QuizSet: {self.name} (Grade {self.grade})"
+    
+    # 後方互換性のためのプロパティ
+    @property
+    def mode(self):
+        """後方互換性: modeプロパティ"""
+        return 'default'  # デフォルト値
+    
+    @property
+    def level(self):
+        """後方互換性: levelプロパティ"""
+        return self.grade
+    
+    @property
+    def segment(self):
+        """後方互換性: segmentプロパティ"""
+        return 1  # デフォルト値
+    
+    @property
+    def question_count(self):
+        """後方互換性: question_countプロパティ"""
+        return self.total_questions
+    
+    @property
+    def score(self):
+        """スコア計算"""
+        # 関連するQuizResponseから計算
+        responses = self.get_quiz_responses()
+        if responses.exists():
+            correct_count = responses.filter(is_correct=True).count()
+            return correct_count
+        return 0
+    
+    @property
+    def started_at(self):
+        """開始時刻: created_atをベースに"""
+        return self.created_at
+    
+    @property
+    def finished_at(self):
+        """終了時刻: updated_atをベースに"""
+        return self.updated_at
     
     @property
     def total_duration_ms(self):
@@ -139,42 +168,73 @@ class QuizSet(models.Model):
         if self.started_at and self.finished_at:
             return int((self.finished_at - self.started_at).total_seconds() * 1000)
         return 0
+    
+    def get_quiz_responses(self):
+        """このQuizSetに関連するすべてのQuizResponseを取得"""
+        # Propertyではなくメソッドとして実装し、必要な時のみ呼び出す
+        return QuizResponse.objects.filter(quiz_item__quiz_set=self)
 
 
 class QuizItem(models.Model):
-    """クイズアイテム（問題）モデル"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    quiz_set = models.ForeignKey(QuizSet, on_delete=models.CASCADE, related_name='quiz_items')
-    word = models.ForeignKey(Word, on_delete=models.CASCADE)
-    order = models.IntegerField()  # 問題の順序
-    created_at = models.DateTimeField(auto_now_add=True)
+    """クイズアイテム（問題）モデル - 実際のDBスキーマに合わせて修正"""
+    id = models.BigAutoField(primary_key=True, db_column='id')
+    quiz_set = models.ForeignKey(QuizSet, on_delete=models.CASCADE, related_name='quiz_items', db_column='quiz_set_id')
+    word = models.ForeignKey(Word, on_delete=models.CASCADE, db_column='word_id')
+    question_number = models.IntegerField(db_column='question_number')  # 問題の順序
+    choices = models.JSONField(blank=True, null=True, db_column='choices')  # 選択肢
+    correct_answer = models.CharField(max_length=255, db_column='correct_answer')  # 正答
+    created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
+    updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
     
     class Meta:
-        indexes = [
-            models.Index(fields=['quiz_set', 'order']),
-        ]
-        ordering = ['order']
+        ordering = ['question_number']
+        db_table = 'quiz_quiz_item'
     
     def __str__(self):
-        return f"Item {self.order}: {self.word.text}"
+        return f"Item {self.question_number}: {self.word.text if hasattr(self, 'word') and self.word else 'No word'}"
+    
+    # 後方互換性のためのプロパティ
+    @property
+    def order(self):
+        """後方互換性: orderプロパティ"""
+        return self.question_number
 
 
 class QuizResponse(models.Model):
     """クイズ回答モデル"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    quiz_set = models.ForeignKey(QuizSet, on_delete=models.CASCADE, related_name='quiz_responses')
-    quiz_item = models.ForeignKey(QuizItem, on_delete=models.CASCADE)
-    selected_translation = models.ForeignKey(WordTranslation, on_delete=models.CASCADE)
-    is_correct = models.BooleanField()
-    reaction_time_ms = models.IntegerField()  # 反応時間（ミリ秒）
-    created_at = models.DateTimeField(auto_now_add=True)
+    # DBの主キーはbigintのIDENTITY
+    id = models.BigAutoField(primary_key=True, db_column='id')
+    # quiz_setへの直接参照は存在しない（quiz_itemを経由してアクセス）
+    quiz_item = models.ForeignKey(QuizItem, on_delete=models.CASCADE, db_column='quiz_item_id')
+    # selected_answerカラムに対応（文字列として保存）
+    selected_answer = models.CharField(max_length=200, db_column='selected_answer')
+    is_correct = models.BooleanField(db_column='is_correct')
+    reaction_time_ms = models.IntegerField(db_column='response_time_ms')  # 反応時間（ミリ秒）
+    # ユーザーへの直接参照が存在
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id')
+    created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
+    updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
     
     class Meta:
         indexes = [
-            models.Index(fields=['quiz_set']),
+            models.Index(fields=['user']),
             models.Index(fields=['created_at']),
         ]
-        unique_together = ['quiz_set', 'quiz_item']
+        # DBの制約に合わせる（quiz_item_idがユニーク制約）
+        # unique_together = ['quiz_set', 'quiz_item']  # quiz_setが存在しないため削除
+        # 実際の DB テーブル名は quiz_quiz_response
+        db_table = 'quiz_quiz_response'
+    
+    @property
+    def quiz_set(self):
+        """quiz_itemを経由してquiz_setにアクセス"""
+        return self.quiz_item.quiz_set
+    
+    @property 
+    def selected_translation(self):
+        """後方互換性のため、selected_answerをWordTranslationとして解釈"""
+        # 実装は必要に応じて追加（現在は文字列として保存されている）
+        return None
     
     def __str__(self):
         return f"Response: {self.quiz_item.word.text} - {'正解' if self.is_correct else '不正解'}"
@@ -418,13 +478,17 @@ class TeacherStudentLink(models.Model):
 
 class TeacherWhitelist(models.Model):
     """講師用メールホワイトリスト（DB管理）"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    email = models.EmailField(unique=True)
-    note = models.CharField(max_length=200, blank=True)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_whitelists')
-    created_at = models.DateTimeField(auto_now_add=True)
+    id = models.BigAutoField(primary_key=True, db_column='id')
+    email = models.EmailField(unique=True, db_column='email')
+    full_name = models.CharField(max_length=200, blank=True, db_column='full_name')
+    school = models.CharField(max_length=200, blank=True, db_column='school')
+    grade = models.IntegerField(null=True, blank=True, db_column='grade')
+    is_active = models.BooleanField(default=True, db_column='is_active')
+    created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
+    updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
 
     class Meta:
+        db_table = 'quiz_whitelist_user'
         indexes = [
             models.Index(fields=['email']),
         ]

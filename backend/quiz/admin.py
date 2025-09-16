@@ -76,8 +76,9 @@ class WordTranslationInline(admin.TabularInline):
 
 @admin.register(Word)
 class WordAdmin(admin.ModelAdmin):
-    list_display = ('text', 'level', 'segment', 'difficulty', 'created_at')
-    list_filter = ('level', 'segment', 'created_at')
+    # Adjusted to match the current `Word` model fields (text maps to DB column `lemma`)
+    list_display = ('text', 'pos', 'grade', 'frequency', 'created_at')
+    list_filter = ('pos', 'grade', 'created_at')
     search_fields = ('text',)
     inlines = [WordTranslationInline]
 
@@ -123,23 +124,23 @@ admin.site.register(User, CustomUserAdmin)
 # 追加: クイズ進行系モデル（参照用）
 @admin.register(QuizSet)
 class QuizSetAdmin(admin.ModelAdmin):
-    list_display = ('user', 'mode', 'level', 'segment', 'question_count', 'score', 'created_at')
-    list_filter = ('mode', 'level', 'segment', 'created_at')
-    search_fields = ('user__email',)
+    list_display = ('user', 'name', 'grade', 'total_questions', 'created_at')
+    list_filter = ('grade', 'created_at')
+    search_fields = ('user__email', 'name')
 
 
 @admin.register(QuizItem)
 class QuizItemAdmin(admin.ModelAdmin):
-    list_display = ('quiz_set', 'order', 'word', 'created_at')
+    list_display = ('quiz_set', 'question_number', 'word', 'created_at')
     list_filter = ('created_at',)
-    search_fields = ('quiz_set__user__email', 'word__text')
+    search_fields = ('quiz_set__name', 'word__text')
 
 
 @admin.register(QuizResponse)
 class QuizResponseAdmin(admin.ModelAdmin):
-    list_display = ('quiz_set', 'quiz_item', 'is_correct', 'reaction_time_ms', 'created_at')
+    list_display = ('user', 'quiz_item', 'is_correct', 'reaction_time_ms', 'created_at')
     list_filter = ('is_correct', 'created_at')
-    search_fields = ('quiz_set__user__email', 'quiz_item__word__text')
+    search_fields = ('user__email', 'quiz_item__word__text')
 
 
 # 追加: 招待コード・講師-生徒リンク・ホワイトリスト
@@ -161,7 +162,7 @@ class TeacherStudentLinkAdmin(admin.ModelAdmin):
 
 @admin.register(TeacherWhitelist)
 class TeacherWhitelistAdmin(admin.ModelAdmin):
-    list_display = ('email', 'note', 'created_by', 'created_at')
-    list_filter = ('created_at',)
-    search_fields = ('email', 'note', 'created_by__email')
-    readonly_fields = ('created_at',)
+    list_display = ('email', 'full_name', 'school', 'grade', 'is_active', 'created_at')
+    list_filter = ('is_active', 'grade', 'created_at')
+    search_fields = ('email', 'full_name', 'school')
+    readonly_fields = ('created_at', 'updated_at')

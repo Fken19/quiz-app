@@ -166,18 +166,19 @@ export default function QuizPage() {
       // サーバーに回答を送信して正誤判定を取得
       const backendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080').replace(/\/$/, '');
       const headers: Record<string,string> = { 'Content-Type': 'application/json' };
-      // テスト用に認証をスキップ
-      // if (session && (session as any).backendAccessToken) {
-      //   headers['Authorization'] = `Bearer ${(session as any).backendAccessToken}`;
-      // }
+      // 認証トークンを付与（バックエンドは認証必須）
+      if (session && (session as any).backendAccessToken) {
+        headers['Authorization'] = `Bearer ${(session as any).backendAccessToken}`;
+      }
 
       const response = await fetch(`${backendUrl}/api/quiz-sets/${quizId}/submit_answer/`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          quiz_item_id: currentItem.id,
-          selected_translation_id: translationId,
-          reaction_time_ms: Date.now() - responses[currentItem.id]?.start_time || 0
+          // バックエンドは整数ID（BigAutoField）
+          quiz_item_id: Number(currentItem.id),
+          selected_translation_id: Number(translationId),
+          reaction_time_ms: (Date.now() - (responses[currentItem.id]?.start_time || Date.now())) || 0
         })
       });
 
