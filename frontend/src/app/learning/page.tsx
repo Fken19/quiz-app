@@ -25,8 +25,9 @@ export default function LearningDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<any>(null);
-  const [summary, setSummary] = useState<{ totalQuizzes: number; avgScore: number; bestScore: number; totalQuestions: number }>({ totalQuizzes: 0, avgScore: 0, bestScore: 0, totalQuestions: 0 });
   const [range, setRange] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'all'>('today');
+  const [summary, setSummary] = useState<{ [k in 'today'|'week'|'month'|'all']: { total_questions: number; avg_score_pct: number; avg_latency_ms: number; avg_accuracy_pct: number } } | null>(null);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -36,16 +37,9 @@ export default function LearningDashboardPage() {
     }
     (async () => {
       try {
-        const m = await apiGet('/dashboard/learning-metrics/');
-        setMetrics(m);
-        // 既存のhistory APIからサマリーを再現
-        const history = await apiGet('/quiz/history');
-        const totalQuizzes = Array.isArray(history) ? history.length : (history?.length || 0);
-        const totalQuestions = (Array.isArray(history) ? history : []).reduce((s: number, r: any) => s + (r.total_questions || 0), 0);
-        const scores = (Array.isArray(history) ? history : []).map((r: any) => (r.total_score / (r.total_questions || 1)) * 100);
-        const avgScore = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-        const bestScore = scores.length ? Math.max(...scores) : 0;
-        setSummary({ totalQuizzes, avgScore, bestScore, totalQuestions });
+  const m = await apiGet('/dashboard/learning-metrics/');
+  setMetrics(m);
+  setSummary(m?.summary || null);
       } catch (e: any) {
         console.error(e);
         setError(e?.message || '学習データの取得に失敗しました');
@@ -119,12 +113,13 @@ export default function LearningDashboardPage() {
 
   const stackedBarData = useMemo(() => {
     const labels = bucketData.map((r) => new Date(r.bucket).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' }));
+    // Timeout を不正解に合算し、凡例から Timeout を削除
+    const wrongPlusTimeout = bucketData.map((r) => (r.incorrect || 0) + (r.timeout || 0));
     return {
       labels,
       datasets: [
         { label: '正解', data: bucketData.map((r) => r.correct), backgroundColor: 'rgba(16,185,129,0.8)' },
-        { label: '不正解', data: bucketData.map((r) => r.incorrect), backgroundColor: 'rgba(245,158,11,0.8)' },
-        { label: 'Timeout', data: bucketData.map((r) => r.timeout), backgroundColor: 'rgba(239,68,68,0.8)' },
+        { label: '不正解', data: wrongPlusTimeout, backgroundColor: 'rgba(245,158,11,0.8)' },
       ],
     };
   }, [bucketData]);
@@ -161,41 +156,55 @@ export default function LearningDashboardPage() {
         <p className="mt-2 text-gray-600">日/週/月の学習量、Streak、直近7日のヒートマップで学習状況を可視化</p>
       </div>
 
-  {/* サマリーカード（マイ履歴から移植） */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="p-2 bg-blue-100 rounded-lg"><span className="text-xl">📊</span></div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-700">総受験回数</p>
-              <p className="text-2xl font-bold text-black">{summary.totalQuizzes}</p>
-            </div>
+      {/* サマリーカード（期間切替） */}
+      <div className="bg-white p-4 rounded-lg shadow">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">サマリー</h2>
+          <div className="space-x-2">
+            {(['today','week','month','all'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-3 py-1 text-sm rounded-full ${period === p ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >{p === 'today' ? '今日' : p === 'week' ? '今週' : p === 'month' ? '今月' : '全体'}</button>
+            ))}
           </div>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="p-2 bg-green-100 rounded-lg"><span className="text-xl">⭐</span></div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-700">平均スコア</p>
-              <p className="text-2xl font-bold text-black">{summary.avgScore.toFixed(1)}%</p>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="p-4 rounded-lg border border-gray-100">
+            <div className="flex items-center">
+              <div className="p-2 bg-purple-100 rounded-lg"><span className="text-xl">�</span></div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-700">総問題数</p>
+                <p className="text-2xl font-bold text-black">{summary ? (summary[period]?.total_questions ?? 0) : 0}</p>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="p-2 bg-yellow-100 rounded-lg"><span className="text-xl">🎯</span></div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-700">最高スコア</p>
-              <p className="text-2xl font-bold text-black">{Math.round(summary.bestScore)}%</p>
+          <div className="p-4 rounded-lg border border-gray-100">
+            <div className="flex items-center">
+              <div className="p-2 bg-green-100 rounded-lg"><span className="text-xl">⭐</span></div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-700">平均スコア</p>
+                <p className="text-2xl font-bold text-black">{summary ? (summary[period]?.avg_score_pct ?? 0).toFixed(1) : '0.0'}%</p>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="p-2 bg-purple-100 rounded-lg"><span className="text-xl">📈</span></div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-700">総問題数</p>
-              <p className="text-2xl font-bold text-black">{summary.totalQuestions}</p>
+          <div className="p-4 rounded-lg border border-gray-100">
+            <div className="flex items-center">
+              <div className="p-2 bg-blue-100 rounded-lg"><span className="text-xl">⏱️</span></div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-700">平均解答時間</p>
+                <p className="text-2xl font-bold text-black">{summary ? (((summary[period]?.avg_latency_ms ?? 0) / 1000).toFixed(1)) : '0.0'}s</p>
+              </div>
+            </div>
+          </div>
+          <div className="p-4 rounded-lg border border-gray-100">
+            <div className="flex items-center">
+              <div className="p-2 bg-yellow-100 rounded-lg"><span className="text-xl">✅</span></div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-700">平均正答率</p>
+                <p className="text-2xl font-bold text-black">{summary ? (summary[period]?.avg_accuracy_pct ?? 0).toFixed(1) : '0.0'}%</p>
+              </div>
             </div>
           </div>
         </div>

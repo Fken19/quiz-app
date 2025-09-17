@@ -29,23 +29,35 @@ export default function RootLayout({
   const vscDomain = process.env.NEXT_PUBLIC_VSC_DOMAIN ?? '';
 
   return (
-    <html lang="ja">
+    // Add suppressHydrationWarning to avoid noisy mismatch errors when
+    // extensions/tools mutate the DOM before React hydrates. When an
+    // explicit server-side value is available via NEXT_PUBLIC_VSC_DOMAIN we
+    // render it so server and client share the same initial value.
+    <html
+      lang="ja"
+      suppressHydrationWarning
+      style={vscDomain ? ({ ['--vsc-domain' as any]: vscDomain } as React.CSSProperties) : undefined}
+    >
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {/* client-only setter to avoid hydration mismatch */}
+        {/* client-only setter to fill in hostname when no env var is provided */}
         <ClientWrapper>
-          {/* VscDomainSetter sets --vsc-domain on client mount */}
-          {/* eslint-disable-next-line @next/next/no-server-import-in-client */}
-          {/* import dynamically to avoid bundling in server bundle */}
-          <script dangerouslySetInnerHTML={{ __html: `(${String(() => {
-            try {
-              const domain = (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_VSC_DOMAIN)
-                ? process.env.NEXT_PUBLIC_VSC_DOMAIN
-                : (typeof window !== 'undefined' ? window.location.hostname : '');
-              document.documentElement.style.setProperty('--vsc-domain', domain || '');
-            } catch (e) {}
-          })})()` }} />
+          <script
+            // this script runs on the client and sets the CSS var to the
+            // current hostname when NEXT_PUBLIC_VSC_DOMAIN is not provided.
+            dangerouslySetInnerHTML={{
+              __html: `(() => {
+                try {
+                  var domain = '${vscDomain || ''}';
+                  if (!domain && typeof window !== 'undefined') {
+                    domain = window.location.hostname || '';
+                  }
+                  document.documentElement.style.setProperty('--vsc-domain', domain || '');
+                } catch (e) {}
+              })()`,
+            }}
+          />
           {children}
         </ClientWrapper>
       </body>

@@ -89,10 +89,33 @@ export default function QuizResultPage() {
     );
   }
 
+  // --- 計算系（タイムアウトは 10s で扱う） ---
+  const TIMEOUT_MS = 10000;
+  const responsesByItem: Record<string, typeof result.quiz_responses[number] | undefined> = Object.fromEntries(
+    result.quiz_responses.map(r => [String(r.quiz_item_id), r])
+  );
+  const isTimeout = (r: any | undefined) => {
+    if (!r) return false;
+    const lat = Number((r as any).latency_ms);
+    const chosenText = (r as any).chosen_translation_text;
+    // Timeout の定義: 不正解 かつ (10秒超過 or Unknown)
+    if (r.is_correct === true) return false;
+    if ((Number.isFinite(lat) && lat >= TIMEOUT_MS)) return true;
+    if (!chosenText || chosenText === 'Unknown') return true;
+    return false;
+  };
+  const perItemLatencyMs = result.quiz_items.map(item => {
+    const r = responsesByItem[String(item.id)];
+    if (!r) return TIMEOUT_MS; // 念のため
+    return isTimeout(r) ? TIMEOUT_MS : (r.latency_ms ?? TIMEOUT_MS);
+  });
+  const computedTotalMs = perItemLatencyMs.reduce((a, b) => a + (Number.isFinite(b) ? Number(b) : 0), 0);
+  const computedAvgMs = perItemLatencyMs.length ? Math.round(computedTotalMs / perItemLatencyMs.length) : result.average_latency_ms;
+
   const scorePercentage = Math.round((result.total_score / result.total_questions) * 100);
-  const durationMinutes = Math.floor(result.total_duration_ms / 60000);
-  const durationSeconds = Math.floor((result.total_duration_ms % 60000) / 1000);
-  const averageLatencySeconds = (result.average_latency_ms / 1000).toFixed(1);
+  const durationMinutes = Math.floor(computedTotalMs / 60000);
+  const durationSeconds = Math.floor((computedTotalMs % 60000) / 1000);
+  const averageLatencySeconds = (computedAvgMs / 1000).toFixed(1);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -178,9 +201,20 @@ export default function QuizResultPage() {
         <div className="divide-y divide-gray-200">
           {result.quiz_items.map((item, index) => {
             const response = result.quiz_responses.find(r => r.quiz_item_id === item.id);
-            const chosenTranslation = response ? 
-              item.translations.find(t => t.id === response.chosen_translation_id) : null;
+            // まず ID で一致、無ければテキストでフォールバック一致
+            const chosenTranslation = response ? (
+              item.translations.find(t => t.id === (response as any).chosen_translation_id) ||
+              item.translations.find(t => t.ja === (response as any).chosen_translation_text)
+            ) : null;
             const correctTranslation = item.translations.find(t => t.is_correct);
+            const wasTimeout = isTimeout(response as any);
+            const showLatencyMs = response ? (wasTimeout ? TIMEOUT_MS : (response.latency_ms ?? TIMEOUT_MS)) : TIMEOUT_MS;
+
+            // 追加情報（説明・例文）があれば表示（存在する場合のみ）
+            const w: any = item.word as any;
+            const description: string | undefined = w?.description || w?.desc || w?.definition;
+            const exampleEn: string | undefined = w?.example_en || w?.example || w?.example_sentence_en || w?.sentence_en;
+            const exampleJa: string | undefined = w?.example_ja || w?.example_jp || w?.example_sentence_ja || w?.sentence_ja;
             
             return (
               <div key={item.id} className="p-6">
@@ -206,23 +240,47 @@ export default function QuizResultPage() {
                         </span>
                       </div>
                       
-                      {chosenTranslation && (
-                        <div>
-                          <span className="text-sm font-medium text-gray-600">あなたの回答: </span>
-                          <span className={`font-medium ${
-                            response?.is_correct ? 'text-green-600' : 'text-red-600'
-                          }`}>
+                      {/* あなたの回答（未回答=時間切れも明示） */}
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">あなたの回答: </span>
+                        {chosenTranslation ? (
+                          <span className={`font-medium ${response?.is_correct ? 'text-green-600' : 'text-red-600'}`}>
                             {chosenTranslation.ja}
                           </span>
+                        ) : (
+                          (() => {
+                            const chosenText = (response as any)?.chosen_translation_text;
+                            if (!chosenText || chosenText === 'Unknown' || wasTimeout) {
+                              return <span className="font-medium text-orange-600">未回答（時間切れ）</span>;
+                            }
+                            return (
+                              <span className={`font-medium ${response?.is_correct ? 'text-green-600' : 'text-red-600'}`}>
+                                {chosenText}
+                              </span>
+                            );
+                          })()
+                        )}
+                      </div>
+                      
+                      <div>
+                        <span className="text-sm font-medium text-gray-600">反応時間: </span>
+                        <span className="text-gray-900">
+                          {(showLatencyMs / 1000).toFixed(1)}秒
+                        </span>
+                      </div>
+
+                      {/* 単語の補足情報（あれば） */}
+                      {description && (
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">説明: </span>
+                          <span className="text-gray-900">{description}</span>
                         </div>
                       )}
-                      
-                      {response && (
-                        <div>
-                          <span className="text-sm font-medium text-gray-600">反応時間: </span>
-                          <span className="text-gray-900">
-                            {(response.latency_ms / 1000).toFixed(1)}秒
-                          </span>
+                      {(exampleEn || exampleJa) && (
+                        <div className="text-sm text-gray-700">
+                          <div className="text-gray-600 font-medium">例文:</div>
+                          {exampleEn && <div className="text-gray-900">{exampleEn}</div>}
+                          {exampleJa && <div className="text-gray-500">{exampleJa}</div>}
                         </div>
                       )}
                     </div>

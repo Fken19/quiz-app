@@ -15,6 +15,15 @@ export interface User {
   average_score?: number;
 }
 
+// Teacher向けAPIではメールを返さない最小ユーザー
+export interface MinimalUser {
+  id: string;
+  display_name: string;
+  avatar_url?: string;
+  role: 'student' | 'teacher' | 'admin';
+  created_at: string;
+}
+
 export interface Word {
   id: string;
   text: string;
@@ -71,6 +80,36 @@ export interface QuizResult {
   total_questions: number;
   total_duration_ms: number;
   average_latency_ms: number;
+}
+
+// Teacher-side management types
+export interface TeacherGroup {
+  id: string;
+  name: string;
+  owner_admin: User;
+  created_at: string;
+}
+
+export interface GroupMembershipItem {
+  id: string;
+  group: string;
+  user: MinimalUser; // 教師画面ではメール非表示
+  role: 'student' | 'admin';
+  created_at: string;
+  alias_name?: string | null;
+  effective_name?: string;
+  attr1?: string;
+  attr2?: string;
+}
+
+export interface TeacherStudentAliasItem {
+  id: string;
+  teacher: User;
+  student: User;
+  alias_name: string;
+  note?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface DashboardStats {

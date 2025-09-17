@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import (
     User, Word, WordTranslation, QuizSet, QuizItem, QuizResponse, Group,
-    InviteCode, TeacherStudentLink
+    InviteCode, TeacherStudentLink, GroupMembership, TeacherStudentAlias,
+    TestTemplate, TestTemplateItem, AssignedTest
 )
 from .utils import generate_invite_code, normalize_invite_code, get_code_expiry_time
 
@@ -39,6 +40,31 @@ class UserSerializer(serializers.ModelSerializer):
             if request and not avatar_url.startswith('http'):
                 return request.build_absolute_uri(avatar_url)
             return avatar_url
+        return None
+
+
+class MinimalUserSerializer(serializers.ModelSerializer):
+    """メールを返さない講師向けの最小ユーザー表示用"""
+    avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'display_name', 'avatar_url', 'role', 'created_at']
+
+    def get_avatar_url(self, obj):
+        try:
+            if getattr(obj, 'avatar') and hasattr(obj.avatar, 'url'):
+                request = self.context.get('request') if hasattr(self, 'context') else None
+                url = obj.avatar.url
+                return request.build_absolute_uri(url) if request else url
+        except Exception:
+            pass
+        url = getattr(obj, 'avatar_url', None)
+        if url:
+            request = self.context.get('request') if hasattr(self, 'context') else None
+            if request and not url.startswith('http'):
+                return request.build_absolute_uri(url)
+            return url
         return None
 
 
@@ -284,6 +310,74 @@ class GroupSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'owner_admin', 'created_at']
 
 
+class GroupCreateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Group
+        fields = ['name']
+
+
+class GroupMembershipSerializer(serializers.ModelSerializer):
+    # メール非表示のため最小ユーザー情報のみ
+    user = MinimalUserSerializer(read_only=True)
+    alias_name = serializers.SerializerMethodField()
+    effective_name = serializers.SerializerMethodField()
+    # 管理属性
+    attr1 = serializers.CharField(read_only=True)
+    attr2 = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = GroupMembership
+        fields = ['id', 'group', 'user', 'role', 'created_at', 'alias_name', 'effective_name', 'attr1', 'attr2']
+        read_only_fields = ['id', 'created_at', 'group', 'user']
+
+    def get_alias_name(self, obj):
+        request = self.context.get('request') if hasattr(self, 'context') else None
+        teacher = getattr(request, 'user', None)
+        if not teacher or getattr(teacher, 'is_anonymous', False):
+            return None
+        alias = TeacherStudentAlias.objects.filter(teacher=teacher, student=obj.user).first()
+        return alias.alias_name if alias else None
+
+    def get_effective_name(self, obj):
+        alias = self.get_alias_name(obj)
+        if alias:
+            return alias
+        return obj.user.display_name or '生徒'
+
+
+class GroupMembershipAttributesUpdateSerializer(serializers.Serializer):
+    attr1 = serializers.CharField(max_length=100, allow_blank=True, required=False)
+    attr2 = serializers.CharField(max_length=100, allow_blank=True, required=False)
+
+
+class GroupRankingItemSerializer(serializers.Serializer):
+    user = MinimalUserSerializer()
+    value = serializers.FloatField()
+    period = serializers.ChoiceField(choices=['daily', 'weekly', 'monthly'])
+    metric = serializers.CharField()
+
+
+class TeacherStudentAliasSerializer(serializers.ModelSerializer):
+    teacher = UserSerializer(read_only=True)
+    student = UserSerializer(read_only=True)
+
+    class Meta:
+        model = TeacherStudentAlias
+        fields = ['id', 'teacher', 'student', 'alias_name', 'note', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'teacher', 'student', 'created_at', 'updated_at']
+
+
+class UpsertAliasSerializer(serializers.Serializer):
+    student_id = serializers.UUIDField()
+    alias_name = serializers.CharField(max_length=100)
+    note = serializers.CharField(max_length=200, allow_blank=True, required=False)
+
+
+class SearchStudentsSerializer(serializers.Serializer):
+    q = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=['active', 'pending', 'all'], required=False, default='active')
+
+
 # 招待コード関連シリアライザー
 class InviteCodeSerializer(serializers.ModelSerializer):
     issued_by = UserSerializer(read_only=True)
@@ -375,3 +469,63 @@ class TeacherStudentLinkSerializer(serializers.ModelSerializer):
             'revoked_at', 'revoked_by'
         ]
         read_only_fields = ['id', 'linked_at', 'revoked_at', 'revoked_by']
+
+
+# --- テストテンプレート ---
+class TestTemplateItemSerializer(serializers.ModelSerializer):
+    word_id = serializers.IntegerField(source='word.id')
+    word_text = serializers.CharField(source='word.text', read_only=True)
+
+    class Meta:
+        model = TestTemplateItem
+        fields = ['id', 'order', 'word_id', 'word_text', 'choices']
+        read_only_fields = ['id', 'word_text']
+
+
+class TestTemplateSerializer(serializers.ModelSerializer):
+    owner = MinimalUserSerializer(read_only=True)
+    items = TestTemplateItemSerializer(many=True)
+    default_timer_seconds = serializers.IntegerField(required=False, allow_null=True)
+
+    class Meta:
+        model = TestTemplate
+        fields = ['id', 'title', 'description', 'default_timer_seconds', 'owner', 'items', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        template = TestTemplate.objects.create(owner=self.context['request'].user, **validated_data)
+        # バルク作成（順序確定）
+        objs = []
+        for i, item in enumerate(items_data, start=1):
+            word_id = item.get('word', {}).get('id') or item.get('word_id')
+            objs.append(TestTemplateItem(template=template, word_id=word_id, order=item.get('order', i), choices=item.get('choices')))
+        if objs:
+            TestTemplateItem.objects.bulk_create(objs)
+        return template
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        if items_data is not None:
+            # 全削除→再作成（簡易）
+            instance.items.all().delete()
+            objs = []
+            for i, item in enumerate(items_data, start=1):
+                word_id = item.get('word', {}).get('id') or item.get('word_id')
+                objs.append(TestTemplateItem(template=instance, word_id=word_id, order=item.get('order', i), choices=item.get('choices')))
+            if objs:
+                TestTemplateItem.objects.bulk_create(objs)
+        return instance
+
+
+class AssignedTestSerializer(serializers.ModelSerializer):
+    template_id = serializers.UUIDField(source='template.id', allow_null=True, required=False)
+    group_id = serializers.UUIDField(source='group.id', read_only=True)
+
+    class Meta:
+        model = AssignedTest
+        fields = ['id', 'title', 'due_at', 'timer_seconds', 'template_id', 'group_id', 'created_at']
+        read_only_fields = ['id', 'group_id', 'created_at']

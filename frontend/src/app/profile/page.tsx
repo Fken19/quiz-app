@@ -451,44 +451,8 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* 統計情報＆承認/解除履歴 */}
+        {/* 承認/解除履歴 */}
         <div className="lg:col-span-1 space-y-6">
-          {/* 統計情報 */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-black mb-4">統計情報</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between">
-                <span className="text-black">総受験回数</span>
-                        <span className="font-medium text-black">{user.quiz_count}回</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-black">平均スコア</span>
-                        <span className="font-medium text-black">{user.average_score?.toFixed(1)}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-black">登録日</span>
-                        <span className="font-medium text-black">{new Date(user.created_at).toLocaleDateString('ja-JP')}</span>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <div className="flex items-center">
-                <div className="w-16 h-16 bg-indigo-500 rounded-full flex items-center justify-center text-white text-xl font-bold overflow-hidden">
-                  {avatarPreview ? (
-                    <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    user.display_name.charAt(0).toUpperCase()
-                  )}
-                </div>
-                <div className="ml-4">
-                  <h4 className="text-lg font-medium text-black">{user.display_name}</h4>
-                  <p className="text-black">{user.email}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 承認/解除履歴 */}
           <div className="bg-white rounded-lg shadow">
             <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-black">承認/解除履歴</h3>

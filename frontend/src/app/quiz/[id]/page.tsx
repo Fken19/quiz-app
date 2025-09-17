@@ -17,16 +17,21 @@ export default function QuizPage() {
   const [quizItems, setQuizItems] = useState<QuizItem[]>([]);
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
-  const [responses, setResponses] = useState<Record<string, { translation_id: string; start_time: number; outcome?: 'correct' | 'wrong' | 'timeout' }>>({});
+  const [responses, setResponses] = useState<Record<string, { translation_id: string; start_time: number; reaction_time_ms?: number; outcome?: 'correct' | 'wrong' | 'timeout' }>>({});
   const [startTime, setStartTime] = useState<number>(0);
   const [shuffledChoices, setShuffledChoices] = useState<WordTranslation[]>([]);
-  const [timer, setTimer] = useState(10);
+  // 高精度タイマー（ミリ秒）
+  const QUESTION_LIMIT_MS = 10_000; // 1問あたり10秒
+  const [timeLeftMs, setTimeLeftMs] = useState<number>(QUESTION_LIMIT_MS);
   const [showJudge, setShowJudge] = useState(false);
   const [judgeResult, setJudgeResult] = useState<'correct' | 'wrong' | 'timeout' | null>(null);
   const [judgeText, setJudgeText] = useState('');
   const [judgeIcon, setJudgeIcon] = useState('');
   const [judgeDisabled, setJudgeDisabled] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // requestAnimationFrame を使用して高解像度に更新
+  const rafRef = useRef<number | null>(null);
+  const deadlineRef = useRef<number>(0);
+  const timedOutRef = useRef<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [answerSubmitting, setAnswerSubmitting] = useState(false);
@@ -99,7 +104,9 @@ export default function QuizPage() {
     try {
       setQuizStarted(true);
       setStartTime(Date.now());
-      setTimer(10);
+  setTimeLeftMs(QUESTION_LIMIT_MS);
+  deadlineRef.current = (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) + QUESTION_LIMIT_MS;
+  timedOutRef.current = false;
       setShowJudge(false);
       setJudgeResult(null);
       setJudgeDisabled(false);
@@ -116,18 +123,44 @@ export default function QuizPage() {
     }
   };
 
-  // タイマー管理
+  // 高精度タイマー管理（アニメーションフレーム）
   useEffect(() => {
     if (!quizStarted || showJudge || answerSubmitting) return;
-    if (timer === 0) {
-      handleJudge('timeout');
-      return;
+    const now = (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+    if (!deadlineRef.current) {
+      deadlineRef.current = now + QUESTION_LIMIT_MS;
+      timedOutRef.current = false;
+      setTimeLeftMs(QUESTION_LIMIT_MS);
     }
-    timerRef.current = setTimeout(() => setTimer((t) => t - 1), 1000);
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+    const tick = () => {
+      const current = (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+      const remain = Math.max(0, deadlineRef.current - current);
+      setTimeLeftMs(remain);
+      if (remain <= 0) {
+        if (!timedOutRef.current) {
+          timedOutRef.current = true;
+          // set a local response record marking full limit used (will be synced if server returns)
+          const currentItem = quizItems[currentItemIndex];
+          setResponses((prev) => ({
+            ...prev,
+            [currentItem.id]: {
+              ...prev[currentItem.id],
+              outcome: 'timeout',
+              reaction_time_ms: QUESTION_LIMIT_MS
+            }
+          }));
+          handleJudge('timeout');
+        }
+        return;
+      }
+      rafRef.current = requestAnimationFrame(tick);
     };
-  }, [timer, quizStarted, showJudge, answerSubmitting]);
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    };
+  }, [quizStarted, showJudge, answerSubmitting]);
 
   // 選択肢選択時
   const handleAnswerSelect = async (translationId: string) => {
@@ -136,7 +169,7 @@ export default function QuizPage() {
     // 多重タップ防止＆タイマー一時停止
     setJudgeDisabled(true);
     setAnswerSubmitting(true);
-    if (timerRef.current) clearTimeout(timerRef.current);
+  if (rafRef.current) cancelAnimationFrame(rafRef.current);
 
     try {
       // 計測開始: ブラウザ側での合計往復時間を測る
@@ -183,11 +216,11 @@ export default function QuizPage() {
   };
 
   // 判定処理
-  const handleJudge = (result: 'correct' | 'wrong' | 'timeout', translationId?: string) => {
+  const handleJudge = async (result: 'correct' | 'wrong' | 'timeout', translationId?: string) => {
     setShowJudge(true);
     setJudgeResult(result);
     setJudgeDisabled(true);
-    if (timerRef.current) clearTimeout(timerRef.current);
+  if (rafRef.current) cancelAnimationFrame(rafRef.current);
     let text = '';
     let icon = '';
     if (result === 'correct') {
@@ -202,7 +235,7 @@ export default function QuizPage() {
     }
     setJudgeText(text);
     setJudgeIcon(icon);
-    // 回答記録
+    // 回答記録（UI側）
     const currentItem = quizItems[currentItemIndex];
     setResponses((prev) => ({
       ...prev,
@@ -212,6 +245,33 @@ export default function QuizPage() {
         outcome: result
       }
     }));
+
+    // タイムアウト時は即座にサーバへ 10000ms を POST して確実に保存する
+    if (result === 'timeout') {
+      // 保持しているフラグで多重POSTを防ぐ
+      setAnswerSubmitting(true);
+      try {
+        // 捕捉: サーバは selected_translation_id に null を許容する想定
+        await apiPost(`/quiz-sets/${quizId}/submit_answer/`, {
+          quiz_item_id: Number(currentItem.id),
+          selected_translation_id: null,
+          reaction_time_ms: QUESTION_LIMIT_MS
+        });
+        // 成功ログ
+        // eslint-disable-next-line no-console
+        console.log('[timeout] submit_answer succeeded', { quiz_item_id: currentItem.id, reaction_time_ms: QUESTION_LIMIT_MS });
+      } catch (err) {
+        // 既にサーバ側で回答済み（400）などは許容し、それ以外はログに残す
+        if (err instanceof ApiError && err.status === 400) {
+          // eslint-disable-next-line no-console
+          console.log('[timeout] submit_answer skipped (already answered)', { quiz_item_id: currentItem.id, error: err.body || err.message });
+        } else {
+          console.error('Failed to submit timeout to server:', err);
+        }
+      } finally {
+        setAnswerSubmitting(false);
+      }
+    }
   };
 
   // 次の問題へ（判定画面でどこでもタップ）
@@ -226,7 +286,10 @@ export default function QuizPage() {
     if (currentItemIndex < quizItems.length - 1) {
       const nextIndex = currentItemIndex + 1;
       setCurrentItemIndex(nextIndex);
-      setTimer(10);
+  // 次の問題のタイマーを初期化
+  setTimeLeftMs(QUESTION_LIMIT_MS);
+  deadlineRef.current = (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) + QUESTION_LIMIT_MS;
+  timedOutRef.current = false;
       setJudgeDisabled(false);
       // 次の問題の選択肢をランダム化
       setShuffledChoices(shuffleChoices(quizItems[nextIndex].translations));
@@ -409,7 +472,7 @@ export default function QuizPage() {
   const progress = ((currentItemIndex + 1) / quizItems.length) * 100;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col overflow-hidden">
       {/* ヘッダー */}
       <div className="bg-white shadow">
         <div className="max-w-4xl mx-auto px-4 py-4">
@@ -434,8 +497,8 @@ export default function QuizPage() {
       </div>
 
       {/* 問題表示 */}
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="bg-white rounded-lg shadow-lg p-8">
+      <div className="max-w-4xl mx-auto px-4 py-8 flex-1">
+        <div className="bg-white rounded-lg shadow-lg p-8 h-full overflow-hidden">
           {/* 英単語表示 */}
           <div className="text-center mb-8">
             <h2 className="text-4xl font-bold text-gray-900 mb-2">
@@ -446,12 +509,28 @@ export default function QuizPage() {
             </p>
           </div>
 
-          {/* タイマー */}
-          <div className="flex justify-center mb-6">
-            <div className="flex items-center gap-2 text-lg font-semibold">
+          {/* タイマー（減少バー + 小数点2桁） */}
+          <div className="mb-6">
+            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+              {(() => {
+                const pct = Math.max(0, Math.min(1, timeLeftMs / QUESTION_LIMIT_MS));
+                return (
+                  <div
+                    className="h-3 rounded-full"
+                    style={{
+                      transform: `scaleX(${pct})`,
+                      transformOrigin: 'left',
+                      backgroundColor: '#3b82f6', // blue-500
+                      willChange: 'transform'
+                    }}
+                  />
+                );
+              })()}
+            </div>
+            <div className="mt-2 text-center text-lg font-semibold">
               <span className="text-indigo-600">残り</span>
-              <span className="text-2xl text-indigo-700">{timer}</span>
-              <span className="text-indigo-600">秒</span>
+              <span className="ml-1 text-2xl text-indigo-700">{(timeLeftMs / 1000).toFixed(2)}</span>
+              <span className="ml-1 text-indigo-600">秒</span>
             </div>
           </div>
 
@@ -466,7 +545,7 @@ export default function QuizPage() {
           )}
 
           {/* 選択肢（縦4つ・スクロール禁止） */}
-          <div className="flex flex-col gap-4 mb-8">
+          <div className="flex flex-col gap-4 mb-8 max-h-[360px] overflow-hidden">
             {shuffledChoices.map((translation, index) => (
               <button
                 key={translation.id}

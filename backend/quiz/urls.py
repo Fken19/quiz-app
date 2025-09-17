@@ -12,6 +12,10 @@ router.register(r'quiz-sets', views.QuizSetViewSet, basename='quiz-set')
 # 講師・生徒管理API
 router.register(r'teacher/invite-codes', views.TeacherInviteCodeViewSet, basename='teacher-invite-code')
 router.register(r'teacher/students', views.TeacherStudentViewSet, basename='teacher-student')
+router.register(r'teacher/groups', views.TeacherGroupViewSet, basename='teacher-group')
+router.register(r'teacher/aliases', views.TeacherAliasViewSet, basename='teacher-alias')
+router.register(r'teacher/student-detail', views.TeacherStudentDetailViewSet, basename='teacher-student-detail')
+router.register(r'teacher/test-templates', views.TeacherTestTemplateViewSet, basename='teacher-test-template')
 router.register(r'student/invite', views.StudentInviteCodeView, basename='student-invite')
 router.register(r'student/teachers', views.StudentTeacherViewSet, basename='student-teacher')
 

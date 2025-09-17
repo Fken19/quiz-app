@@ -22,14 +22,17 @@ from collections import defaultdict, deque
 
 from .models import (
     User, Word, WordTranslation, QuizSet, QuizItem, QuizResponse,
-    InviteCode, TeacherStudentLink
+    InviteCode, TeacherStudentLink, Group, GroupMembership, TeacherStudentAlias, AssignedTest, TestTemplate, TestTemplateItem
 )
 from .serializers import (
     UserSerializer, WordSerializer, WordTranslationSerializer,
     QuizSetSerializer, QuizItemSerializer, QuizResponseSerializer,
     QuizSetListSerializer, QuizSetCreateSerializer, DashboardStatsSerializer,
     InviteCodeSerializer, CreateInviteCodeSerializer, AcceptInviteCodeSerializer,
-    TeacherStudentLinkSerializer
+    TeacherStudentLinkSerializer, GroupSerializer, GroupCreateUpdateSerializer,
+    GroupMembershipSerializer, TeacherStudentAliasSerializer, UpsertAliasSerializer,
+    SearchStudentsSerializer, GroupMembershipAttributesUpdateSerializer, GroupRankingItemSerializer, MinimalUserSerializer,
+    TestTemplateSerializer, AssignedTestSerializer
 )
 from .utils import is_teacher_whitelisted
 
@@ -157,7 +160,11 @@ class QuizSetViewSet(viewsets.ModelViewSet):
         quiz_item_id = request.data.get('quiz_item_id')
         selected_translation_id = request.data.get('selected_translation_id')
         selected_answer_text = request.data.get('selected_answer_text')
-        reaction_time_ms = int(request.data.get('reaction_time_ms', 0))
+        try:
+            reaction_time_ms = int(request.data.get('reaction_time_ms', 0))
+        except (TypeError, ValueError):
+            reaction_time_ms = 0
+        timeout_flag = request.data.get('timeout') in (True, 'true', '1', 1)
 
         # quiz_item の存在確認
         try:
@@ -191,21 +198,30 @@ class QuizSetViewSet(viewsets.ModelViewSet):
             except WordTranslation.DoesNotExist:
                 return Response({'error': '選択肢が見つかりません'}, status=status.HTTP_404_NOT_FOUND)
         else:
-            # 2) フォールバック: テキストでの判定（QuizItem.choices か correct_answer を利用）
+            # 2) フォールバック: 選択テキスト or タイムアウト扱い
             chosen_text = (selected_answer_text or '').strip()
             if not chosen_text:
-                return Response({'error': '選択内容が不正です'}, status=status.HTTP_400_BAD_REQUEST)
-            # choices に一致があればその is_correct を優先
-            try:
-                choices = quiz_item.choices or []
-                match = next((c for c in choices if c.get('text') == chosen_text), None)
-                if match is not None:
-                    is_correct = bool(match.get('is_correct', False))
+                # タイムアウト（選択なし）を許容して保存
+                if timeout_flag or reaction_time_ms >= 10000:
+                    chosen_text = 'Unknown'
+                    is_correct = False
+                    # 念のため下限を 10000ms に丸める
+                    if reaction_time_ms < 10000:
+                        reaction_time_ms = 10000
                 else:
-                    # 最後の手段: correct_answer と文字列一致
+                    return Response({'error': '選択内容が不正です'}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                # choices に一致があればその is_correct を優先
+                try:
+                    choices = quiz_item.choices or []
+                    match = next((c for c in choices if c.get('text') == chosen_text), None)
+                    if match is not None:
+                        is_correct = bool(match.get('is_correct', False))
+                    else:
+                        # 最後の手段: correct_answer と文字列一致
+                        is_correct = (chosen_text == (quiz_item.correct_answer or ''))
+                except Exception:
                     is_correct = (chosen_text == (quiz_item.correct_answer or ''))
-            except Exception:
-                is_correct = (chosen_text == (quiz_item.correct_answer or ''))
 
         # QuizResponse を作成（新しいスキーマに対応）
         create_kwargs = dict(
@@ -530,12 +546,38 @@ def learning_metrics(request):
             'correct': correct,
         })
 
+    # 期間別サマリー（今日/今週/今月/全体）
+    def compute_summary(qs):
+        total = qs.count()
+        correct = qs.filter(is_correct=True).count()
+        acc = float((correct / total * 100.0) if total else 0.0)
+        avg_latency = qs.filter(reaction_time_ms__gt=0).aggregate(avg=Avg('reaction_time_ms'))['avg'] or 0
+        # 現状、平均スコアは平均正答率と同義（クイズ単位の平均が必要な場合はQuizSet単位集計に拡張）
+        return {
+            'total_questions': int(total),
+            'avg_latency_ms': int(round(avg_latency or 0)),
+            'avg_accuracy_pct': round(acc, 1),
+            'avg_score_pct': round(acc, 1),
+        }
+
+    # 週: 直近7日、月: 月初から
+    week_start = now - timezone.timedelta(days=7)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    periods = {
+        'today': base_qs.filter(created_at__date=now.date()),
+        'week': base_qs.filter(created_at__gte=week_start),
+        'month': base_qs.filter(created_at__gte=month_start),
+        'all': base_qs,
+    }
+    summary = {k: compute_summary(qs) for k, qs in periods.items()}
+
     return Response({
         'daily': daily,
         'weekly': weekly,
         'monthly': monthly,
         'streak': streak,
         'heatmap7': heatmap7,
+        'summary': summary,
     })
 
 
@@ -976,21 +1018,21 @@ def quiz_result(request, quiz_set_id):
         score_percentage = round((total_correct / total_questions * 100)) if total_questions > 0 else 0
 
         # 回答時間統計
-        total_duration_ms = quiz_responses.aggregate(
-            total=Sum('reaction_time_ms')
-        )['total'] or 0
-
-        average_latency_ms = quiz_responses.aggregate(
-            avg=Avg('reaction_time_ms')
-        )['avg'] or 0
+        total_duration_ms = quiz_responses.aggregate(total=Sum('reaction_time_ms'))['total'] or 0
+        average_latency_ms = quiz_responses.aggregate(avg=Avg('reaction_time_ms'))['avg'] or 0
 
         # データ構築
         items_data = []
         responses_data = []
+        # 各クイズアイテムごとに、訳文テキスト -> 翻訳ID のマップを保持（ID復元用）
+        text_id_map_by_item = {}
 
         for item in quiz_items:
-            # 各問題の翻訳選択肢を取得
             translations = WordTranslation.objects.filter(word=item.word)
+            try:
+                primary = next((t for t in translations if getattr(t, 'is_correct', False)), None)
+            except Exception:
+                primary = None
 
             items_data.append({
                 'id': str(item.id),
@@ -999,26 +1041,43 @@ def quiz_result(request, quiz_set_id):
                 'word': {
                     'id': str(item.word.id),
                     'text': item.word.text,
-                    'pos': getattr(item.word, 'pos', 'unknown'),  # posがない場合はデフォルト値
-                    'level': item.word.grade,  # gradeフィールドを使用
-                    'tags': []  # 必要に応じて実装
+                    'pos': getattr(item.word, 'pos', 'unknown'),
+                    'level': item.word.grade,
+                    'tags': [],
+                    'description': (getattr(primary, 'context', '') or None)
                 },
                 'translations': [
                     {
                         'id': str(t.id),
                         'word_id': str(t.word_id),
                         'ja': t.text,
-                        'is_correct': t.is_correct
+                        'is_correct': bool(getattr(t, 'is_correct', False)),
+                        'context': getattr(t, 'context', '')
                     } for t in translations
                 ],
                 'order_no': item.order
             })
+            try:
+                text_id_map_by_item[int(item.id)] = {(t.text or ''): int(t.id) for t in translations}
+            except Exception:
+                text_id_map_by_item[int(item.id)] = {}
 
         for response in quiz_responses:
+            # 回答テキストから翻訳IDを復元（可能な場合）
+            chosen_id = None
+            try:
+                m = text_id_map_by_item.get(int(response.quiz_item.id), {})
+                cid = m.get(response.selected_answer or '')
+                if cid is not None:
+                    chosen_id = str(cid)
+            except Exception:
+                chosen_id = None
+
             responses_data.append({
                 'id': str(response.id),
                 'quiz_item_id': str(response.quiz_item.id),
                 'user_id': str(response.user.id) if getattr(response, 'user', None) else None,
+                'chosen_translation_id': chosen_id,
                 'chosen_translation_text': response.selected_answer,
                 'is_correct': response.is_correct,
                 'latency_ms': response.reaction_time_ms,
@@ -1045,7 +1104,6 @@ def quiz_result(request, quiz_set_id):
         }
 
         return Response(result_data)
-        
     except Exception as e:
         logger.error(f'Error fetching quiz result: {str(e)}')
         return Response(
@@ -1210,6 +1268,523 @@ class TeacherStudentViewSet(viewsets.ReadOnlyModelViewSet):
         
         return Response({
             'message': f'{link.student.display_name or link.student.email} との紐付けを解除しました'
+        })
+
+    @action(detail=True, methods=['get'])
+    def detail(self, request, pk=None):
+        """講師視点の生徒詳細（エイリアス・所属グループ・基本統計）"""
+        link = self.get_object()
+        student = link.student
+        # 所属グループ（この講師がownerのもの限定）
+        groups = Group.objects.filter(owner_admin=request.user, memberships__user=student).order_by('name')
+        # エイリアス
+        alias = TeacherStudentAlias.objects.filter(teacher=request.user, student=student).first()
+        # 統計
+        total = QuizResponse.objects.filter(user=student).count()
+        correct = QuizResponse.objects.filter(user=student, is_correct=True).count()
+        acc = (correct / total * 100) if total > 0 else 0
+        return Response({
+            'student': UserSerializer(student, context={'request': request}).data,
+            'alias': TeacherStudentAliasSerializer(alias, context={'request': request}).data if alias else None,
+            'groups': GroupSerializer(groups, many=True, context={'request': request}).data,
+            'stats': {
+                'total_answers': total,
+                'correct_answers': correct,
+                'accuracy_pct': round(acc, 2),
+            }
+        })
+
+
+class TeacherGroupViewSet(viewsets.ModelViewSet):
+    """講師用グループ管理API
+    - list/create/update/delete: 自分のグループのみ
+    - members: メンバー一覧
+    - add_members: 生徒検索 + 一括追加
+    - remove_member: メンバー削除
+    """
+    permission_classes = [IsTeacherPermission]
+
+    def get_queryset(self):
+        return Group.objects.filter(owner_admin=self.request.user).order_by('-created_at')
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return GroupCreateUpdateSerializer
+        return GroupSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(owner_admin=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        """作成時はフルのGroupSerializerで返す（id/owner_admin/created_at含む）"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        group = serializer.save(owner_admin=request.user)
+        # 返却は詳細用
+        out = GroupSerializer(group, context=self.get_serializer_context())
+        headers = self.get_success_headers(out.data)
+        return Response(out.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        """更新時もフルのGroupSerializerで返す"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        group = serializer.save()
+        out = GroupSerializer(group, context=self.get_serializer_context())
+        return Response(out.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+    @action(detail=True, methods=['get'])
+    def members(self, request, pk=None):
+        group = self.get_object()
+        qs = GroupMembership.objects.filter(group=group).select_related('user')
+        # filters
+        attr1 = request.query_params.get('attr1')
+        attr2 = request.query_params.get('attr2')
+        q = request.query_params.get('q')
+        if attr1:
+            qs = qs.filter(attr1__icontains=attr1)
+        if attr2:
+            qs = qs.filter(attr2__icontains=attr2)
+        if q:
+            # display_name or username; alias name support via subquery list
+            alias_ids = list(
+                TeacherStudentAlias.objects.filter(teacher=request.user, alias_name__icontains=q)
+                .values_list('student_id', flat=True)
+            )
+            qs = qs.filter(Q(user__display_name__icontains=q) | Q(user__username__icontains=q) | Q(user_id__in=alias_ids))
+
+        # ordering
+        order = request.query_params.get('order', 'created_at')  # 'created_at' | 'name'
+        if order == 'name':
+            # Python-side sort by effective_name for simplicity
+            memberships = list(qs)
+            def eff_name(m):
+                alias = TeacherStudentAlias.objects.filter(teacher=request.user, student=m.user).first()
+                return (alias.alias_name if alias else None) or (m.user.display_name or '')
+            memberships.sort(key=eff_name)
+        else:
+            memberships = list(qs.order_by('created_at'))
+
+        data = GroupMembershipSerializer(memberships, many=True, context={'request': request}).data
+        return Response({'members': data, 'count': len(data)})
+
+    @action(detail=True, methods=['post'], url_path=r'members/(?P<member_id>[^/.]+)/attributes')
+    def update_member_attributes(self, request, pk=None, member_id=None):
+        """グループ内の管理用属性（attr1, attr2）を更新"""
+        group = self.get_object()
+        membership = get_object_or_404(GroupMembership, group=group, id=member_id)
+        ser = GroupMembershipAttributesUpdateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        changed = False
+        for field in ['attr1', 'attr2']:
+            if field in ser.validated_data:
+                setattr(membership, field, ser.validated_data[field])
+                changed = True
+        if changed:
+            membership.save(update_fields=['attr1', 'attr2'])
+        return Response(GroupMembershipSerializer(membership, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def add_members(self, request, pk=None):
+        """生徒検索（絞り込み/フリーワード）+ 一括追加
+        body: { q?: string, status?: 'active'|'pending'|'all', student_ids?: UUID[] }
+        - student_ids があればそれを優先して追加
+        - なければ q/status に基づいて候補を返し、confirm フラグで追加（2段階）
+        """
+        group = self.get_object()
+        body = request.data or {}
+
+        # 明示ID指定での一括追加
+        explicit_ids = body.get('student_ids') or []
+        created = 0
+        skipped = 0
+        created_items = []
+        if explicit_ids:
+            students = list(User.objects.filter(id__in=explicit_ids))
+            existing = set(
+                GroupMembership.objects.filter(group=group, user__in=students).values_list('user_id', flat=True)
+            )
+            for stu in students:
+                if stu.id in existing:
+                    skipped += 1
+                    continue
+                gm = GroupMembership.objects.create(group=group, user=stu, role='student')
+                created += 1
+                created_items.append(gm)
+            return Response({
+                'created': created,
+                'skipped': skipped,
+                'members': GroupMembershipSerializer(created_items, many=True, context={'request': request}).data
+            })
+
+        # 検索用パラメータのバリデーション
+        ser = SearchStudentsSerializer(data=body)
+        ser.is_valid(raise_exception=True)
+        q = ser.validated_data.get('q')
+        status_filter = ser.validated_data.get('status')
+
+        # まず講師と紐付いた生徒から検索（pending/active）
+        links = TeacherStudentLink.objects.filter(teacher=request.user)
+        if status_filter == 'active':
+            links = links.filter(status='active')
+        elif status_filter == 'pending':
+            links = links.filter(status='pending')
+        else:
+            links = links.exclude(status='revoked')
+
+        student_qs = User.objects.filter(id__in=links.values('student_id'))
+        if q:
+            q_icontains = Q(email__icontains=q) | Q(display_name__icontains=q) | Q(username__icontains=q)
+            student_qs = student_qs.filter(q_icontains)
+
+        student_qs = student_qs.order_by('display_name', 'email')[:100]
+
+        # 既にグループにいる生徒を除いた候補
+        existing_ids = set(GroupMembership.objects.filter(group=group).values_list('user_id', flat=True))
+        candidates = [s for s in student_qs if s.id not in existing_ids]
+
+        return Response({
+            'candidates': MinimalUserSerializer(candidates, many=True, context={'request': request}).data,
+            'count': len(candidates)
+        })
+
+    @action(detail=True, methods=['delete'], url_path='remove-member/(?P<member_id>[^/.]+)')
+    def remove_member(self, request, pk=None, member_id=None):
+        group = self.get_object()
+        membership = get_object_or_404(GroupMembership, group=group, id=member_id)
+        membership.delete()
+        return Response({'message': 'メンバーを削除しました'})
+
+    # CSVエクスポート機能は要望により削除しました
+
+    @action(detail=True, methods=['get'], url_path='rankings')
+    def rankings(self, request, pk=None):
+        """グループ内ランキング（日/週/月・正答率や回答数など切り替え）
+        クエリ: ?period=daily|weekly|monthly&metric=answers|accuracy
+        """
+        group = self.get_object()
+        period = request.query_params.get('period', 'weekly')
+        metric = request.query_params.get('metric', 'answers')
+        if period not in ('daily', 'weekly', 'monthly'):
+            period = 'weekly'
+        if metric not in ('answers', 'accuracy'):
+            metric = 'answers'
+
+        # 期間開始
+        now = timezone.now()
+        if period == 'daily':
+            start = now - timedelta(days=1)
+        elif period == 'weekly':
+            start = now - timedelta(days=7)
+        else:
+            start = now - timedelta(days=30)
+
+        user_ids = list(GroupMembership.objects.filter(group=group).values_list('user_id', flat=True))
+        base_qs = QuizResponse.objects.filter(user_id__in=user_ids, created_at__gte=start)
+
+        # 集計
+        rows = []
+        if metric == 'answers':
+            counts = base_qs.values('user_id').annotate(value=Count('id')).order_by('-value')
+            lookup = {c['user_id']: c['value'] for c in counts}
+            for uid in user_ids:
+                rows.append({'user_id': uid, 'value': float(lookup.get(uid, 0))})
+        else:  # accuracy
+            totals = base_qs.values('user_id').annotate(total=Count('id'))
+            corrects = base_qs.filter(is_correct=True).values('user_id').annotate(corr=Count('id'))
+            total_map = {t['user_id']: t['total'] for t in totals}
+            corr_map = {c['user_id']: c['corr'] for c in corrects}
+            for uid in user_ids:
+                t = total_map.get(uid, 0)
+                c = corr_map.get(uid, 0)
+                rows.append({'user_id': uid, 'value': float((c / t * 100) if t else 0.0)})
+
+        # ユーザー最小情報を付与
+        users = {u.id: u for u in User.objects.filter(id__in=[r['user_id'] for r in rows])}
+        out = []
+        for r in sorted(rows, key=lambda x: x['value'], reverse=True):
+            u = users.get(r['user_id'])
+            if not u:
+                continue
+            out.append({
+                'user': MinimalUserSerializer(u, context={'request': request}).data,
+                'value': r['value'],
+                'period': period,
+                'metric': metric,
+            })
+        return Response({'rankings': out, 'count': len(out)})
+
+    @action(detail=True, methods=['get'], url_path='dashboard')
+    def dashboard(self, request, pk=None):
+        """グループダッシュボード（集計/分布/上位者）
+        クエリ:
+          - days: 何日分を見るか（デフォルト30）
+          - min_answers_for_accuracy: 上位正答率ランキングに必要な最小回答数（デフォルト20）
+        """
+        group = self.get_object()
+        days = int(request.query_params.get('days', 30) or 30)
+        min_ans = int(request.query_params.get('min_answers_for_accuracy', 20) or 20)
+        now = timezone.now()
+        start = now - timedelta(days=days)
+
+        user_ids = list(GroupMembership.objects.filter(group=group).values_list('user_id', flat=True))
+        base_qs = QuizResponse.objects.filter(user_id__in=user_ids, created_at__gte=start)
+
+        # 総計
+        total = base_qs.count()
+        correct = base_qs.filter(is_correct=True).count()
+        acc_pct = float((correct / total * 100) if total else 0.0)
+
+        # 日別
+        daily_rows = (
+            base_qs.annotate(d=TruncDate('created_at'))
+                   .values('d')
+                   .annotate(total=Count('id'), correct=Count('id', filter=Q(is_correct=True)))
+                   .order_by('d')
+        )
+        daily = [{'date': r['d'].isoformat(), 'total': r['total'], 'correct': r['correct']} for r in daily_rows]
+
+        # 生徒別 集計
+        per_user_totals = (
+            base_qs.values('user_id')
+                  .annotate(total=Count('id'), correct=Count('id', filter=Q(is_correct=True)))
+        )
+        # 分布（回答数）
+        def bucket_answers(n):
+            edges = [0, 10, 30, 50, 100, 200, 500, 1000]
+            labels = ['0-9', '10-29', '30-49', '50-99', '100-199', '200-499', '500-999', '1000+']
+            for i, e in enumerate(edges):
+                if i == len(edges) - 1:
+                    return labels[i]
+                nxt = edges[i+1]
+                if n < nxt:
+                    return labels[i]
+            return labels[-1]
+
+        answers_hist = {}
+        acc_hist = { '0-49': 0, '50-69': 0, '70-84': 0, '85-94': 0, '95-100': 0 }
+        top_learners_rows = []
+        top_accuracy_rows = []
+
+        uid_to_stats = {}
+        for r in per_user_totals:
+            uid = r['user_id']
+            t = int(r['total'] or 0)
+            c = int(r['correct'] or 0)
+            uid_to_stats[uid] = {'total': t, 'correct': c}
+            # answers hist
+            label = bucket_answers(t)
+            answers_hist[label] = answers_hist.get(label, 0) + 1
+            # accuracy hist
+            a = (c / t * 100) if t else 0.0
+            if a < 50:
+                acc_hist['0-49'] += 1
+            elif a < 70:
+                acc_hist['50-69'] += 1
+            elif a < 85:
+                acc_hist['70-84'] += 1
+            elif a < 95:
+                acc_hist['85-94'] += 1
+            else:
+                acc_hist['95-100'] += 1
+
+        # 上位者
+        for uid, st in uid_to_stats.items():
+            top_learners_rows.append({'user_id': uid, 'value': float(st['total'])})
+            if st['total'] >= min_ans:
+                a = float(st['correct'] / st['total'] * 100.0) if st['total'] else 0.0
+                top_accuracy_rows.append({'user_id': uid, 'value': a, 'total_answers': st['total']})
+
+        users = {u.id: u for u in User.objects.filter(id__in=list(uid_to_stats.keys()))}
+        def attach_users(rows):
+            out = []
+            for r in rows:
+                u = users.get(r['user_id'])
+                if not u:
+                    continue
+                ent = {
+                    'user': MinimalUserSerializer(u, context={'request': request}).data,
+                    'value': r['value']
+                }
+                if 'total_answers' in r:
+                    ent['total_answers'] = r['total_answers']
+                out.append(ent)
+            return out
+
+        top_learners = attach_users(sorted(top_learners_rows, key=lambda x: x['value'], reverse=True)[:5])
+        top_accuracy = attach_users(sorted(top_accuracy_rows, key=lambda x: x['value'], reverse=True)[:5])
+
+        # 属性の内訳（attr1/attr2）
+        mem_qs = GroupMembership.objects.filter(group=group)
+        attr1_counts = (
+            mem_qs.values('attr1').annotate(count=Count('id')).order_by('-count')
+        )
+        attr2_counts = (
+            mem_qs.values('attr2').annotate(count=Count('id')).order_by('-count')
+        )
+
+        def hist_to_list(dct, order_labels=None):
+            if order_labels:
+                return [{'bin': k, 'count': int(dct.get(k, 0))} for k in order_labels]
+            return [{'bin': k, 'count': int(v)} for k, v in dct.items()]
+
+        return Response({
+            'members_count': len(user_ids),
+            'totals': {
+                'total_answers': total,
+                'correct_answers': correct,
+                'accuracy_pct': round(acc_pct, 2),
+                'period_days': days,
+            },
+            'daily': daily,
+            'distributions': {
+                'answers_per_student': hist_to_list(answers_hist, ['0-9','10-29','30-49','50-99','100-199','200-499','500-999','1000+']),
+                'accuracy_per_student': hist_to_list(acc_hist, ['0-49','50-69','70-84','85-94','95-100']),
+            },
+            'top_learners': top_learners,
+            'top_accuracy': top_accuracy,
+            'attr1_breakdown': [{'value': (r['attr1'] or ''), 'count': r['count']} for r in attr1_counts],
+            'attr2_breakdown': [{'value': (r['attr2'] or ''), 'count': r['count']} for r in attr2_counts],
+        })
+
+    @action(detail=True, methods=['post'])
+    def assign_test(self, request, pk=None):
+        """グループにテスト（AssignedTest）を配信"""
+        group = self.get_object()
+        body = request.data or {}
+        title = body.get('title') or f"Assignment - {timezone.now().strftime('%Y-%m-%d %H:%M')}"
+        due_at_raw = (request.data or {}).get('due_at')
+        due_at = None
+        if due_at_raw:
+            try:
+                due_at = timezone.datetime.fromisoformat(due_at_raw)
+                if timezone.is_naive(due_at):
+                    due_at = timezone.make_aware(due_at, timezone.get_current_timezone())
+            except Exception:
+                pass
+        template_id = body.get('template_id') or body.get('template')
+        timer_seconds = body.get('timer_seconds')
+        template_obj = None
+        if template_id:
+            try:
+                template_obj = TestTemplate.objects.get(id=template_id, owner=request.user)
+            except TestTemplate.DoesNotExist:
+                return Response({'error': 'テンプレートが見つかりません'}, status=status.HTTP_400_BAD_REQUEST)
+        test = AssignedTest.objects.create(group=group, title=title, due_at=due_at, template=template_obj, timer_seconds=timer_seconds)
+        return Response({'message': 'テストを配信しました', 'test': AssignedTestSerializer(test, context={'request': request}).data}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def tests(self, request, pk=None):
+        group = self.get_object()
+        tests = group.assigned_tests.order_by('-created_at')
+        out = [
+            {
+                'id': str(t.id), 'title': t.title,
+                'due_at': t.due_at.isoformat() if t.due_at else None,
+                'created_at': t.created_at.isoformat(),
+            } for t in tests
+        ]
+        return Response({'tests': out, 'count': len(out)})
+
+
+class TeacherAliasViewSet(viewsets.GenericViewSet):
+    """講師用 生徒エイリアス設定API"""
+    permission_classes = [IsTeacherPermission]
+
+    def list(self, request):
+        aliases = TeacherStudentAlias.objects.filter(teacher=request.user).select_related('student').order_by('created_at')
+        return Response(TeacherStudentAliasSerializer(aliases, many=True, context={'request': request}).data)
+
+    @action(detail=False, methods=['post'])
+    def upsert(self, request):
+        ser = UpsertAliasSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        student_id = ser.validated_data['student_id']
+        alias_name = ser.validated_data['alias_name']
+        note = ser.validated_data.get('note', '')
+
+        # 教師と生徒の関係チェック（active/pending可）
+        link = TeacherStudentLink.objects.filter(teacher=request.user, student_id=student_id).exclude(status='revoked').first()
+        if not link:
+            return Response({'error': 'この生徒はあなたの管理対象ではありません'}, status=status.HTTP_400_BAD_REQUEST)
+
+        alias, created = TeacherStudentAlias.objects.update_or_create(
+            teacher=request.user,
+            student_id=student_id,
+            defaults={'alias_name': alias_name, 'note': note}
+        )
+        return Response({
+            'created': created,
+            'alias': TeacherStudentAliasSerializer(alias, context={'request': request}).data
+        })
+
+    @action(detail=False, methods=['delete'], url_path=r'(?P<student_id>[^/.]+)')
+    def delete(self, request, student_id=None):
+        obj = TeacherStudentAlias.objects.filter(teacher=request.user, student_id=student_id).first()
+        if not obj:
+            return Response({'message': 'エイリアスは存在しません'}, status=status.HTTP_404_NOT_FOUND)
+        obj.delete()
+        return Response({'message': 'エイリアスを削除しました'})
+
+
+class TeacherTestTemplateViewSet(viewsets.ModelViewSet):
+    """講師用 テストテンプレート CRUD"""
+    serializer_class = TestTemplateSerializer
+    permission_classes = [IsTeacherPermission]
+
+    def get_queryset(self):
+        return TestTemplate.objects.filter(owner=self.request.user).order_by('-updated_at')
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
+
+# 追加: 学生詳細（student_id指定）
+class TeacherStudentDetailViewSet(viewsets.GenericViewSet):
+    permission_classes = [IsTeacherPermission]
+
+    @action(detail=False, methods=['get'], url_path=r'by-student/(?P<student_id>[^/.]+)/detail')
+    def by_student_detail(self, request, student_id=None):
+        """講師視点の生徒詳細（student_id基準）"""
+        # 紐付け確認
+        link = TeacherStudentLink.objects.filter(teacher=request.user, student_id=student_id).exclude(status='revoked').first()
+        if not link:
+            return Response({'error': 'この生徒はあなたの管理対象ではありません'}, status=status.HTTP_403_FORBIDDEN)
+        student = link.student
+        groups = Group.objects.filter(owner_admin=request.user, memberships__user=student).order_by('name')
+        alias = TeacherStudentAlias.objects.filter(teacher=request.user, student=student).first()
+
+        # 直近30日の統計
+        now = timezone.now()
+        start = now - timedelta(days=30)
+        qs = QuizResponse.objects.filter(user=student, created_at__gte=start)
+        total = qs.count()
+        correct = qs.filter(is_correct=True).count()
+        acc = float((correct / total * 100) if total else 0.0)
+        # 日別
+        daily_rows = (
+            qs.annotate(d=TruncDate('created_at')).values('d')
+              .annotate(total=Count('id'), correct=Count('id', filter=Q(is_correct=True)))
+              .order_by('d')
+        )
+        daily = [{'date': r['d'].isoformat(), 'total': r['total'], 'correct': r['correct']} for r in daily_rows]
+
+        return Response({
+            'student': MinimalUserSerializer(student, context={'request': request}).data,
+            'alias': TeacherStudentAliasSerializer(alias, context={'request': request}).data if alias else None,
+            'groups': GroupSerializer(groups, many=True, context={'request': request}).data,
+            'stats_30d': {
+                'total_answers': total,
+                'correct_answers': correct,
+                'accuracy_pct': round(acc, 2)
+            },
+            'daily': daily,
         })
 
 

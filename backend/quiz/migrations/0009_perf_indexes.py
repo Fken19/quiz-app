@@ -1,4 +1,4 @@
-from django.db import migrations, models
+from django.db import migrations
 
 
 class Migration(migrations.Migration):
@@ -7,19 +7,74 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # quiz_quiz_item(word_id) にインデックス
-        migrations.AddIndex(
-            model_name='quizitem',
-            index=models.Index(fields=['word'], name='quiz_item_word_idx'),
+        # 既存DBのテーブル名差異に対応するため、条件付きでインデックスを作成
+        # quiz_item(word_id)
+        migrations.RunSQL(
+            sql=r'''
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quiz_item') THEN
+                    CREATE INDEX IF NOT EXISTS quiz_item_word_idx ON "quiz_quiz_item" ("word_id");
+                ELSIF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quizitem') THEN
+                    CREATE INDEX IF NOT EXISTS quiz_item_word_idx ON "quiz_quizitem" ("word_id");
+                END IF;
+            END
+            $$;
+            ''',
+            reverse_sql=r'''
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_class WHERE relname='quiz_item_word_idx') THEN
+                    DROP INDEX IF EXISTS quiz_item_word_idx;
+                END IF;
+            END
+            $$;
+            '''
         ),
-        # quiz_quiz_response(user_id, created_at) 複合インデックス（最新2件抽出の ORDER BY サポート）
-        migrations.AddIndex(
-            model_name='quizresponse',
-            index=models.Index(fields=['user', 'created_at'], name='quiz_resp_user_created_idx'),
+        # quiz_response(user_id, created_at)
+        migrations.RunSQL(
+            sql=r'''
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quiz_response') THEN
+                    CREATE INDEX IF NOT EXISTS quiz_resp_user_created_idx ON "quiz_quiz_response" ("user_id", "created_at");
+                ELSIF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quizresponse') THEN
+                    CREATE INDEX IF NOT EXISTS quiz_resp_user_created_idx ON "quiz_quizresponse" ("user_id", "created_at");
+                END IF;
+            END
+            $$;
+            ''',
+            reverse_sql=r'''
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_class WHERE relname='quiz_resp_user_created_idx') THEN
+                    DROP INDEX IF EXISTS quiz_resp_user_created_idx;
+                END IF;
+            END
+            $$;
+            '''
         ),
-        # 念のため、結合に使う quiz_item_id にもインデックス（外部キーで作成されていない環境向け）
-        migrations.AddIndex(
-            model_name='quizresponse',
-            index=models.Index(fields=['quiz_item'], name='quiz_resp_item_idx'),
+        # quiz_response(quiz_item_id)
+        migrations.RunSQL(
+            sql=r'''
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quiz_response') THEN
+                    CREATE INDEX IF NOT EXISTS quiz_resp_item_idx ON "quiz_quiz_response" ("quiz_item_id");
+                ELSIF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quizresponse') THEN
+                    CREATE INDEX IF NOT EXISTS quiz_resp_item_idx ON "quiz_quizresponse" ("quiz_item_id");
+                END IF;
+            END
+            $$;
+            ''',
+            reverse_sql=r'''
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_class WHERE relname='quiz_resp_item_idx') THEN
+                    DROP INDEX IF EXISTS quiz_resp_item_idx;
+                END IF;
+            END
+            $$;
+            '''
         ),
     ]

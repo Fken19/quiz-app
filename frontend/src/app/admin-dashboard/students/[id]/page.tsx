@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { apiGet } from '@/lib/api-utils';
+import { apiGet, TeacherStudentDetailAPI } from '@/lib/api-utils';
 import { normalizeAvatarUrl } from '@/lib/avatar';
 
 interface Student {
@@ -63,87 +63,43 @@ export default function StudentDetailPage() {
 
   const fetchStudentDetails = async () => {
     try {
-      // デモデータ（実際のAPIと置き換え予定）
-      const demoStudents = {
-        '1': {
-          id: '1',
-          email: 'student1@example.com',
-          display_name: '田中太郎',
-          groups: ['数学A 高校1年', '物理基礎'],
-          total_quiz_count: 25,
-          average_score: 78.5,
-          last_activity: '2024-01-20T15:30:00Z',
-          joined_at: '2024-01-16T09:00:00Z',
-          total_questions_answered: 250,
-          correct_answers: 196
-        },
-        '2': {
-          id: '2',
-          email: 'student2@example.com',
-          display_name: '佐藤花子',
-          groups: ['英語初級', '数学A 高校1年'],
-          total_quiz_count: 30,
-          average_score: 82.3,
-          last_activity: '2024-01-20T16:45:00Z',
-          joined_at: '2024-01-17T10:00:00Z',
-          total_questions_answered: 300,
-          correct_answers: 247
-        }
-      };
-
-      const studentData = demoStudents[studentId as keyof typeof demoStudents];
-      if (!studentData) {
+      const res = await TeacherStudentDetailAPI.getByStudent(String(studentId));
+      if (!res || !res.student) {
         setError('生徒が見つかりません');
         return;
       }
+      const s = res.student;
+      const groups = (res.groups || []).map((g: any) => g.name);
+      // 概要統計
+      const stats = res.stats_30d || { total_answers: 0, correct_answers: 0 };
+      const avg = stats.total_answers ? (stats.correct_answers / stats.total_answers) * 100 : 0;
+      const lastAct = (res.daily || []).slice(-1)[0]?.date || new Date().toISOString();
+      const joinedAt = (groups.length > 0) ? new Date().toISOString() : new Date().toISOString();
+      setStudent({
+        id: s.id,
+        email: '', // プライバシー保護のため表示しない
+        display_name: s.display_name,
+        groups,
+        total_quiz_count: stats.total_answers,
+        average_score: avg,
+        last_activity: lastAct,
+        joined_at: joinedAt,
+        total_questions_answered: stats.total_answers,
+        correct_answers: stats.correct_answers,
+      });
 
-      setStudent(studentData);
-
-      // デモクイズセッションデータ
-      const demoSessions: QuizSession[] = [
-        {
-          id: '1',
-          quiz_name: '数学基礎テスト',
-          group: '数学A 高校1年',
-          score: 85,
-          total_questions: 10,
-          correct_answers: 8,
-          completed_at: '2024-01-20T14:30:00Z',
-          time_taken: 600
-        },
-        {
-          id: '2',
-          quiz_name: '物理運動の法則',
-          group: '物理基礎',
-          score: 72,
-          total_questions: 15,
-          correct_answers: 11,
-          completed_at: '2024-01-19T16:15:00Z',
-          time_taken: 900
-        },
-        {
-          id: '3',
-          quiz_name: '復習テスト',
-          group: '数学A 高校1年',
-          score: 90,
-          total_questions: 8,
-          correct_answers: 7,
-          completed_at: '2024-01-18T18:45:00Z',
-          time_taken: 480
-        },
-        {
-          id: '4',
-          quiz_name: '物理基礎確認',
-          group: '物理基礎',
-          score: 68,
-          total_questions: 12,
-          correct_answers: 8,
-          completed_at: '2024-01-17T20:30:00Z',
-          time_taken: 720
-        }
-      ];
-
-      setQuizSessions(demoSessions.slice(0, studentData.total_quiz_count || 10));
+      // 履歴（簡易表示用に日別をダミー変換）
+      const sessions: QuizSession[] = (res.daily || []).map((d: any, idx: number) => ({
+        id: String(idx+1),
+        quiz_name: '学習セッション',
+        group: groups[0] || '—',
+        score: d.total > 0 ? Math.round((d.correct / d.total) * 100) : 0,
+        total_questions: d.total,
+        correct_answers: d.correct,
+        completed_at: d.date + 'T00:00:00Z',
+        time_taken: 0,
+      }));
+      setQuizSessions(sessions);
     } catch (err) {
       console.error('Failed to fetch student details:', err);
       setError('生徒詳細の取得に失敗しました');

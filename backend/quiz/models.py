@@ -249,6 +249,13 @@ class Group(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        unique_together = ['owner_admin', 'name']
+        indexes = [
+            models.Index(fields=['owner_admin']),
+            models.Index(fields=['name']),
+        ]
+
     def __str__(self):
         return self.name
 
@@ -264,6 +271,9 @@ class GroupMembership(models.Model):
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='memberships')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='group_memberships')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='student')
+    # グループ内でのみ利用する管理属性（最大2つ）
+    attr1 = models.CharField(max_length=100, blank=True, default='')
+    attr2 = models.CharField(max_length=100, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -271,6 +281,27 @@ class GroupMembership(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.group.name} ({self.role})"
+
+
+class TeacherStudentAlias(models.Model):
+    """講師が生徒に対して付ける表示名（講師専用のローカルエイリアス）"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    teacher = models.ForeignKey(User, on_delete=models.CASCADE, related_name='student_aliases')
+    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='teacher_aliases')
+    alias_name = models.CharField(max_length=100)
+    note = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['teacher', 'student']
+        indexes = [
+            models.Index(fields=['teacher']),
+            models.Index(fields=['student']),
+        ]
+
+    def __str__(self):
+        return f"{self.teacher.email} -> {self.student.email}: {self.alias_name}"
 
 
 class Question(models.Model):
@@ -319,6 +350,9 @@ class AssignedTest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='assigned_tests')
     title = models.CharField(max_length=200)
+    # オプション: テンプレートと制限時間（秒）。先にテンプレートを保存してから割当で紐付ける想定。
+    template = models.ForeignKey('quiz.TestTemplate', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_tests')
+    timer_seconds = models.IntegerField(null=True, blank=True)
     due_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -489,7 +523,52 @@ class TeacherWhitelist(models.Model):
 
     class Meta:
         db_table = 'quiz_whitelist_user'
-    indexes = [models.Index(fields=['email'])]
+        indexes = [models.Index(fields=['email'])]
 
     def __str__(self):
         return self.email
+
+
+# --- テスト作成テンプレート（講師向け） ---
+class TestTemplate(models.Model):
+    """講師が再利用できるテストテンプレート
+    単語ベースで問題を構成。選択肢（ダミー）は項目側のJSONに保持。
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='test_templates')
+    title = models.CharField(max_length=200)
+    description = models.CharField(max_length=500, blank=True)
+    # オプション: テスト時のみ適用するタイマー（秒）
+    default_timer_seconds = models.IntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['owner', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.title} (by {self.owner.display_name or self.owner.email})"
+
+
+class TestTemplateItem(models.Model):
+    """テンプレートの各問題項目
+    既存の Word を参照し、選択肢候補（ダミー含む）を JSON で保持。
+    choices 例: [{"text": "訳1", "is_correct": false}, ...]
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    template = models.ForeignKey(TestTemplate, on_delete=models.CASCADE, related_name='items')
+    word = models.ForeignKey(Word, on_delete=models.CASCADE, db_column='word_id')
+    order = models.IntegerField(default=0)
+    choices = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order', 'created_at']
+        indexes = [
+            models.Index(fields=['template', 'order']),
+        ]
+
+    def __str__(self):
+        return f"{self.template.title} - #{self.order}: {self.word.text}"

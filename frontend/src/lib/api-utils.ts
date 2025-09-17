@@ -99,3 +99,59 @@ export async function apiDelete(endpoint: string) {
 export async function apiGet(endpoint: string) {
   return apiRequest(endpoint);
 }
+
+// Teacher Group Management APIs
+export const TeacherGroupsAPI = {
+  list: () => apiGet('/teacher/groups/'),
+  get: (id: string) => apiGet(`/teacher/groups/${id}/`),
+  create: (name: string) => apiPost('/teacher/groups/', { name }),
+  update: (id: string, name: string) => apiRequest(`/teacher/groups/${id}/`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  delete: (id: string) => apiDelete(`/teacher/groups/${id}/`),
+  members: (id: string) => apiGet(`/teacher/groups/${id}/members/`),
+  // with filters: { q?, attr1?, attr2?, order? }
+  membersFiltered: (id: string, params: { q?: string; attr1?: string; attr2?: string; order?: 'created_at'|'name' } = {}) => {
+    const usp = new URLSearchParams();
+    if (params.q) usp.set('q', params.q);
+    if (params.attr1) usp.set('attr1', params.attr1);
+    if (params.attr2) usp.set('attr2', params.attr2);
+    if (params.order) usp.set('order', params.order);
+    const qs = usp.toString();
+    return apiGet(`/teacher/groups/${id}/members/${qs ? `?${qs}` : ''}`);
+  },
+  addMembersByIds: (id: string, studentIds: string[]) => apiPost(`/teacher/groups/${id}/add_members/`, { student_ids: studentIds }),
+  searchCandidates: (id: string, params: { q?: string; status?: 'active'|'pending'|'all' } = {}) => apiPost(`/teacher/groups/${id}/add_members/`, params),
+  removeMember: (groupId: string, memberId: string) => apiDelete(`/teacher/groups/${groupId}/remove-member/${memberId}/`),
+  rankings: (id: string, params: { period: 'daily'|'weekly'|'monthly'; metric: 'answers'|'accuracy' }) => apiGet(`/teacher/groups/${id}/rankings/?period=${encodeURIComponent(params.period)}&metric=${encodeURIComponent(params.metric)}`),
+  dashboard: (id: string, params: { days?: number; min_answers_for_accuracy?: number } = {}) => {
+    const usp = new URLSearchParams();
+    if (params.days != null) usp.set('days', String(params.days));
+    if (params.min_answers_for_accuracy != null) usp.set('min_answers_for_accuracy', String(params.min_answers_for_accuracy));
+    const qs = usp.toString();
+    return apiGet(`/teacher/groups/${id}/dashboard/${qs ? `?${qs}` : ''}`);
+  },
+  updateMemberAttributes: (groupId: string, memberId: string, payload: { attr1?: string; attr2?: string }) => apiPost(`/teacher/groups/${groupId}/members/${memberId}/attributes/`, payload),
+  assignTest: (groupId: string, payload: { title?: string; template_id?: string; timer_seconds?: number }) => apiPost(`/teacher/groups/${groupId}/assign_test/`, payload),
+};
+
+// Teacher Student Aliases API
+export const TeacherAliasesAPI = {
+  list: () => apiGet('/teacher/aliases/'),
+  upsert: (studentId: string, aliasName: string, note?: string) => apiPost('/teacher/aliases/upsert/', { student_id: studentId, alias_name: aliasName, note }),
+  delete: (studentId: string) => apiDelete(`/teacher/aliases/${studentId}/`),
+};
+
+// Teacher Student Detail (by student id)
+export const TeacherStudentDetailAPI = {
+  getByStudent: (studentId: string) => apiGet(`/teacher/student-detail/by-student/${studentId}/detail/`),
+};
+
+// Teacher Test Templates API
+export const TeacherTestTemplatesAPI = {
+  list: () => apiGet('/teacher/test-templates/'),
+  get: (id: string) => apiGet(`/teacher/test-templates/${id}/`),
+  create: (payload: { title: string; description?: string; default_timer_seconds?: number | null; items?: any[] }) =>
+    apiPost('/teacher/test-templates/', payload),
+  update: (id: string, payload: { title?: string; description?: string; default_timer_seconds?: number | null; items?: any[] }) =>
+    apiRequest(`/teacher/test-templates/${id}/`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  delete: (id: string) => apiDelete(`/teacher/test-templates/${id}/`),
+};

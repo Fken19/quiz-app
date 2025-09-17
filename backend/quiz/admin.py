@@ -20,6 +20,7 @@ from .models import (
     InviteCode,
     TeacherStudentLink,
     TeacherWhitelist,
+    TeacherStudentAlias,
 )
 
 
@@ -174,3 +175,10 @@ class TeacherWhitelistAdmin(admin.ModelAdmin):
         (None, {'fields': ('email', 'note')}),
         ('メタ情報', {'classes': ('collapse',), 'fields': ('created_at', 'created_by')}),
     )
+
+
+@admin.register(TeacherStudentAlias)
+class TeacherStudentAliasAdmin(admin.ModelAdmin):
+    list_display = ('teacher', 'student', 'alias_name', 'updated_at')
+    list_filter = ('updated_at',)
+    search_fields = ('teacher__email', 'student__email', 'alias_name')

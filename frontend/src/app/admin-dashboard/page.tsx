@@ -273,6 +273,21 @@ export default function AdminDashboardHome() {
             </div>
           </div>
         </Link>
+
+        <Link
+          href="/admin-dashboard/tests"
+          className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
+        >
+          <div className="flex items-center space-x-4">
+            <div className="bg-pink-100 p-3 rounded-lg">
+              <span className="text-2xl">📝</span>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">テスト管理</h3>
+              <p className="text-gray-600 text-sm">テンプレート作成と配信</p>
+            </div>
+          </div>
+        </Link>
       </div>
 
       {/* 最近のグループ */}
