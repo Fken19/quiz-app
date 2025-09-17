@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { apiGet, TeacherStudentDetailAPI } from '@/lib/api-utils';
+import { apiGet, apiPost, TeacherStudentDetailAPI, TeacherAliasesAPI, TeacherGroupsAPI } from '@/lib/api-utils';
 import { normalizeAvatarUrl } from '@/lib/avatar';
 
 interface Student {
@@ -42,6 +42,25 @@ export default function StudentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
+  const [alias, setAlias] = useState<{ id?: string; alias_name?: string; note?: string } | null>(null);
+  const [aliasDraft, setAliasDraft] = useState<{ alias_name: string; note: string }>({ alias_name: '', note: '' });
+  const [memberships, setMemberships] = useState<Array<{ id: string; group_id: string; group_name: string; attr1: string; attr2: string; created_at: string }>>([]);
+  const [metrics, setMetrics] = useState<{ summary: any; daily: any[]; weekly: any[]; monthly: any[] } | null>(null);
+  const [history, setHistory] = useState<{ results: any[]; page: number; page_size: number; total: number } | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(10);
+  const [historyLevel, setHistoryLevel] = useState<string>('');
+  const [historySince, setHistorySince] = useState<string>('');
+  const [historyUntil, setHistoryUntil] = useState<string>('');
+  const [historyOrder, setHistoryOrder] = useState<'created_at_desc' | 'created_at_asc'>('created_at_desc');
+
+  // ソート変更時に自動再読込
+  useEffect(() => {
+    if (status === 'authenticated') {
+      fetchHistory(1, historyPageSize, historyLevel, historySince, historyUntil);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyOrder]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -88,23 +107,72 @@ export default function StudentDetailPage() {
         correct_answers: stats.correct_answers,
       });
 
-      // 履歴（簡易表示用に日別をダミー変換）
-      const sessions: QuizSession[] = (res.daily || []).map((d: any, idx: number) => ({
-        id: String(idx+1),
-        quiz_name: '学習セッション',
-        group: groups[0] || '—',
-        score: d.total > 0 ? Math.round((d.correct / d.total) * 100) : 0,
-        total_questions: d.total,
-        correct_answers: d.correct,
-        completed_at: d.date + 'T00:00:00Z',
-        time_taken: 0,
-      }));
-      setQuizSessions(sessions);
+      // エイリアス
+      if (res.alias) {
+        setAlias({ id: res.alias.id, alias_name: res.alias.alias_name, note: res.alias.note || '' });
+        setAliasDraft({ alias_name: res.alias.alias_name || '', note: res.alias.note || '' });
+      } else {
+        setAlias(null);
+        setAliasDraft({ alias_name: '', note: '' });
+      }
+      // 所属グループ
+      try {
+        const mem = await apiGet(`/teacher/student-detail/by-student/${studentId}/memberships/`);
+        setMemberships(mem?.memberships || []);
+      } catch (_) {}
+      // メトリクス
+      try {
+        const m = await apiGet(`/teacher/student-detail/by-student/${studentId}/metrics/`);
+        setMetrics(m);
+      } catch (_) {}
+      // 履歴（ページングAPI）初期ロード
+      await fetchHistory(1, historyPageSize, historyLevel, historySince, historyUntil, false);
     } catch (err) {
       console.error('Failed to fetch student details:', err);
       setError('生徒詳細の取得に失敗しました');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchHistory = async (
+    page: number,
+    pageSize: number,
+    level: string,
+    since: string,
+    until: string,
+    setPageState: boolean = true,
+  ) => {
+    const usp = new URLSearchParams();
+    usp.set('page', String(page));
+    usp.set('page_size', String(pageSize));
+    if (level) usp.set('level', level);
+    if (since) usp.set('since', since);
+    if (until) usp.set('until', until);
+  if (historyOrder) usp.set('order', historyOrder);
+    const data = await apiGet(`/teacher/student-detail/by-student/${studentId}/history/?${usp.toString()}`);
+    setHistory(data);
+    if (setPageState) setHistoryPage(page);
+  };
+
+  const saveAlias = async () => {
+    try {
+      await TeacherAliasesAPI.upsert(String(studentId), aliasDraft.alias_name, aliasDraft.note);
+      setAlias({ alias_name: aliasDraft.alias_name, note: aliasDraft.note });
+      alert('エイリアスを保存しました');
+    } catch (e: any) {
+      alert(`保存に失敗しました: ${e?.message || e}`);
+    }
+  };
+
+  const updateMembershipAttr = async (groupId: string, memberId: string, attrs: { attr1?: string; attr2?: string }) => {
+    try {
+      await TeacherGroupsAPI.updateMemberAttributes(groupId, memberId, attrs);
+      // refresh memberships list
+      const mem = await apiGet(`/teacher/student-detail/by-student/${studentId}/memberships/`);
+      setMemberships(mem?.memberships || []);
+    } catch (e: any) {
+      alert(`属性更新に失敗しました: ${e?.message || e}`);
     }
   };
 
@@ -181,7 +249,7 @@ export default function StudentDetailPage() {
             </div>
           )}
 
-          {/* 生徒基本情報 */}
+          {/* 生徒基本情報 + エイリアス/メモ（講師専用） */}
           <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
             <div className="px-4 py-5 sm:px-6">
               <h3 className="text-lg leading-6 font-medium text-gray-900">
@@ -227,6 +295,78 @@ export default function StudentDetailPage() {
                   </dd>
                 </div>
               </dl>
+              {/* エイリアス編集 */}
+              <div className="mt-6">
+                <h4 className="text-sm font-medium text-gray-900 mb-2">講師専用メモ・エイリアス（この講師にのみ表示）</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="md:col-span-1">
+                    <label className="block text-sm text-gray-600 mb-1">呼び名（エイリアス）</label>
+                    <input
+                      value={aliasDraft.alias_name}
+                      onChange={(e) => setAliasDraft(a => ({ ...a, alias_name: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-md text-gray-900"
+                      placeholder="例: けんちゃん"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm text-gray-600 mb-1">メモ</label>
+                    <input
+                      value={aliasDraft.note}
+                      onChange={(e) => setAliasDraft(a => ({ ...a, note: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-md text-gray-900"
+                      placeholder="特徴や注意点など（本人画面には表示されません）"
+                    />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <button onClick={saveAlias} className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+                    保存
+                  </button>
+                </div>
+              </div>
+              {/* 所属グループ詳細 */}
+              <div className="mt-8">
+                <h4 className="text-sm font-medium text-gray-900 mb-2">所属グループ（あなたの管理）</h4>
+                {memberships.length === 0 ? (
+                  <p className="text-sm text-gray-600">所属しているグループはありません。</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {memberships.map(m => (
+                      <li key={m.id} className="p-3 border rounded-md">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{m.group_name}</div>
+                            <div className="text-xs text-gray-600">参加: {new Date(m.created_at).toLocaleDateString('ja-JP')}</div>
+                          </div>
+                          <a href={`/admin-dashboard/groups/${m.group_id}`} className="text-indigo-600 text-sm hover:underline">グループを見る</a>
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">属性1</label>
+                            <div className="flex gap-2">
+                              <input defaultValue={m.attr1 || ''} id={`attr1-${m.id}`} className="flex-1 px-2 py-1 border rounded text-gray-900" />
+                              <button onClick={() => {
+                                const v = (document.getElementById(`attr1-${m.id}`) as HTMLInputElement)?.value || '';
+                                updateMembershipAttr(m.group_id, m.id, { attr1: v });
+                              }} className="px-3 py-1 text-sm bg-gray-100 text-gray-800 rounded hover:bg-gray-200">保存</button>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">属性2</label>
+                            <div className="flex gap-2">
+                              <input defaultValue={m.attr2 || ''} id={`attr2-${m.id}`} className="flex-1 px-2 py-1 border rounded text-gray-900" />
+                              <button onClick={() => {
+                                const v = (document.getElementById(`attr2-${m.id}`) as HTMLInputElement)?.value || '';
+                                updateMembershipAttr(m.group_id, m.id, { attr2: v });
+                              }} className="px-3 py-1 text-sm bg-gray-100 text-gray-800 rounded hover:bg-gray-200">保存</button>
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           </div>
 
@@ -321,15 +461,86 @@ export default function StudentDetailPage() {
             </div>
           </div>
 
-          {/* クイズ履歴 */}
+          {/* 期間別サマリー（今日/週/月/全体） */}
+          {metrics && (
+            <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
+              <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
+                <h3 className="text-lg leading-6 font-medium text-gray-900">期間別サマリー</h3>
+              </div>
+              <div className="px-4 py-5 sm:p-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {(['today','week','month','all'] as const).map((k) => (
+                    <div key={k} className="border rounded-md p-4">
+                      <div className="text-sm text-gray-500 mb-1">
+                        {k === 'today' ? '今日' : k === 'week' ? '直近7日' : k === 'month' ? '今月' : '全期間'}
+                      </div>
+                      <div className="text-sm text-gray-900">問題数: {metrics.summary?.[k]?.total_questions ?? 0}</div>
+                      <div className="text-sm text-gray-900">平均正答率: {(metrics.summary?.[k]?.avg_accuracy_pct ?? 0).toFixed(1)}%</div>
+                      <div className="text-sm text-gray-900">平均反応時間: {metrics.summary?.[k]?.avg_latency_ms ?? 0}ms</div>
+                    </div>
+                  ))}
+                </div>
+                {/* シンプルな日別棒グラフ（直近のdaily） */}
+                {Array.isArray(metrics.daily) && metrics.daily.length > 0 && (
+                  <div className="mt-6">
+                    <div className="text-sm text-gray-700 mb-2">直近の学習量（正答/誤答/タイムアウト）</div>
+                    <ResponsiveBars data={metrics.daily} />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* クイズ履歴（フィルタ/ページング/埋め込み） */}
           <div className="bg-white shadow overflow-hidden sm:rounded-lg">
             <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
               <h3 className="text-lg leading-6 font-medium text-gray-900">
                 クイズ履歴
               </h3>
-              <p className="mt-1 max-w-2xl text-sm text-gray-500">
-                最近のクイズ受験履歴
-              </p>
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-6 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">レベル</label>
+                  <input value={historyLevel} onChange={(e) => setHistoryLevel(e.target.value)} className="w-full px-2 py-1 border rounded text-gray-900" placeholder="例: 1" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">開始日</label>
+                  <input type="date" value={historySince} onChange={(e) => setHistorySince(e.target.value)} className="w-full px-2 py-1 border rounded text-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">終了日</label>
+                  <input type="date" value={historyUntil} onChange={(e) => setHistoryUntil(e.target.value)} className="w-full px-2 py-1 border rounded text-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">件数</label>
+                  <select value={historyPageSize} onChange={(e) => setHistoryPageSize(parseInt(e.target.value, 10))} className="w-full px-2 py-1 border rounded text-gray-900">
+                    {[10,20,30,50].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div className="md:col-span-2 flex items-end gap-2">
+                  <button
+                    onClick={() => fetchHistory(1, historyPageSize, historyLevel, historySince, historyUntil)}
+                    className="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                  >
+                    適用
+                  </button>
+                  <button
+                    onClick={() => { setHistoryLevel(''); setHistorySince(''); setHistoryUntil(''); setHistoryOrder('created_at_desc'); fetchHistory(1, historyPageSize, '', '', ''); }}
+                    className="px-3 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200"
+                  >
+                    クリア
+                  </button>
+                </div>
+              </div>
+              {/* 並び順 */}
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-6 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">ソート</label>
+                  <select value={historyOrder} onChange={(e) => setHistoryOrder(e.target.value as any)} className="w-full px-2 py-1 border rounded">
+                    <option value="created_at_desc">新しい順</option>
+                    <option value="created_at_asc">古い順</option>
+                  </select>
+                </div>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -339,7 +550,7 @@ export default function StudentDetailPage() {
                       クイズ名
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      グループ
+                      レベル
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       スコア
@@ -351,40 +562,40 @@ export default function StudentDetailPage() {
                       所要時間
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      完了日時
+                      作成日時
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {quizSessions.map((session) => (
-                    <tr key={session.id} className="hover:bg-gray-50">
+                  {(history?.results || []).map((row: any, idx: number) => (
+                    <tr key={row.quiz_set?.id || idx} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {session.quiz_name}
+                        <a className="text-indigo-600 hover:underline" href={`/quiz/${row.quiz_set?.id}/result`} target="_blank" rel="noopener noreferrer">
+                          {row.quiz_set?.name || 'クイズ'}
+                        </a>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                          {session.group}
-                        </span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">L{row.quiz_set?.level}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          session.score >= 80 
+                          (row.score_pct || 0) >= 80 
                             ? 'bg-green-100 text-green-800'
-                            : session.score >= 60
+                            : (row.score_pct || 0) >= 60
                             ? 'bg-yellow-100 text-yellow-800'
                             : 'bg-red-100 text-red-800'
                         }`}>
-                          {session.score}%
+                          {row.score_pct || 0}%
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {session.correct_answers}/{session.total_questions}
+                        {row.total_correct}/{row.total_questions}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatDuration(session.time_taken)}
+                        {formatDuration(Math.round((row.total_duration_ms || 0)/1000))}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(session.completed_at).toLocaleDateString('ja-JP')} {new Date(session.completed_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(row.quiz_set?.created_at).toLocaleDateString('ja-JP')} {new Date(row.quiz_set?.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                       </td>
                     </tr>
                   ))}
@@ -392,7 +603,7 @@ export default function StudentDetailPage() {
               </table>
             </div>
 
-            {quizSessions.length === 0 && (
+            {(!history || (history.results || []).length === 0) && (
               <div className="text-center py-12">
                 <div className="text-gray-400 text-6xl mb-4">📝</div>
                 <h3 className="text-lg font-medium text-gray-900 mb-2">
@@ -403,9 +614,71 @@ export default function StudentDetailPage() {
                 </p>
               </div>
             )}
+
+            {history && history.total > 0 && (
+              <div className="flex items-center justify-between px-4 py-4">
+                <div className="text-sm text-gray-600">全 {history.total} 件 / ページ {history.page}</div>
+                <div className="space-x-2">
+                  <button
+                    disabled={historyPage <= 1}
+                    onClick={() => fetchHistory(Math.max(1, historyPage - 1), historyPageSize, historyLevel, historySince, historyUntil)}
+                    className={`px-3 py-1 rounded border ${historyPage <= 1 ? 'text-gray-400 border-gray-200' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                  >前へ</button>
+                  <button
+                    disabled={(history.page * history.page_size) >= history.total}
+                    onClick={() => fetchHistory(historyPage + 1, historyPageSize, historyLevel, historySince, historyUntil)}
+                    className={`px-3 py-1 rounded border ${(history.page * history.page_size) >= history.total ? 'text-gray-400 border-gray-200' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                  >次へ</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+// 軽量な簡易棒グラフ（依存なし、レスポンシブ横スクロール）
+function ResponsiveBars({ data }: { data: Array<{ bucket: string; correct: number; incorrect: number; timeout: number; total: number }> }) {
+  // 正規化
+  const items = (data || []).slice(-14); // 直近14
+  const maxTotal = Math.max(1, ...items.map(d => Number(d.total || 0)));
+  const barWidth = 24;
+  const gap = 12;
+  const height = 100;
+  const width = items.length * (barWidth + gap) + gap;
+  const toX = (i: number) => gap + i * (barWidth + gap);
+  const toH = (v: number) => Math.max(0, Math.round((v / maxTotal) * height));
+  return (
+    <div className="overflow-x-auto">
+      <svg width={width} height={height + 30} className="min-w-full">
+        {items.map((d, i) => {
+          const hC = toH(d.correct || 0);
+          const hI = toH(d.incorrect || 0);
+          const hT = toH(d.timeout || 0);
+          const x = toX(i);
+          const yT = height - hT;
+          const yI = height - (hT + hI);
+          const yC = height - (hT + hI + hC);
+          return (
+            <g key={i}>
+              {/* timeout (red) */}
+              <rect x={x} y={yT} width={barWidth} height={hT} fill="#ef4444" opacity={0.7} />
+              {/* incorrect (amber) */}
+              <rect x={x} y={yI} width={barWidth} height={hI} fill="#f59e0b" opacity={0.8} />
+              {/* correct (green) */}
+              <rect x={x} y={yC} width={barWidth} height={hC} fill="#10b981" opacity={0.9} />
+              {/* label */}
+              <text x={x + barWidth / 2} y={height + 12} textAnchor="middle" fontSize="10" fill="#374151">
+                {new Date(d.bucket).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
+              </text>
+            </g>
+          );
+        })}
+        {/* 軸線 */}
+        <line x1={0} y1={height} x2={width} y2={height} stroke="#e5e7eb" />
+      </svg>
     </div>
   );
 }

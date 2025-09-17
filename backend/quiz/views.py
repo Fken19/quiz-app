@@ -14,7 +14,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 from django.shortcuts import get_object_or_404
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as dt_date, time as dt_time
 import uuid
 import json
 import logging
@@ -1724,7 +1724,7 @@ class TeacherAliasViewSet(viewsets.GenericViewSet):
             'alias': TeacherStudentAliasSerializer(alias, context={'request': request}).data
         })
 
-    @action(detail=False, methods=['delete'], url_path=r'(?P<student_id>[^/.]+)')
+    @action(detail=False, methods=['delete'], url_path=r'(?P<student_id>[0-9a-fA-F-]{32,36})')
     def delete(self, request, student_id=None):
         obj = TeacherStudentAlias.objects.filter(teacher=request.user, student_id=student_id).first()
         if not obj:
@@ -1786,6 +1786,226 @@ class TeacherStudentDetailViewSet(viewsets.GenericViewSet):
             },
             'daily': daily,
         })
+
+    @action(detail=False, methods=['get'], url_path=r'by-student/(?P<student_id>[^/.]+)/metrics')
+    def by_student_metrics(self, request, student_id=None):
+        """講師向け: 生徒の学習メトリクス（日/週/月の集計とサマリー）。ヒートマップやストリークは返さない。"""
+        link = TeacherStudentLink.objects.filter(teacher=request.user, student_id=student_id).exclude(status='revoked').first()
+        if not link:
+            return Response({'error': 'この生徒はあなたの管理対象ではありません'}, status=status.HTTP_403_FORBIDDEN)
+        student = link.student
+        now = timezone.now()
+        base_qs = QuizResponse.objects.filter(user=student)
+
+        timeout_expr = Case(
+            When(Q(is_correct=False) & (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0) | Q(selected_answer='Unknown')), then=1),
+            default=0,
+            output_field=IntegerField()
+        )
+        incorrect_non_timeout_expr = Case(
+            When(Q(is_correct=False) & ~ (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0) | Q(selected_answer='Unknown')), then=1),
+            default=0,
+            output_field=IntegerField()
+        )
+        correct_expr = Case(
+            When(is_correct=True, then=1),
+            default=0,
+            output_field=IntegerField()
+        )
+
+        def aggregate_by(trunc_func, qs):
+            grouped = (
+                qs.annotate(bucket=trunc_func('created_at'))
+                  .values('bucket')
+                  .annotate(
+                      correct=Sum(correct_expr),
+                      incorrect=Sum(incorrect_non_timeout_expr),
+                      timeout=Sum(timeout_expr),
+                      total=Count('id')
+                  )
+                  .order_by('bucket')
+            )
+            out = []
+            for row in grouped:
+                b = row['bucket']
+                out.append({
+                    'bucket': b.isoformat() if hasattr(b, 'isoformat') else str(b),
+                    'correct': row['correct'] or 0,
+                    'incorrect': row['incorrect'] or 0,
+                    'timeout': row['timeout'] or 0,
+                    'total': row['total'] or 0,
+                })
+            return out
+
+        last_15_days = now - timezone.timedelta(days=15)
+        last_8_weeks = now - timezone.timedelta(weeks=8)
+        last_12_months = now - timezone.timedelta(days=365)
+
+        daily = aggregate_by(TruncDate, base_qs.filter(created_at__gte=last_15_days))
+        weekly = aggregate_by(TruncWeek, base_qs.filter(created_at__gte=last_8_weeks))
+        monthly = aggregate_by(TruncMonth, base_qs.filter(created_at__gte=last_12_months))
+
+        def compute_summary(qs):
+            total = qs.count()
+            correct = qs.filter(is_correct=True).count()
+            acc = float((correct / total * 100.0) if total else 0.0)
+            avg_latency = qs.filter(reaction_time_ms__gt=0).aggregate(avg=Avg('reaction_time_ms'))['avg'] or 0
+            return {
+                'total_questions': int(total),
+                'avg_latency_ms': int(round(avg_latency or 0)),
+                'avg_accuracy_pct': round(acc, 1),
+                'avg_score_pct': round(acc, 1),
+            }
+
+        week_start = now - timezone.timedelta(days=7)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        periods = {
+            'today': base_qs.filter(created_at__date=now.date()),
+            'week': base_qs.filter(created_at__gte=week_start),
+            'month': base_qs.filter(created_at__gte=month_start),
+            'all': base_qs,
+        }
+        summary = {k: compute_summary(qs) for k, qs in periods.items()}
+
+        return Response({
+            'daily': daily,
+            'weekly': weekly,
+            'monthly': monthly,
+            'summary': summary,
+        })
+    @action(detail=False, methods=['get'], url_path=r'by-student/(?P<student_id>[^/.]+)/history')
+    def by_student_history(self, request, student_id=None):
+        """講師向け: 生徒のクイズ履歴（ページング/フィルタ対応）
+        クエリ: page(1..), page_size(<=50), level(optional int), since, until (ISO日付), order(created_at_asc|created_at_desc)
+        返却: { results: [...], page, page_size, total }
+        各要素: { quiz_set: {id, level, created_at, question_count, name}, total_questions, total_correct, score_pct, total_duration_ms, average_latency_ms }
+        """
+        link = TeacherStudentLink.objects.filter(teacher=request.user, student_id=student_id).exclude(status='revoked').first()
+        if not link:
+            return Response({'error': 'この生徒はあなたの管理対象ではありません'}, status=status.HTTP_403_FORBIDDEN)
+        student = link.student
+
+        # ページング
+        try:
+            page = max(1, int(request.query_params.get('page', 1)))
+        except Exception:
+            page = 1
+        try:
+            page_size = int(request.query_params.get('page_size', 10))
+            if page_size <= 0:
+                page_size = 10
+            if page_size > 50:
+                page_size = 50
+        except Exception:
+            page_size = 10
+
+        # フィルタ
+        level = request.query_params.get('level')
+        since = request.query_params.get('since')
+        until = request.query_params.get('until')
+        order = request.query_params.get('order')
+
+        qs = QuizSet.objects.filter(user=student)
+        if level:
+            try:
+                lv = int(level)
+                qs = qs.filter(grade=lv)
+            except Exception:
+                pass
+        if since:
+            try:
+                raw = str(since).strip()
+                if len(raw) == 10:
+                    d = dt_date.fromisoformat(raw)
+                    dt = datetime.combine(d, dt_time.min)
+                else:
+                    dt = datetime.fromisoformat(raw)
+                if timezone.is_naive(dt):
+                    dt = timezone.make_aware(dt, timezone.get_current_timezone())
+                qs = qs.filter(created_at__gte=dt)
+            except Exception:
+                pass
+        if until:
+            try:
+                raw = str(until).strip()
+                if len(raw) == 10:
+                    d = dt_date.fromisoformat(raw)
+                    dt = datetime.combine(d, dt_time.max)
+                else:
+                    dt = datetime.fromisoformat(raw)
+                if timezone.is_naive(dt):
+                    dt = timezone.make_aware(dt, timezone.get_current_timezone())
+                qs = qs.filter(created_at__lte=dt)
+            except Exception:
+                pass
+
+        # 並び順
+        if order == 'created_at_asc':
+            qs = qs.order_by('created_at')
+        else:
+            qs = qs.order_by('-created_at')
+
+        total = qs.count()
+        start = (page - 1) * page_size
+        items = list(qs[start:start + page_size])
+
+        results = []
+        for s in items:
+            responses = QuizResponse.objects.filter(quiz_item__quiz_set=s)
+            total_questions = s.quiz_items.count()
+            total_correct = responses.filter(is_correct=True).count()
+            score_pct = int(round((total_correct / total_questions * 100))) if total_questions else 0
+            total_duration_ms = responses.aggregate(total=Sum('reaction_time_ms'))['total'] or 0
+            avg_latency = responses.aggregate(avg=Avg('reaction_time_ms'))['avg'] or 0
+            results.append({
+                'quiz_set': {
+                    'id': str(s.id),
+                    'level': s.grade,
+                    'created_at': s.created_at.isoformat(),
+                    'question_count': s.total_questions,
+                    'name': s.name,
+                },
+                'total_questions': total_questions,
+                'total_correct': total_correct,
+                'score_pct': score_pct,
+                'total_duration_ms': int(total_duration_ms or 0),
+                'average_latency_ms': int(round(avg_latency or 0)),
+            })
+
+        return Response({
+            'results': results,
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+        })
+
+    @action(detail=False, methods=['get'], url_path=r'by-student/(?P<student_id>[^/.]+)/memberships')
+    def by_student_memberships(self, request, student_id=None):
+        """講師向け: 生徒が所属する（この講師がownerの）グループメンバーシップ一覧を返す。
+        返却: [{ id, group_id, group_name, attr1, attr2, created_at }]
+        """
+        link = TeacherStudentLink.objects.filter(teacher=request.user, student_id=student_id).exclude(status='revoked').first()
+        if not link:
+            return Response({'error': 'この生徒はあなたの管理対象ではありません'}, status=status.HTTP_403_FORBIDDEN)
+        student = link.student
+        memberships = (
+            GroupMembership.objects
+                .filter(user=student, group__owner_admin=request.user)
+                .select_related('group')
+                .order_by('created_at')
+        )
+        out = [
+            {
+                'id': str(m.id),
+                'group_id': str(m.group.id),
+                'group_name': m.group.name,
+                'attr1': m.attr1 or '',
+                'attr2': m.attr2 or '',
+                'created_at': m.created_at.isoformat(),
+            }
+            for m in memberships
+        ]
+        return Response({'memberships': out, 'count': len(out)})
 
 
 # 生徒用API Views

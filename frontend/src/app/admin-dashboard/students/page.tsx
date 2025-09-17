@@ -287,7 +287,7 @@ export default function StudentsPage() {
                     id="search"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                     placeholder="生徒名で検索"
                   />
                 </div>
@@ -306,7 +306,7 @@ export default function StudentsPage() {
                         className={`px-3 py-1 text-sm rounded-full ${
                           statusFilter === key
                             ? 'bg-blue-100 text-blue-800'
-                            : 'bg-gray-100 text-black hover:bg-gray-200'
+                            : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                         }`}
                       >
                         {label}
@@ -381,7 +381,7 @@ export default function StudentsPage() {
                                   <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                                     {link.status === 'active' && (
                                       <>
-                                        <button onClick={() => { alert('成績詳細機能は今後実装予定です'); }} className="text-blue-600 hover:text-blue-900">成績詳細</button>
+                                        <a href={`/admin-dashboard/students/${link.student.id}`} className="text-blue-600 hover:text-blue-900">成績詳細</a>
                                         <button onClick={() => revokeStudentLink(link.id)} className="text-red-600 hover:text-red-900">紐付け解除</button>
                                       </>
                                     )}
