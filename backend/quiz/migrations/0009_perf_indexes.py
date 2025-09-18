@@ -36,9 +36,14 @@ class Migration(migrations.Migration):
             sql=r'''
             DO $$
             BEGIN
-                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quiz_response') THEN
+                -- Create index only if table AND required columns exist
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quiz_response')
+                   AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quiz_quiz_response' AND column_name='user_id')
+                   AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quiz_quiz_response' AND column_name='created_at') THEN
                     CREATE INDEX IF NOT EXISTS quiz_resp_user_created_idx ON "quiz_quiz_response" ("user_id", "created_at");
-                ELSIF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quizresponse') THEN
+                ELSIF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quizresponse')
+                   AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quiz_quizresponse' AND column_name='user_id')
+                   AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quiz_quizresponse' AND column_name='created_at') THEN
                     CREATE INDEX IF NOT EXISTS quiz_resp_user_created_idx ON "quiz_quizresponse" ("user_id", "created_at");
                 END IF;
             END
@@ -59,9 +64,11 @@ class Migration(migrations.Migration):
             sql=r'''
             DO $$
             BEGIN
-                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quiz_response') THEN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quiz_response')
+                   AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quiz_quiz_response' AND column_name='quiz_item_id') THEN
                     CREATE INDEX IF NOT EXISTS quiz_resp_item_idx ON "quiz_quiz_response" ("quiz_item_id");
-                ELSIF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quizresponse') THEN
+                ELSIF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='quiz_quizresponse')
+                   AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quiz_quizresponse' AND column_name='quiz_item_id') THEN
                     CREATE INDEX IF NOT EXISTS quiz_resp_item_idx ON "quiz_quizresponse" ("quiz_item_id");
                 END IF;
             END

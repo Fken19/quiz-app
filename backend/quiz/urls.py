@@ -4,11 +4,14 @@ from rest_framework.routers import DefaultRouter
 from rest_framework.authtoken.views import obtain_auth_token
 from django.http import JsonResponse
 from . import views
+from .urls_new import urlpatterns_v2
 
 # APIルーター
 router = DefaultRouter()
 router.register(r'words', views.WordViewSet)
 router.register(r'quiz-sets', views.QuizSetViewSet, basename='quiz-set')
+router.register(r'questions', views.QuestionViewSet, basename='question')
+router.register(r'quizsessions', views.QuizSessionViewSet, basename='quizsession')
 # 講師・生徒管理API
 router.register(r'teacher/invite-codes', views.TeacherInviteCodeViewSet, basename='teacher-invite-code')
 router.register(r'teacher/students', views.TeacherStudentViewSet, basename='teacher-student')
@@ -29,7 +32,10 @@ urlpatterns = [
     # Token認証エンドポイント
     path('auth/token/', obtain_auth_token, name='api_token_auth'),
 
-    # Router URLs
+    # 新しいAPI (v2)
+    *urlpatterns_v2,
+
+    # Router URLs (v1 - 既存API)
     path('', include(router.urls)),
 
     # 個別API エンドポイント
@@ -47,4 +53,7 @@ urlpatterns = [
     path('quiz/result/<str:quiz_set_id>/', views.quiz_result, name='quiz_result'),
     path('user/profile/', views.user_profile, name='user_profile'),
     path('quiz/generate/', views.generate_quiz_set, name='generate_quiz_set'),
+    # 既存テスト互換（個別）
+    path('current-user/', views.current_user, name='current-user'),
+    path('admin/users/', views.admin_users, name='admin-users'),
 ]

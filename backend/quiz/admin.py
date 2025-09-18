@@ -125,16 +125,16 @@ admin.site.register(User, CustomUserAdmin)
 # 追加: クイズ進行系モデル（参照用）
 @admin.register(QuizSet)
 class QuizSetAdmin(admin.ModelAdmin):
-    list_display = ('user', 'name', 'grade', 'total_questions', 'created_at')
+    list_display = ('user', 'grade', 'total_questions', 'created_at')
     list_filter = ('grade', 'created_at')
-    search_fields = ('user__email', 'name')
+    search_fields = ('user__email',)
 
 
 @admin.register(QuizItem)
 class QuizItemAdmin(admin.ModelAdmin):
     list_display = ('quiz_set', 'question_number', 'word', 'created_at')
     list_filter = ('created_at',)
-    search_fields = ('quiz_set__name', 'word__text')
+    search_fields = ('word__text',)
 
 
 @admin.register(QuizResponse)

@@ -2,7 +2,8 @@ from rest_framework import serializers
 from .models import (
     User, Word, WordTranslation, QuizSet, QuizItem, QuizResponse, Group,
     InviteCode, TeacherStudentLink, GroupMembership, TeacherStudentAlias,
-    TestTemplate, TestTemplateItem, AssignedTest
+    TestTemplate, TestTemplateItem, AssignedTest,
+    Question, Option, QuizSession, QuizResult
 )
 from .utils import generate_invite_code, normalize_invite_code, get_code_expiry_time
 
@@ -106,7 +107,7 @@ class WordSerializer(serializers.ModelSerializer):
     level = serializers.SerializerMethodField()
     segment = serializers.SerializerMethodField()
     difficulty = serializers.SerializerMethodField()
-
+    title = serializers.SerializerMethodField()  # DB に name 列がない環境でも動くようにタイトルを動的生成
     def get_level(self, obj):
         return obj.grade  # gradeをlevelとして返す
 
@@ -125,6 +126,17 @@ class QuizItemSerializer(serializers.ModelSerializer):
     word = WordSerializer(read_only=True)
     # フロントは quizItem.translations を期待するのでここで flatten して返す
     translations = serializers.SerializerMethodField()
+    
+    def get_title(self, obj):
+        # 可能なら name を使用（開発環境等で列が存在する場合への互換）
+        name = getattr(obj, 'name', None)
+        if name:
+            return name
+        # フォールバック: レベルと問数からタイトル生成
+        try:
+            return f"Level {getattr(obj, 'grade', 'N/A')} - {getattr(obj, 'total_questions', 0)}問"
+        except Exception:
+            return f"QuizSet #{getattr(obj, 'id', '')}"
     # フロント側の型名に合わせて order_no を出力
     order_no = serializers.IntegerField(source='order', read_only=True)
     # デバッグ/フォールバック用にchoicesも返す（通常は使用しない）
@@ -229,7 +241,6 @@ class QuizSetCreateSerializer(serializers.ModelSerializer):
         # QuizSetの作成
         quiz_set = QuizSet.objects.create(
             user=self.context['request'].user,
-            name=f"Level {level} Quiz Set",  # 名前を自動生成
             grade=level,  # levelをgradeにマッピング
             total_questions=question_count,  # question_countをtotal_questionsにマッピング
             pos_filter={}  # 空のJSONオブジェクト
@@ -260,19 +271,20 @@ class QuizSetListSerializer(serializers.ModelSerializer):
     """クイズセット一覧用のシリアライザー"""
     item_count = serializers.SerializerMethodField()
     completion_rate = serializers.SerializerMethodField()
-    title = serializers.CharField(source='name')  # nameフィールドをtitleとして出力
+    title = serializers.SerializerMethodField()  # name 列がなくてもOK
     difficulty = serializers.SerializerMethodField()
     times_attempted = serializers.SerializerMethodField()
-    
+
     def get_difficulty(self, obj):
         return obj.grade  # gradeを難易度として返す
-    
+
     def get_times_attempted(self, obj):
         return 0  # 後で実装
-    
+
     class Meta:
         model = QuizSet
         fields = ['id', 'title', 'difficulty', 'created_at', 'times_attempted', 'item_count', 'completion_rate']
+
     def get_item_count(self, obj):
         return obj.quiz_items.count()
 
@@ -288,6 +300,12 @@ class QuizSetListSerializer(serializers.ModelSerializer):
             answered_items = answered_items.filter(user=user).count() if hasattr(QuizResponse, 'user') else QuizResponse.objects.filter(quiz_item__quiz_set=obj).count()
             return (answered_items / total_items * 100) if total_items > 0 else 0
         return 0
+
+    def get_title(self, obj):
+        nm = getattr(obj, 'name', None)
+        if nm:
+            return nm
+        return f"Level {getattr(obj, 'grade', 'N/A')} - {getattr(obj, 'total_questions', 0)}問"
 
 
 class DashboardStatsSerializer(serializers.Serializer):
@@ -529,3 +547,25 @@ class AssignedTestSerializer(serializers.ModelSerializer):
         model = AssignedTest
         fields = ['id', 'title', 'due_at', 'timer_seconds', 'template_id', 'group_id', 'created_at']
         read_only_fields = ['id', 'group_id', 'created_at']
+
+
+# --- 既存テスト互換: Question/Option/QuizSession API 用の最小シリアライザ ---
+class OptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Option
+        fields = ['id', 'text', 'is_correct']
+
+
+class QuestionSerializer(serializers.ModelSerializer):
+    options = OptionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Question
+        fields = ['id', 'text', 'level', 'segment', 'options']
+
+
+class QuizSessionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuizSession
+        fields = ['id', 'user', 'started_at', 'completed_at', 'total_time_ms']
+        read_only_fields = ['id', 'started_at', 'completed_at', 'total_time_ms', 'user']

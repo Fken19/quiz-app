@@ -193,6 +193,96 @@ export const quizAPI = {
   }
 };
 
+// v2 API
+export const v2API = {
+  // Levels
+  async getLevels(token: string) {
+    const res = await apiFetch('/api/v2/levels/', {}, token).then(r => r.json());
+    // DRF may return a paginated object { count, next, previous, results: [...] }
+    // normalize to always return an array of levels
+    if (res && Array.isArray((res as any).results)) return (res as any).results;
+    return res as Array<{ level_id: string; level_name: string; created_at: string; updated_at: string }[]> as any;
+  },
+
+  // Segments (published only)
+  async getSegments(levelId: string, token: string) {
+    const res = await apiFetch(`/api/v2/segments/?level_id=${encodeURIComponent(levelId)}`, {}, token).then(r => r.json());
+    // normalize paginated responses
+    let segments = res && Array.isArray((res as any).results) ? (res as any).results : res;
+    // Map segment_id to id for frontend compatibility
+    if (Array.isArray(segments)) {
+      segments = segments.map((segment: any) => ({
+        ...segment,
+        id: segment.segment_id || segment.id,
+        label: segment.segment_name || segment.label || segment.name,
+        description: segment.description || `${segment.word_count || 0} words`
+      }));
+    }
+    return segments as Array<{ id: string; segment_id: string; label: string; description?: string; segment_name: string; publish_status: string; level: any; word_count: number }>;
+  },
+
+  // Segment quiz (10 questions)
+  async getSegmentQuiz(segmentId: string, token: string) {
+    const res = await apiFetch(`/api/v2/segments/${segmentId}/quiz/`, {}, token).then(r => r.json());
+    return res as { segment_id: string; segment_name: string; level: any; questions: Array<{ order: number; word: any; choices: Array<{ text_ja: string; is_correct: boolean }> }> };
+  },
+
+  // Create quiz session
+  async createSession(segmentId: string, token: string) {
+    const resRaw = await apiFetch('/api/v2/quiz-sessions/', {
+      method: 'POST',
+      body: JSON.stringify({ segment: segmentId })
+    }, token);
+    // If backend returned error (400/4xx/5xx), try to parse body for details and throw
+    if (!resRaw.ok) {
+      let body: any = null;
+      try {
+        body = await resRaw.json();
+      } catch (e) {
+        try {
+          body = await resRaw.text();
+        } catch (_) {
+          body = '<unreadable response body>';
+        }
+      }
+      console.error('createSession failed', resRaw.status, body);
+      throw new Error(`createSession failed: ${resRaw.status} - ${typeof body === 'string' ? body : JSON.stringify(body)}`);
+    }
+    const res = await resRaw.json();
+    return res as { id: string; segment: { segment_id: string; segment_name: string } };
+  },
+
+  // Submit results
+  async submitResults(sessionId: string, payload: { results: Array<{ word: string; question_order: number; selected_choice?: string | null; selected_text: string; is_correct: boolean; reaction_time_ms?: number | null }>; total_time_ms?: number }, token: string) {
+    const resRaw = await apiFetch(`/api/v2/quiz-sessions/${sessionId}/submit_results/`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, token);
+    if (!resRaw.ok) {
+      let body: any = null;
+      try {
+        body = await resRaw.json();
+      } catch (_) {
+        try { body = await resRaw.text(); } catch { body = '<unreadable response body>'; }
+      }
+      // 既に完了済みのセッションは良性として扱う（多重送信の競合など）
+      const bodyStr = typeof body === 'string' ? body : JSON.stringify(body || '');
+      if (bodyStr && bodyStr.includes('already completed')) {
+        return { message: 'already completed', score: 0, score_percentage: 0 } as { message: string; score: number; score_percentage: number };
+      }
+      throw new Error(bodyStr || 'submit_results failed');
+    }
+    const res = await resRaw.json();
+    return res as { message: string; score: number; score_percentage: number };
+  },
+
+  // Get session detail
+  async getSession(sessionId: string, token: string) {
+    const res = await apiFetch(`/api/v2/quiz-sessions/${sessionId}/`, {}, token).then(r => r.json());
+    return res as { id: string; segment: { segment_id: string; segment_name: string }; started_at: string; completed_at?: string | null; score?: number; score_percentage?: number; is_completed?: boolean };
+  }
+};
+
 // History API
 export const historyAPI = {
   async getUserHistory(

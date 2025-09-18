@@ -1,365 +1,367 @@
+"""
+新しいクイズ・英単語管理システムのモデル定義
+目的：中学生向け英単語クイズ（4択/5択拡張対応）
+構造：Level → Segment（10問固定） → Word
+"""
+
 from django.db import models
-from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 import uuid
 
-
-class User(AbstractUser):
-    """ユーザーモデル"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    display_name = models.CharField(max_length=100, blank=True)
-    avatar = models.ImageField(blank=True, null=True, upload_to='avatars/')
-    avatar_url = models.URLField(blank=True, null=True)
-    organization = models.CharField(max_length=200, blank=True)
-    bio = models.TextField(blank=True)
-    role = models.CharField(max_length=20, choices=[
-        ('student', '生徒'),
-        ('teacher', '教師'),
-        ('admin', '管理者')
-    ], default='student')
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_login = models.DateTimeField(null=True, blank=True)
-    level_preference = models.IntegerField(default=1, choices=[
-        (1, 'レベル1'),
-        (2, 'レベル2'),
-        (3, 'レベル3'),
-        (4, 'レベル4')
-    ])
-    quiz_count = models.IntegerField(default=0)
-    total_score = models.IntegerField(default=0)
-    
-    def __str__(self):
-        return self.email or self.username
-    
-    @property
-    def average_score(self):
-        if self.quiz_count == 0:
-            return 0
-        return (self.total_score / (self.quiz_count * 10)) * 100
-    
-    @property
-    def is_teacher(self):
-        return self.role == 'teacher' or self.is_staff
-    
-    @property
-    def is_admin_user(self):
-        return self.role == 'admin' or self.is_superuser
+# 既存のUserモデル、Groupモデルをインポート
+from .models import User, Group, GroupMembership, TeacherStudentAlias, InviteCode, TeacherStudentLink, TeacherWhitelist
 
 
-# 要件に基づく新しい単語モデル設計
-class Word(models.Model):
-    """英単語モデル（要件準拠版）"""
-    
-    # 品詞の選択肢
-    POS_CHOICES = [
-        ('noun', '名詞'),
-        ('verb', '動詞'),
-        ('adj', '形容詞'),
-        ('adv', '副詞'),
-        ('prep', '前置詞'),
-        ('pron', '代名詞'),
-        ('det', '限定詞'),
-        ('conj', '接続詞'),
-        ('interj', '間投詞'),
-    ]
-    
-    # 学年の選択肢
-    GRADE_CHOICES = [
-        ('J1', '中学1年'),
-        ('J2', '中学2年'),
-        ('J3', '中学3年'),
-    ]
-    
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    text = models.CharField(max_length=100)  # 見出し表示用（綴り）
-    lemma = models.CharField(max_length=100, blank=True)  # 見出し語（同じならtextと一致可）
-    pos = models.CharField(max_length=10, choices=POS_CHOICES)  # 品詞
-    level = models.IntegerField()  # レベル（1以上）
-    segment = models.IntegerField()  # セグメント（1以上）
-    grade = models.CharField(max_length=3, choices=GRADE_CHOICES, blank=True, null=True)
-    explanation = models.TextField(blank=True)  # 事実寄りの補足（語源・注意点等）
-    is_active = models.BooleanField(default=True)
+# ===== コアモデル（新スキーマ） =====
+
+class Level(models.Model):
+    """レベルモデル"""
+    level_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    level_name = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        indexes = [
-            models.Index(fields=['level', 'segment']),
-            models.Index(fields=['pos']),
-            models.Index(fields=['grade']),
+        db_table = 'levels'
+        
+    def __str__(self):
+        return self.level_name
+
+
+class Segment(models.Model):
+    """セグメントモデル（公開ワークフロー付き）"""
+    PUBLISH_STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('published', 'Published'),
+        ('archived', 'Archived'),
+    ]
+    
+    segment_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    level_id = models.ForeignKey(Level, on_delete=models.CASCADE, db_column='level_id', related_name='segments')
+    segment_name = models.TextField()
+    publish_status = models.TextField(
+        choices=PUBLISH_STATUS_CHOICES,
+        default='draft'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'segments'
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(publish_status__in=['draft', 'published', 'archived']),
+                name='segments_publish_status_check'
+            )
         ]
-        # 同綴りでも品詞違いは別レコード（例：run(n)/run(v)）
-        unique_together = ['text', 'pos']
     
     def clean(self):
-        if self.level < 1:
-            raise ValidationError('レベルは1以上である必要があります')
-        if self.segment < 1:
-            raise ValidationError('セグメントは1以上である必要があります')
-        if not self.lemma:
-            self.lemma = self.text  # lemmaが空の場合はtextと同じにする
+        """公開時は10問ちょうどである必要がある"""
+        if self.publish_status == 'published':
+            word_count = self.segment_words.count()
+            if word_count != 10:
+                raise ValidationError(f'Segment must have exactly 10 questions to publish (current: {word_count})')
     
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"{self.text} ({self.pos}) L{self.level}-S{self.segment}"
+        return f"{self.segment_name} ({self.publish_status})"
 
 
-class WordTranslation(models.Model):
-    """訳語モデル（要件準拠版）"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    word = models.ForeignKey(Word, on_delete=models.CASCADE, related_name='translations')
-    language = models.CharField(max_length=5, default='ja')  # 言語コード
-    text = models.CharField(max_length=200)  # 訳語
-    is_primary = models.BooleanField(default=False)  # 主訳かどうか
+class NewWord(models.Model):
+    """単語モデル"""
+    word_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    text_en = models.TextField(unique=True)  # 英単語（一意制約）
+    part_of_speech = models.TextField(blank=True, null=True)  # 品詞
+    explanation = models.TextField(blank=True, null=True)  # 解説
+    example_en = models.TextField(blank=True, null=True)  # 例文（英語）
+    example_ja = models.TextField(blank=True, null=True)  # 例文（日本語）
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'words'
+        indexes = [
+            models.Index(fields=['text_en']),
+            models.Index(fields=['created_at']),
+        ]
+        
+    def __str__(self):
+        return f"{self.text_en} ({self.part_of_speech or 'unknown'})"
+
+
+
+class SegmentWord(models.Model):
+    """セグメントに属する10問（順序1..10／重複禁止）"""
+    segment_id = models.ForeignKey(Segment, on_delete=models.CASCADE, db_column='segment_id', related_name='segment_words')
+    word_id = models.ForeignKey(NewWord, on_delete=models.RESTRICT, db_column='word_id', related_name='segment_words')
+    question_order = models.IntegerField()
+    
+    class Meta:
+        db_table = 'segment_words'
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(question_order__gte=1, question_order__lte=10),
+                name='segment_words_question_order_check'
+            ),
+            models.UniqueConstraint(
+                fields=['segment_id', 'question_order'],
+                name='segment_words_segment_order_unique'
+            ),
+            models.UniqueConstraint(
+                fields=['segment_id', 'word_id'],
+                name='segment_words_segment_word_unique'
+            )
+        ]
+        
+    def __str__(self):
+        return f"{self.segment_id.segment_name} - Q{self.question_order}: {self.word_id.text_en}"
+
+
+class NewWordTranslation(models.Model):
+    """正答集合（辞書的な正解訳や同義語）"""
+    word_translation_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    word_id = models.ForeignKey(NewWord, on_delete=models.CASCADE, db_column='word_id', related_name='translations')
+    text_ja = models.TextField()  # 日本語訳
+    is_correct = models.BooleanField(default=True)  # 常にtrue運用を推奨
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
-        indexes = [
-            models.Index(fields=['word']),
-        ]
-        # 各wordにつき主訳は高々1件
+        db_table = 'word_translations'
         constraints = [
             models.UniqueConstraint(
-                fields=['word'],
-                condition=models.Q(is_primary=True),
-                name='unique_primary_translation_per_word'
+                fields=['word_id', 'text_ja'],
+                name='word_translations_word_text_unique'
             )
         ]
-    
+        
     def __str__(self):
-        primary_mark = "★" if self.is_primary else ""
-        return f"{self.text} {primary_mark}"
+        return f"{self.word_id.text_en}: {self.text_ja}"
 
 
-class WordDistractor(models.Model):
-    """偽訳モデル（最大3スロット、訳語参照）"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    word = models.ForeignKey(Word, on_delete=models.CASCADE, related_name='distractors')
-    slot = models.IntegerField()  # スロット番号（1-3）
-    translation = models.ForeignKey(WordTranslation, on_delete=models.RESTRICT)
+class NewWordChoice(models.Model):
+    """クイズ用選択肢プール（正解＋ダミー）"""
+    word_choice_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    word_id = models.ForeignKey(NewWord, on_delete=models.CASCADE, db_column='word_id', related_name='choices')
+    text_ja = models.TextField()  # 選択肢文言（正解/ダミー）
+    is_correct = models.BooleanField()  # true=正解, false=ダミー
+    created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
+        db_table = 'word_choices'
         constraints = [
-            models.UniqueConstraint(fields=['word', 'slot'], name='unique_distractor_slot'),
-            models.CheckConstraint(
-                check=models.Q(slot__gte=1, slot__lte=3),
-                name='valid_distractor_slot'
+            models.UniqueConstraint(
+                fields=['word_id', 'text_ja'],
+                name='word_choices_word_text_unique'
             )
         ]
-    
+        indexes = [
+            models.Index(fields=['word_id'], name='ix_word_choices_word'),
+            models.Index(fields=['word_id', 'is_correct'], name='ix_word_choices_word_correct'),
+        ]
+        
     def clean(self):
-        # 主訳と同一訳は不可
-        if self.translation.word == self.word and self.translation.is_primary:
-            raise ValidationError('主訳を偽訳として使用することはできません')
-        # 同一wordの訳を偽訳に使わない
-        if self.translation.word == self.word:
-            raise ValidationError('同一単語の訳語を偽訳として使用することはできません')
-    
-    def save(self, *args, **kwargs):
-        self.clean()
-        super().save(*args, **kwargs)
+        """4択前提での健全性チェック（運用ルール）"""
+        if hasattr(self, 'word_id') and self.word_id:
+            correct_count = NewWordChoice.objects.filter(word_id=self.word_id, is_correct=True).count()
+            dummy_count = NewWordChoice.objects.filter(word_id=self.word_id, is_correct=False).count()
+            
+            # 新規追加時のチェック
+            if self.pk is None:
+                if self.is_correct:
+                    correct_count += 1
+                else:
+                    dummy_count += 1
+            
+            if correct_count < 1:
+                raise ValidationError(f'Word {self.word_id.text_en} must have at least 1 correct choice')
+            if dummy_count < 3:
+                raise ValidationError(f'Word {self.word_id.text_en} must have at least 3 dummy choices')
     
     def __str__(self):
-        return f"{self.word.text} - slot{self.slot}: {self.translation.text}"
+        return f"{self.word_id.text_en}: {self.text_ja} ({'正解' if self.is_correct else 'ダミー'})"
 
 
-class WordForm(models.Model):
-    """語形モデル"""
-    
-    FEATURE_CHOICES = [
-        ('plural', '複数形'),
-        ('past', '過去形'),
-        ('past_participle', '過去分詞'),
-        ('3sg', '三人称単数現在'),
-        ('ing', '現在分詞・動名詞'),
-        ('comparative', '比較級'),
-        ('superlative', '最上級'),
-    ]
-    
+# ===== クイズセッション・結果モデル（新スキーマ対応） =====
+
+class NewQuizSession(models.Model):
+    """クイズセッションモデル（セグメントベース）"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    word = models.ForeignKey(Word, on_delete=models.CASCADE, related_name='forms')
-    feature = models.CharField(max_length=20, choices=FEATURE_CHOICES)
-    form = models.CharField(max_length=100)  # 語形
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='new_quiz_sessions')
+    segment = models.ForeignKey(Segment, on_delete=models.CASCADE, related_name='quiz_sessions')
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    total_time_ms = models.IntegerField(null=True, blank=True)
+    score = models.IntegerField(default=0)  # 正解数
     
     class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=['word', 'feature'], name='unique_word_form_feature')
-        ]
-    
-    def __str__(self):
-        return f"{self.word.text} ({self.feature}): {self.form}"
-
-
-class ExampleSentence(models.Model):
-    """例文モデル"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    word = models.ForeignKey(Word, on_delete=models.CASCADE, related_name='examples')
-    en = models.TextField()  # 英文
-    ja = models.TextField(blank=True)  # 日本語文
-    source = models.CharField(max_length=200, blank=True)  # 出典
-    is_simple = models.BooleanField(default=False)  # 簡単な例文かどうか
-    
-    def __str__(self):
-        return f"{self.word.text}: {self.en[:50]}..."
-
-
-class TextbookScope(models.Model):
-    """教科書範囲モデル"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    word = models.ForeignKey(Word, on_delete=models.CASCADE, related_name='textbook_scopes')
-    series = models.CharField(max_length=100, blank=True)  # シリーズ名
-    edition = models.CharField(max_length=50, blank=True)  # 版
-    unit = models.CharField(max_length=50, blank=True)  # ユニット
-    range_note = models.CharField(max_length=200, blank=True)  # 範囲メモ
-    
-    def __str__(self):
-        return f"{self.word.text} - {self.series} {self.edition} {self.unit}"
-
-
-# 出題ログ（要件に合わせて更新）
-class QuizSet(models.Model):
-    """クイズセットモデル（要件準拠版）"""
-    
-    MODE_CHOICES = [
-        ('EN2JA', '英語→日本語'),
-        ('JA2EN', '日本語→英語'),
-        ('default', '順番通り'),
-        ('random', 'ランダム')
-    ]
-    
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='quiz_sets')
-    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='EN2JA')
-    level = models.IntegerField(null=True, blank=True)
-    segment = models.IntegerField(null=True, blank=True)
-    question_count = models.IntegerField()
-    started_at = models.DateTimeField(null=True, blank=True)
-    finished_at = models.DateTimeField(null=True, blank=True)
-    score = models.IntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
+        db_table = 'quiz_new_quiz_sessions'
         indexes = [
-            models.Index(fields=['user', 'created_at']),
-            models.Index(fields=['level', 'segment']),
+            models.Index(fields=['user', 'started_at']),
+            models.Index(fields=['segment']),
         ]
-    
+
     def __str__(self):
-        return f"QuizSet {self.mode} L{self.level}-S{self.segment} ({self.user.email})"
-
-
-class QuizItem(models.Model):
-    """クイズアイテム（問題）モデル（要件準拠版）"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    quiz_set = models.ForeignKey(QuizSet, on_delete=models.CASCADE, related_name='quiz_items')
-    word = models.ForeignKey(Word, on_delete=models.RESTRICT)
-    order = models.IntegerField()  # 問題の順序
-    created_at = models.DateTimeField(auto_now_add=True)
+        return f"{self.user.email} - {self.segment.segment_name} ({self.started_at.strftime('%Y-%m-%d %H:%M')})"
     
-    class Meta:
-        indexes = [
-            models.Index(fields=['quiz_set', 'order']),
-        ]
-        ordering = ['order']
+    @property
+    def is_completed(self):
+        """完了済みかどうか"""
+        return self.completed_at is not None
     
-    def __str__(self):
-        return f"Item {self.order}: {self.word.text}"
+    @property
+    def score_percentage(self):
+        """スコア（％）"""
+        return (self.score / 10) * 100 if self.score is not None else 0
 
 
-class QuizResponse(models.Model):
-    """クイズ回答モデル（要件準拠版）"""
+class NewQuizResult(models.Model):
+    """クイズ結果モデル（問題単位）"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    quiz_set = models.ForeignKey(QuizSet, on_delete=models.CASCADE, related_name='quiz_responses')
-    quiz_item = models.ForeignKey(QuizItem, on_delete=models.CASCADE)
-    selected_translation = models.ForeignKey(WordTranslation, on_delete=models.CASCADE, null=True, blank=True)
+    session = models.ForeignKey(NewQuizSession, on_delete=models.CASCADE, related_name='results')
+    word = models.ForeignKey(NewWord, on_delete=models.CASCADE)
+    question_order = models.IntegerField()  # セグメント内の問題順序
+    selected_choice = models.ForeignKey(NewWordChoice, on_delete=models.CASCADE, null=True, blank=True)
+    selected_text = models.TextField()  # 選択した回答テキスト
     is_correct = models.BooleanField()
-    latency_ms = models.IntegerField()  # レイテンシ（ミリ秒）
-    answered_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        indexes = [
-            models.Index(fields=['quiz_set']),
-            models.Index(fields=['answered_at']),
-        ]
-        constraints = [
-            models.UniqueConstraint(fields=['quiz_set', 'quiz_item'], name='unique_quiz_response')
-        ]
-    
-    def __str__(self):
-        return f"Response: {self.quiz_item.word.text} - {'正解' if self.is_correct else '不正解'}"
-
-
-# 既存の他のモデルも残す
-class TeacherWhitelist(models.Model):
-    """講師用メールホワイトリスト（DB管理）"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    email = models.EmailField(unique=True)
-    note = models.CharField(max_length=200, blank=True)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_whitelists')
+    reaction_time_ms = models.IntegerField(null=True, blank=True)  # 反応時間
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = 'quiz_new_quiz_results'
         indexes = [
-            models.Index(fields=['email']),
+            models.Index(fields=['session']),
+            models.Index(fields=['word']),
+            models.Index(fields=['created_at']),
+        ]
+        unique_together = ['session', 'question_order']
+
+    def __str__(self):
+        return f"{self.word.text_en} - {'正解' if self.is_correct else '不正解'}"
+
+
+# ===== 統計・分析モデル =====
+
+class NewDailyUserStats(models.Model):
+    """日次ユーザー統計モデル"""
+    date = models.DateField()
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='new_daily_stats')
+    sessions_count = models.IntegerField(default=0)  # セッション数
+    questions_attempted = models.IntegerField(default=0)  # 挑戦問題数
+    questions_correct = models.IntegerField(default=0)  # 正解問題数
+    total_time_ms = models.IntegerField(default=0)  # 総時間
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'quiz_new_dailyuserstats'
+        unique_together = ['date', 'user']
+        indexes = [
+            models.Index(fields=['date', 'user']),
         ]
 
     def __str__(self):
-        return self.email
+        return f"{self.user.email} - {self.date}"
 
 
-class InviteCode(models.Model):
-    """招待コード（認証コード）モデル"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    code = models.CharField(max_length=9, unique=True)
-    issued_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='issued_codes')
-    issued_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField()
-    used_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='used_codes')
-    used_at = models.DateTimeField(null=True, blank=True)
-    revoked = models.BooleanField(default=False)
-    revoked_at = models.DateTimeField(null=True, blank=True)
+class NewDailyGroupStats(models.Model):
+    """日次グループ統計モデル"""
+    date = models.DateField()
+    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='new_daily_stats')
+    sessions_count = models.IntegerField(default=0)
+    questions_attempted = models.IntegerField(default=0)
+    questions_correct = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'quiz_new_dailygroupstats'
+        unique_together = ['date', 'group']
+        indexes = [
+            models.Index(fields=['date', 'group']),
+        ]
+
+    def __str__(self):
+        return f"{self.group.name} - {self.date}"
+
+
+# ===== レガシー互換モデル（既存APIとの互換性維持） =====
+
+class LegacyQuizSet(models.Model):
+    """レガシーQuizSetモデル（既存APIとの互換性維持）"""
+    id = models.BigAutoField(primary_key=True, db_column='id')
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, db_column='uuid')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='legacy_quiz_sets', db_column='user_id')
+    name = models.CharField(max_length=255, db_column='name')
+    # 新スキーマとの関連付け
+    quiz_session = models.OneToOneField(NewQuizSession, on_delete=models.CASCADE, null=True, blank=True, related_name='legacy_quiz_set')
+    created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
+    updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
     
     class Meta:
-        indexes = [
-            models.Index(fields=['code']),
-            models.Index(fields=['issued_by', 'issued_at']),
-            models.Index(fields=['expires_at']),
-        ]
+        db_table = 'quiz_quiz_set'
+        managed = False  # 既存テーブルなので管理しない
     
     def __str__(self):
-        return f"{self.code} (by {self.issued_by.email})"
-
-
-class TeacherStudentLink(models.Model):
-    """講師↔生徒紐付けモデル"""
-    STATUS_CHOICES = [
-        ('pending', '承認待ち'),
-        ('active', '有効'),
-        ('revoked', '解除済み'),
-    ]
+        return f"LegacyQuizSet: {self.name}"
     
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    teacher = models.ForeignKey(User, on_delete=models.CASCADE, related_name='student_links')
-    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='teacher_links')
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
-    linked_at = models.DateTimeField(auto_now_add=True)
-    revoked_at = models.DateTimeField(null=True, blank=True)
-    revoked_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='revoked_links')
-    invite_code = models.ForeignKey(InviteCode, on_delete=models.SET_NULL, null=True, blank=True)
+    # 後方互換性のためのプロパティ
+    @property
+    def score(self):
+        """スコア（新スキーマから計算）"""
+        if self.quiz_session:
+            return self.quiz_session.score
+        return 0
+    
+    @property
+    def total_questions(self):
+        """総問題数（常に10問）"""
+        return 10
+
+
+class LegacyQuizItem(models.Model):
+    """レガシーQuizItemモデル（既存APIとの互換性維持）"""
+    id = models.BigAutoField(primary_key=True, db_column='id')
+    quiz_set = models.ForeignKey(LegacyQuizSet, on_delete=models.CASCADE, related_name='quiz_items', db_column='quiz_set_id')
+    # 新スキーマとの関連付け
+    quiz_result = models.OneToOneField(NewQuizResult, on_delete=models.CASCADE, null=True, blank=True, related_name='legacy_quiz_item')
+    question_number = models.IntegerField(db_column='question_number')
+    choices = models.JSONField(blank=True, null=True, db_column='choices')
+    correct_answer = models.CharField(max_length=255, db_column='correct_answer')
+    created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
+    updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
     
     class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=['teacher', 'student'], name='unique_teacher_student_link')
-        ]
-        indexes = [
-            models.Index(fields=['teacher', 'status']),
-            models.Index(fields=['student', 'status']),
-            models.Index(fields=['linked_at']),
-        ]
+        ordering = ['question_number']
+        db_table = 'quiz_quiz_item'
+        managed = False  # 既存テーブルなので管理しない
     
     def __str__(self):
-        return f"{self.teacher.email} → {self.student.email} ({self.status})"
+        return f"LegacyQuizItem #{self.question_number}"
+    
+    @property
+    def word(self):
+        """単語（新スキーマから取得）"""
+        if self.quiz_result:
+            return self.quiz_result.word
+        return None
+
+
+class LegacyQuizResponse(models.Model):
+    """レガシーQuizResponseモデル（既存APIとの互換性維持）"""
+    id = models.BigAutoField(primary_key=True, db_column='id')
+    quiz_item = models.ForeignKey(LegacyQuizItem, on_delete=models.CASCADE, db_column='quiz_item_id')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id')
+    selected_answer = models.CharField(max_length=200, db_column='selected_answer')
+    is_correct = models.BooleanField(db_column='is_correct')
+    reaction_time_ms = models.IntegerField(db_column='response_time_ms')
+    created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
+    updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
+    
+    class Meta:
+        db_table = 'quiz_quiz_response'
+        managed = False  # 既存テーブルなので管理しない
+    
+    def __str__(self):
+        return f"LegacyResponse: {'正解' if self.is_correct else '不正解'}"

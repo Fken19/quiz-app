@@ -16,6 +16,7 @@ export default function QuizResultPage() {
   const [result, setResult] = useState<QuizResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // 確認必須フローは不要になったため削除
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -300,40 +301,39 @@ export default function QuizResultPage() {
         </div>
       </div>
 
-      {/* アクションボタン */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <Link
-          href="/quiz/start"
-          className="flex-1 text-center py-3 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
-        >
-          別のクイズに挑戦
-        </Link>
-        {/* フォーカス学習への導線 */}
-        <Link
-          href="/quiz/start?focus=weak"
-          className="flex-1 text-center py-3 px-4 bg-pink-100 text-pink-700 rounded-md hover:bg-pink-200 transition-colors"
-        >
-          苦手だけ10問
-        </Link>
-        <Link
-          href="/quiz/start?focus=unseen"
-          className="flex-1 text-center py-3 px-4 bg-yellow-100 text-yellow-800 rounded-md hover:bg-yellow-200 transition-colors"
-        >
-          未学習だけ10問
-        </Link>
-        <Link
-          href="/history"
-          className="flex-1 text-center py-3 px-4 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors"
-        >
-          マイ履歴を見る
-        </Link>
-        <Link
-          href="/dashboard"
-          className="flex-1 text-center py-3 px-4 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
-        >
-          ダッシュボードに戻る
-        </Link>
-      </div>
+          {/* アクションボタン */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Link
+              href="/quiz/start"
+              className="flex-1 text-center py-3 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+            >
+              別のクイズに挑戦
+            </Link>
+            <Link
+              href="/quiz/start?focus=weak"
+              className="flex-1 text-center py-3 px-4 bg-pink-100 text-pink-700 rounded-md hover:bg-pink-200 transition-colors"
+            >
+              苦手だけ10問
+            </Link>
+            <Link
+              href="/quiz/start?focus=unseen"
+              className="flex-1 text-center py-3 px-4 bg-yellow-100 text-yellow-800 rounded-md hover:bg-yellow-200 transition-colors"
+            >
+              未学習だけ10問
+            </Link>
+            <Link
+              href="/history"
+              className="flex-1 text-center py-3 px-4 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors"
+            >
+              マイ履歴を見る
+            </Link>
+            <Link
+              href="/dashboard"
+              className="flex-1 text-center py-3 px-4 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
+            >
+              ダッシュボードに戻る
+            </Link>
+          </div>
     </div>
   );
 }

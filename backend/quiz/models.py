@@ -70,7 +70,6 @@ class Word(models.Model):
             # use model field name 'text' (db_column='lemma') for indexes
             models.Index(fields=['text'], name='quiz_word_lemma_idx'),
         ]
-        # DB の unique constraint は (lemma, pos)
         unique_together = ['text', 'pos']
     
     def __str__(self):
@@ -105,9 +104,7 @@ class QuizSet(models.Model):
     
     # 実際のDBはbigintのIDENTITY + UUIDの両方を持っている
     id = models.BigAutoField(primary_key=True, db_column='id')
-    uuid = models.UUIDField(default=uuid.uuid4, editable=False, db_column='uuid')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='quiz_sets', db_column='user_id')
-    name = models.CharField(max_length=255, db_column='name')
     grade = models.IntegerField(db_column='grade')
     pos_filter = models.JSONField(blank=True, null=True, db_column='pos_filter')
     total_questions = models.IntegerField(db_column='total_questions')
@@ -119,7 +116,7 @@ class QuizSet(models.Model):
         db_table = 'quiz_quiz_set'
     
     def __str__(self):
-        return f"QuizSet: {self.name} (Grade {self.grade})"
+        return f"QuizSet #{self.id} (Grade {self.grade})"
     
     # 後方互換性のためのプロパティ
     @property

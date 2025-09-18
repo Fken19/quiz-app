@@ -4,6 +4,7 @@ import { QuizSet, QuizItem, QuizResponse, QuizResult } from '@/types/quiz';
 import { useSession } from 'next-auth/react';
 
 // クイズセット関連のhooks
+export const useCreateQuizSet = () => {
   const queryClient = useQueryClient();
   const { data: session, status } = useSession();
   const token = session?.backendAccessToken;

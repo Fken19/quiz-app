@@ -10,6 +10,8 @@ class Migration(migrations.Migration):
         migrations.RunSQL(
             sql=r'''
             DO $$
+            DECLARE
+                wtype text;
             BEGIN
                 -- Create quiz_testtemplate if missing
                 IF NOT EXISTS (
@@ -31,15 +33,35 @@ class Migration(migrations.Migration):
                 IF NOT EXISTS (
                     SELECT 1 FROM information_schema.tables WHERE table_name='quiz_testtemplateitem'
                 ) THEN
-                    CREATE TABLE "quiz_testtemplateitem" (
-                        "id" uuid NOT NULL PRIMARY KEY,
-                        "template_id" uuid NOT NULL REFERENCES "quiz_testtemplate" ("id") DEFERRABLE INITIALLY DEFERRED,
-                        "word_id" bigint NOT NULL REFERENCES "quiz_word" ("id") DEFERRABLE INITIALLY DEFERRED,
-                        "order" integer NOT NULL DEFAULT 0,
-                        "choices" jsonb NULL,
-                        "created_at" timestamp with time zone NOT NULL
-                    );
-                    CREATE INDEX IF NOT EXISTS quiz_testtemplateitem_tmpl_order_idx ON "quiz_testtemplateitem" ("template_id", "order");
+                    -- Detect the type of quiz_word.id to align FK column type
+                    SELECT data_type INTO wtype
+                    FROM information_schema.columns
+                    WHERE table_name='quiz_word' AND column_name='id'
+                    LIMIT 1;
+
+                    IF wtype = 'uuid' THEN
+                        EXECUTE 'CREATE TABLE "quiz_testtemplateitem" (
+                                "id" uuid NOT NULL PRIMARY KEY,
+                                "template_id" uuid NOT NULL REFERENCES "quiz_testtemplate" ("id") DEFERRABLE INITIALLY DEFERRED,
+                                "word_id" uuid NOT NULL REFERENCES "quiz_word" ("id") DEFERRABLE INITIALLY DEFERRED,
+                                "order" integer NOT NULL DEFAULT 0,
+                                "choices" jsonb NULL,
+                                "created_at" timestamp with time zone NOT NULL
+                            )';
+                    ELSIF wtype IN ('bigint', 'integer') THEN
+                        EXECUTE 'CREATE TABLE "quiz_testtemplateitem" (
+                                "id" uuid NOT NULL PRIMARY KEY,
+                                "template_id" uuid NOT NULL REFERENCES "quiz_testtemplate" ("id") DEFERRABLE INITIALLY DEFERRED,
+                                "word_id" bigint NOT NULL REFERENCES "quiz_word" ("id") DEFERRABLE INITIALLY DEFERRED,
+                                "order" integer NOT NULL DEFAULT 0,
+                                "choices" jsonb NULL,
+                                "created_at" timestamp with time zone NOT NULL
+                            )';
+                    ELSE
+                        RAISE EXCEPTION 'Unsupported data type for quiz_word.id: %', wtype;
+                    END IF;
+
+                    EXECUTE 'CREATE INDEX IF NOT EXISTS quiz_testtemplateitem_tmpl_order_idx ON "quiz_testtemplateitem" ("template_id", "order")';
                 END IF;
 
                 -- Extend quiz_assignedtest with template_id and timer_seconds if missing

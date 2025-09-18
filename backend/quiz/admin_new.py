@@ -1,198 +1,156 @@
+"""
+新しいクイズスキーマ用の管理画面設定
+"""
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import (
-    User, Word, WordTranslation, WordDistractor, WordForm, 
-    ExampleSentence, TextbookScope, QuizSet, QuizItem, QuizResponse,
-    TeacherWhitelist, InviteCode, TeacherStudentLink
+from .models_new import (
+    Level, Segment, NewWord, SegmentWord, NewWordTranslation, NewWordChoice,
+    NewQuizSession, NewQuizResult, NewDailyUserStats, NewDailyGroupStats
 )
 
 
-class CustomUserAdmin(BaseUserAdmin):
-    """カスタムユーザー管理"""
-    list_display = (
-        'email', 'display_name', 'role', 'is_staff', 'is_active', 'created_at'
-    )
-    list_filter = ('role', 'is_staff', 'is_active', 'created_at')
-    search_fields = ('email', 'display_name')
-    ordering = ('-created_at',)
+@admin.register(Level)
+class LevelAdmin(admin.ModelAdmin):
+    list_display = ['level_id', 'level_name', 'created_at', 'updated_at']
+    list_filter = ['created_at', 'updated_at']
+    search_fields = ['level_name']
+    readonly_fields = ['level_id', 'created_at', 'updated_at']
+
+
+class SegmentWordInline(admin.TabularInline):
+    model = SegmentWord
+    extra = 0
+    fields = ['word_id', 'question_order']
+    autocomplete_fields = ['word_id']
+
+
+@admin.register(Segment)
+class SegmentAdmin(admin.ModelAdmin):
+    list_display = ['segment_id', 'segment_name', 'level_id', 'publish_status', 'word_count', 'created_at']
+    list_filter = ['publish_status', 'level_id', 'created_at', 'updated_at']
+    search_fields = ['segment_name', 'level_id__level_name']
+    readonly_fields = ['segment_id', 'created_at', 'updated_at']
+    autocomplete_fields = ['level_id']
+    inlines = [SegmentWordInline]
     
-    fieldsets = BaseUserAdmin.fieldsets + (
-        ('追加情報', {
-            'fields': (
-                'display_name', 'organization', 'bio', 'avatar', 'avatar_url',
-                'role', 'level_preference', 'quiz_count', 'total_score',
-            )
-        }),
-    )
+    def word_count(self, obj):
+        return obj.segment_words.count()
+    word_count.short_description = '単語数'
 
 
-# 新しい単語関連のインライン
 class WordTranslationInline(admin.TabularInline):
-    model = WordTranslation
+    model = NewWordTranslation
     extra = 1
-    fields = ('text', 'language', 'is_primary')
+    fields = ['text_ja', 'is_correct']
 
 
-class WordDistractorInline(admin.TabularInline):
-    model = WordDistractor
-    extra = 0
-    fields = ('slot', 'translation')
-    
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "translation":
-            # 他の単語の訳語のみを表示（主訳以外）
-            kwargs["queryset"] = WordTranslation.objects.filter(is_primary=False)
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+class WordChoiceInline(admin.TabularInline):
+    model = NewWordChoice
+    extra = 4
+    fields = ['text_ja', 'is_correct']
 
 
-class WordFormInline(admin.TabularInline):
-    model = WordForm
-    extra = 0
-    fields = ('feature', 'form')
-
-
-class ExampleSentenceInline(admin.TabularInline):
-    model = ExampleSentence
-    extra = 0
-    fields = ('en', 'ja', 'source', 'is_simple')
-
-
-class TextbookScopeInline(admin.TabularInline):
-    model = TextbookScope
-    extra = 0
-    fields = ('series', 'edition', 'unit', 'range_note')
-
-
-@admin.register(Word)
+@admin.register(NewWord)
 class WordAdmin(admin.ModelAdmin):
-    list_display = ('text', 'pos', 'level', 'segment', 'grade', 'is_active', 'created_at')
-    list_filter = ('pos', 'level', 'segment', 'grade', 'is_active', 'created_at')
-    search_fields = ('text', 'lemma', 'explanation')
-    ordering = ('level', 'segment', 'text')
+    list_display = ['word_id', 'text_en', 'part_of_speech', 'translation_preview', 'choice_count', 'created_at']
+    list_filter = ['part_of_speech', 'created_at', 'updated_at']
+    search_fields = ['text_en', 'translations__text_ja']
+    readonly_fields = ['word_id', 'created_at', 'updated_at']
+    inlines = [WordTranslationInline, WordChoiceInline]
     
-    fieldsets = (
-        ('基本情報', {
-            'fields': ('text', 'lemma', 'pos', 'level', 'segment', 'grade')
-        }),
-        ('詳細', {
-            'fields': ('explanation', 'is_active')
-        }),
-    )
+    def translation_preview(self, obj):
+        translations = obj.translations.filter(is_correct=True)[:2]
+        return ', '.join([t.text_ja for t in translations])
+    translation_preview.short_description = '正答集合'
     
-    inlines = [
-        WordTranslationInline,
-        WordDistractorInline,
-        WordFormInline,
-        ExampleSentenceInline,
-        TextbookScopeInline,
-    ]
+    def choice_count(self, obj):
+        correct = obj.choices.filter(is_correct=True).count()
+        dummy = obj.choices.filter(is_correct=False).count()
+        return f'正解:{correct} ダミー:{dummy}'
+    choice_count.short_description = '選択肢数'
 
 
-@admin.register(WordTranslation)
+@admin.register(SegmentWord)
+class SegmentWordAdmin(admin.ModelAdmin):
+    list_display = ['segment_id', 'word_id', 'question_order']
+    list_filter = ['segment_id__level_id', 'segment_id']
+    search_fields = ['segment_id__segment_name', 'word_id__text_en']
+    autocomplete_fields = ['segment_id', 'word_id']
+    ordering = ['segment_id', 'question_order']
+
+
+@admin.register(NewWordTranslation)
 class WordTranslationAdmin(admin.ModelAdmin):
-    list_display = ('text', 'word', 'language', 'is_primary', 'created_at')
-    list_filter = ('language', 'is_primary', 'created_at')
-    search_fields = ('text', 'word__text')
-    ordering = ('word__text', 'is_primary')
+    list_display = ['word_id', 'text_ja', 'is_correct', 'created_at']
+    list_filter = ['is_correct', 'created_at']
+    search_fields = ['word_id__text_en', 'text_ja']
+    autocomplete_fields = ['word_id']
 
 
-@admin.register(WordDistractor)
-class WordDistractorAdmin(admin.ModelAdmin):
-    list_display = ('word', 'slot', 'translation', 'translation_word')
-    list_filter = ('slot',)
-    search_fields = ('word__text', 'translation__text')
-    ordering = ('word__text', 'slot')
+@admin.register(NewWordChoice)
+class WordChoiceAdmin(admin.ModelAdmin):
+    list_display = ['word_id', 'text_ja', 'is_correct', 'created_at']
+    list_filter = ['is_correct', 'created_at']
+    search_fields = ['word_id__text_en', 'text_ja']
+    autocomplete_fields = ['word_id']
+
+
+class QuizResultInline(admin.TabularInline):
+    model = NewQuizResult
+    extra = 0
+    fields = ['question_order', 'word', 'selected_text', 'is_correct', 'reaction_time_ms']
+    readonly_fields = ['word', 'selected_text', 'is_correct', 'reaction_time_ms']
+    ordering = ['question_order']
+
+
+@admin.register(NewQuizSession)
+class QuizSessionAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'segment', 'score', 'score_percentage', 'is_completed', 'started_at']
+    list_filter = ['segment__level_id', 'segment', 'is_completed', 'started_at']
+    search_fields = ['user__email', 'segment__segment_name']
+    readonly_fields = ['id', 'score_percentage', 'is_completed', 'started_at']
+    autocomplete_fields = ['user', 'segment']
+    inlines = [QuizResultInline]
     
-    def translation_word(self, obj):
-        return obj.translation.word.text
-    translation_word.short_description = '偽訳元単語'
+    def is_completed(self, obj):
+        return obj.is_completed
+    is_completed.boolean = True
+    is_completed.short_description = '完了'
 
 
-@admin.register(WordForm)
-class WordFormAdmin(admin.ModelAdmin):
-    list_display = ('word', 'feature', 'form')
-    list_filter = ('feature',)
-    search_fields = ('word__text', 'form')
-    ordering = ('word__text', 'feature')
+@admin.register(NewQuizResult)
+class QuizResultAdmin(admin.ModelAdmin):
+    list_display = ['session', 'word', 'question_order', 'selected_text', 'is_correct', 'reaction_time_ms', 'created_at']
+    list_filter = ['is_correct', 'created_at', 'session__segment']
+    search_fields = ['session__user__email', 'word__text_en', 'selected_text']
+    readonly_fields = ['id', 'created_at']
+    autocomplete_fields = ['session', 'word', 'selected_choice']
 
 
-@admin.register(ExampleSentence)
-class ExampleSentenceAdmin(admin.ModelAdmin):
-    list_display = ('word', 'en_excerpt', 'source', 'is_simple')
-    list_filter = ('is_simple', 'source')
-    search_fields = ('word__text', 'en', 'ja')
-    ordering = ('word__text',)
+@admin.register(NewDailyUserStats)
+class DailyUserStatsAdmin(admin.ModelAdmin):
+    list_display = ['date', 'user', 'sessions_count', 'questions_attempted', 'questions_correct', 'accuracy_percentage', 'created_at']
+    list_filter = ['date', 'created_at']
+    search_fields = ['user__email']
+    readonly_fields = ['accuracy_percentage', 'created_at']
+    date_hierarchy = 'date'
     
-    def en_excerpt(self, obj):
-        return obj.en[:100] + '...' if len(obj.en) > 100 else obj.en
-    en_excerpt.short_description = '英文（抜粋）'
+    def accuracy_percentage(self, obj):
+        if obj.questions_attempted == 0:
+            return 0
+        return f"{(obj.questions_correct / obj.questions_attempted) * 100:.1f}%"
+    accuracy_percentage.short_description = '正答率'
 
 
-@admin.register(TextbookScope)
-class TextbookScopeAdmin(admin.ModelAdmin):
-    list_display = ('word', 'series', 'edition', 'unit', 'range_note')
-    list_filter = ('series', 'edition')
-    search_fields = ('word__text', 'series', 'unit')
-    ordering = ('word__text', 'series')
-
-
-# クイズ関連
-@admin.register(QuizSet)
-class QuizSetAdmin(admin.ModelAdmin):
-    list_display = ('user', 'mode', 'level', 'segment', 'question_count', 'score', 'created_at')
-    list_filter = ('mode', 'level', 'segment', 'created_at')
-    search_fields = ('user__email', 'user__display_name')
-    ordering = ('-created_at',)
-
-
-@admin.register(QuizItem)
-class QuizItemAdmin(admin.ModelAdmin):
-    list_display = ('quiz_set', 'order', 'word', 'created_at')
-    list_filter = ('created_at',)
-    search_fields = ('quiz_set__user__email', 'word__text')
-    ordering = ('quiz_set', 'order')
-
-
-@admin.register(QuizResponse)
-class QuizResponseAdmin(admin.ModelAdmin):
-    list_display = ('quiz_set', 'quiz_item_word', 'selected_translation', 'is_correct', 'latency_ms', 'answered_at')
-    list_filter = ('is_correct', 'answered_at')
-    search_fields = ('quiz_set__user__email', 'quiz_item__word__text')
-    ordering = ('-answered_at',)
+@admin.register(NewDailyGroupStats)  
+class DailyGroupStatsAdmin(admin.ModelAdmin):
+    list_display = ['date', 'group', 'sessions_count', 'questions_attempted', 'questions_correct', 'accuracy_percentage', 'created_at']
+    list_filter = ['date', 'created_at']
+    search_fields = ['group__name']
+    readonly_fields = ['accuracy_percentage', 'created_at']
+    date_hierarchy = 'date'
     
-    def quiz_item_word(self, obj):
-        return obj.quiz_item.word.text
-    quiz_item_word.short_description = '単語'
-
-
-# 管理機能関連
-@admin.register(TeacherWhitelist)
-class TeacherWhitelistAdmin(admin.ModelAdmin):
-    list_display = ('email', 'note', 'created_by', 'created_at')
-    list_filter = ('created_at',)
-    search_fields = ('email', 'note', 'created_by__email')
-    readonly_fields = ('created_at',)
-
-
-@admin.register(InviteCode)
-class InviteCodeAdmin(admin.ModelAdmin):
-    list_display = ('code', 'issued_by', 'status', 'issued_at', 'expires_at', 'used_by')
-    list_filter = ('revoked', 'issued_at', 'expires_at')
-    search_fields = ('code', 'issued_by__email', 'used_by__email')
-    readonly_fields = ('issued_at', 'used_at', 'revoked_at')
-
-
-@admin.register(TeacherStudentLink)
-class TeacherStudentLinkAdmin(admin.ModelAdmin):
-    list_display = ('teacher', 'student', 'status', 'linked_at', 'revoked_at')
-    list_filter = ('status', 'linked_at')
-    search_fields = ('teacher__email', 'student__email')
-    readonly_fields = ('linked_at',)
-
-
-admin.site.register(User, CustomUserAdmin)
-
-# サイトの表示名をカスタマイズ
-admin.site.site_header = 'Quiz App 管理画面'
-admin.site.site_title = 'Quiz App Admin'
-admin.site.index_title = 'クイズアプリ管理'
+    def accuracy_percentage(self, obj):
+        if obj.questions_attempted == 0:
+            return 0
+        return f"{(obj.questions_correct / obj.questions_attempted) * 100:.1f}%"
+    accuracy_percentage.short_description = '正答率'
