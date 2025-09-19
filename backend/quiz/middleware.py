@@ -28,8 +28,8 @@ class AuthDebugMiddleware:
                         logger.info(f"Valid token found for user: {token.user.email}")
                         request.user = token.user
                         
-                        # ユーザーのロールを自動設定
-                        self._update_user_role(token.user)
+                        # 権限はwhitelistで判定（roleは変更しない）
+                        self._log_user_permission(token.user)
                         
                     except Token.DoesNotExist:
                         # トークンが見つからない場合、メールアドレスかチェック
@@ -39,8 +39,8 @@ class AuthDebugMiddleware:
                                 logger.info(f"User found by email token: {user.email}")
                                 request.user = user
                                 
-                                # ユーザーのロールを自動設定
-                                self._update_user_role(user)
+                                # 権限はwhitelistで判定（roleは変更しない）
+                                self._log_user_permission(user)
                                 
                             except User.DoesNotExist:
                                 logger.warning(f"User not found for email token: {token_key}")
@@ -61,20 +61,12 @@ class AuthDebugMiddleware:
             
         return response
     
-    def _update_user_role(self, user):
-        """ユーザーのロールを自動更新"""
-        if not user.email:
-            return
-        
-        # ホワイトリストチェック
-        if is_teacher_whitelisted(user.email):
-            if user.role != 'teacher':
-                logger.info(f"Updating user {user.email} role to teacher (whitelisted)")
-                user.role = 'teacher'
-                user.save(update_fields=['role'])
-        else:
-            # ホワイトリストにない場合は生徒として設定
-            if user.role == 'teacher':
-                logger.info(f"Updating user {user.email} role to student (not whitelisted)")
-                user.role = 'student'
-                user.save(update_fields=['role'])
+    def _log_user_permission(self, user):
+        """ユーザーの講師権限状態をログ出力（roleは変更しない）"""
+        try:
+            if not user.email:
+                return
+            is_wl = is_teacher_whitelisted(user.email)
+            logger.info(f"User {user.email} whitelisted={is_wl} role={getattr(user, 'role', None)}")
+        except Exception:
+            pass

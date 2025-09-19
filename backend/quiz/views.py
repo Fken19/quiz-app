@@ -425,17 +425,8 @@ def google_auth(request):
             user = User.objects.filter(email=email).order_by('id').first()
             created = False
         
-        # ホワイトリストチェックに基づいてロールを自動設定
-        if is_teacher_whitelisted(email):
-            if user.role != 'teacher':
-                logger.info(f"Updating user {email} role to teacher (whitelisted)")
-                user.role = 'teacher'
-                user.save(update_fields=['role'])
-        else:
-            if user.role == 'teacher':
-                logger.info(f"Updating user {email} role to student (not whitelisted)")
-                user.role = 'student'
-                user.save(update_fields=['role'])
+        # 権限判定は whitelist 参照のみで行う（role は更新しない）
+        is_teacher = is_teacher_whitelisted(email)
         
         # 表示名を更新（もし変更されていれば）
         if user.display_name != name and name:
@@ -445,7 +436,7 @@ def google_auth(request):
         # APIトークン作成
         token, token_created = Token.objects.get_or_create(user=user)
         
-        return JsonResponse({
+        resp = {
             'access_token': token.key,
             'expires_in': 3600,  # 1時間
             'user': {
@@ -454,8 +445,11 @@ def google_auth(request):
                 'display_name': user.display_name,
                 'role': user.role
             },
-            'role': user.role
-        })
+            # API の互換性維持：フロントは role ではなく is_teacher を優先して利用する想定
+            'role': user.role,
+            'is_teacher': is_teacher
+        }
+        return JsonResponse(resp)
         
     except (ValueError, KeyError, json.JSONDecodeError) as e:
         logger.exception('[google_auth] invalid token error')
@@ -1528,18 +1522,7 @@ def user_profile(request):
     """
     user = request.user
     
-    # ホワイトリストチェックに基づいてロールを自動更新
-    if user.email:
-        if is_teacher_whitelisted(user.email):
-            if user.role != 'teacher':
-                logger.info(f"Updating user {user.email} role to teacher (whitelisted)")
-                user.role = 'teacher'
-                user.save(update_fields=['role'])
-        else:
-            if user.role == 'teacher':
-                logger.info(f"Updating user {user.email} role to student (not whitelisted)")
-                user.role = 'student'
-                user.save(update_fields=['role'])
+    # 権限はホワイトリストで判定（role は更新しない）
 
     # POST は更新を受け付ける
     if request.method == 'POST':
@@ -2878,30 +2861,19 @@ def check_teacher_permission(request):
             }
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # ホワイトリストチェックに基づいてロールを自動更新
+    # ホワイトリストで判定（role は変更しない）
     is_whitelisted = is_teacher_whitelisted(user.email)
     logger.info(f"Whitelist check for {user.email}: {is_whitelisted}")
     
-    if is_whitelisted:
-        if user.role != 'teacher':
-            logger.info(f"Updating user {user.email} role to teacher (whitelisted)")
-            user.role = 'teacher'
-            user.save(update_fields=['role'])
-    else:
-        if user.role == 'teacher':
-            logger.info(f"Updating user {user.email} role to student (not whitelisted)")
-            user.role = 'student'
-            user.save(update_fields=['role'])
-    
     return Response({
-        'is_teacher': user.is_teacher,
+        'is_teacher': is_whitelisted,
         'is_whitelisted': is_whitelisted,
         'role': user.role,
         'email': user.email,
         'permissions': {
-            'can_access_admin': user.is_teacher and is_whitelisted,
-            'can_create_invites': user.is_teacher and is_whitelisted,
-            'can_manage_students': user.is_teacher and is_whitelisted,
+            'can_access_admin': is_whitelisted,
+            'can_create_invites': is_whitelisted,
+            'can_manage_students': is_whitelisted,
         }
     })
 
@@ -2963,10 +2935,7 @@ def create_test_user(request):
         user = User.objects.filter(email=email).order_by('id').first()
         created = False
     
-    # ホワイトリストチェックに基づいてロール設定
-    if is_teacher_whitelisted(email):
-        user.role = 'teacher'
-        user.save(update_fields=['role'])
+    # 権限判定はwhitelistのみ（roleは変更しない）
     
     # APIトークン作成
     token, token_created = Token.objects.get_or_create(user=user)

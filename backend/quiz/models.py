@@ -41,8 +41,17 @@ class User(AbstractUser):
     
     @property
     def is_teacher(self):
-        """講師権限があるかどうか"""
-        return self.role == 'teacher' or self.is_staff
+        """講師権限があるかどうか
+        これまで role=='teacher' or is_staff を用いていたが、role は改ざん可能なため
+        実権限判定は TeacherWhitelist ベースで行う。
+        is_staff は Django 管理画面のための権限なので講師判定からは除外する。
+        """
+        try:
+            from .utils import is_teacher_whitelisted
+            return is_teacher_whitelisted(self.email or self.username)
+        except Exception:
+            # 例外時は安全側で False
+            return False
     
     @property
     def is_admin_user(self):
