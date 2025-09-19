@@ -349,19 +349,40 @@ class LegacyQuizItem(models.Model):
 
 
 class LegacyQuizResponse(models.Model):
-    """レガシーQuizResponseモデル（既存APIとの互換性維持）"""
+    """レガシーQuizResponseモデル（既存APIとの互換性維持）
+    実際のDBは user_id や selected_answer カラムを持たず、quiz_set を経由し selected_translation_id を参照します。
+    そのためここでは実テーブルに合わせたフィールド定義を行い、managed=False とします。
+    """
     id = models.BigAutoField(primary_key=True, db_column='id')
     quiz_item = models.ForeignKey(LegacyQuizItem, on_delete=models.CASCADE, db_column='quiz_item_id')
-    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id')
-    selected_answer = models.CharField(max_length=200, db_column='selected_answer')
+    # user は quiz_set を経由して参照されるため、quiz_set を定義
+    quiz_set = models.ForeignKey('quiz.QuizSet', on_delete=models.CASCADE, db_column='quiz_set_id')
+    # 選択は selected_translation_id として参照される
+    selected_translation = models.ForeignKey('quiz.WordTranslation', on_delete=models.SET_NULL, null=True, blank=True, db_column='selected_translation_id')
     is_correct = models.BooleanField(db_column='is_correct')
-    reaction_time_ms = models.IntegerField(db_column='response_time_ms')
+    # DB 側のカラム名は 'reaction_time_ms'
+    reaction_time_ms = models.IntegerField(db_column='reaction_time_ms')
     created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
     updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
-    
+
     class Meta:
-        db_table = 'quiz_quiz_response'
+        # actual legacy table name in DB
+        db_table = 'quiz_quizresponse'
         managed = False  # 既存テーブルなので管理しない
-    
+
     def __str__(self):
         return f"LegacyResponse: {'正解' if self.is_correct else '不正解'}"
+
+    @property
+    def user(self):
+        try:
+            return self.quiz_set.user
+        except Exception:
+            return None
+
+    @property
+    def selected_answer(self):
+        try:
+            return getattr(self.selected_translation, 'text', '')
+        except Exception:
+            return ''

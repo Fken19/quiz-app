@@ -54,13 +54,14 @@ class Word(models.Model):
     """英単語モデル — 現在の DB スキーマ (lemma/pos/grade/frequency) に合わせてマッピングしています"""
     # DB 側は bigint identity を主キーとしているため BigAutoField を使用
     id = models.BigAutoField(primary_key=True, db_column='id')
-    # model attribute name kept as `text` for code readability, but stored in DB column `lemma`
-    text = models.CharField(max_length=100, db_column='lemma')
-    pos = models.CharField(max_length=20, db_column='pos')
-    # grade stored as integer in DB
-    grade = models.IntegerField(db_column='grade')
-    # frequency (existing DB column)
-    frequency = models.IntegerField(default=1, db_column='frequency')
+    # model attribute name kept as `text` for code readability — DB has `text` column
+    text = models.CharField(max_length=100, db_column='text')
+    # map part/level/segment fields according to existing DB schema
+    pos = models.CharField(max_length=20, db_column='segment')
+    # grade stored in DB as `level`
+    grade = models.IntegerField(db_column='level')
+    # map frequency to existing `difficulty` column if present
+    frequency = models.IntegerField(default=1, db_column='difficulty')
     created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
     updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
     
@@ -80,17 +81,18 @@ class WordTranslation(models.Model):
     """訳語モデル — DB の既存カラム (translation, is_primary, context) に合わせる"""
     id = models.BigAutoField(primary_key=True, db_column='id')
     word = models.ForeignKey(Word, on_delete=models.CASCADE, related_name='translations', db_column='word_id')
-    # keep attribute name `text` for compatibility in code, map to DB column `translation`
-    text = models.CharField(max_length=200, db_column='translation')
-    # DB uses `is_primary` to mark main translation; map to model boolean field
-    is_correct = models.BooleanField(default=False, db_column='is_primary')
+    # keep attribute name `text` for compatibility in code.
+    # The existing DB uses `text` for the translation string.
+    text = models.CharField(max_length=200, db_column='text')
+    # DB uses `is_correct` column in this schema
+    is_correct = models.BooleanField(default=False, db_column='is_correct')
     # some older schema has a context column which is NOT NULL
     context = models.CharField(max_length=500, blank=True, default='', db_column='context')
     created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
     updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
 
     class Meta:
-        db_table = 'quiz_word_translation'
+        db_table = 'quiz_wordtranslation'
         indexes = [
             models.Index(fields=['word', 'is_correct'], name='quiz_wordtr_word_id_3968a8_idx'),
         ]
@@ -105,9 +107,9 @@ class QuizSet(models.Model):
     # 実際のDBはbigintのIDENTITY + UUIDの両方を持っている
     id = models.BigAutoField(primary_key=True, db_column='id')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='quiz_sets', db_column='user_id')
-    grade = models.IntegerField(db_column='grade')
+    grade = models.IntegerField(db_column='level')
     pos_filter = models.JSONField(blank=True, null=True, db_column='pos_filter')
-    total_questions = models.IntegerField(db_column='total_questions')
+    total_questions = models.IntegerField(db_column='question_count')
     textbook_scope_id = models.BigIntegerField(null=True, blank=True, db_column='textbook_scope_id')
     created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
     updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
@@ -185,7 +187,8 @@ class QuizItem(models.Model):
     
     class Meta:
         ordering = ['question_number']
-        db_table = 'quiz_quiz_item'
+        # actual DB table name (no extra underscore)
+        db_table = 'quiz_quizitem'
     
     def __str__(self):
         return f"Item {self.question_number}: {self.word.text if hasattr(self, 'word') and self.word else 'No word'}"
@@ -203,35 +206,39 @@ class QuizResponse(models.Model):
     id = models.BigAutoField(primary_key=True, db_column='id')
     # quiz_setへの直接参照は存在しない（quiz_itemを経由してアクセス）
     quiz_item = models.ForeignKey(QuizItem, on_delete=models.CASCADE, db_column='quiz_item_id')
-    # selected_answerカラムに対応（文字列として保存）
-    selected_answer = models.CharField(max_length=200, db_column='selected_answer')
+    # 新しい DB スキーマでは直接 user を持たず、quiz_set を経由してユーザーを参照する
+    quiz_set = models.ForeignKey(QuizSet, on_delete=models.CASCADE, db_column='quiz_set_id')
+    # 選択肢は selected_translation_id として参照される（旧 selected_answer は存在しない）
+    selected_translation = models.ForeignKey(WordTranslation, on_delete=models.SET_NULL, null=True, blank=True, db_column='selected_translation_id')
     is_correct = models.BooleanField(db_column='is_correct')
-    reaction_time_ms = models.IntegerField(db_column='response_time_ms')  # 反応時間（ミリ秒）
-    # ユーザーへの直接参照が存在
-    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id')
+    # DB 側のカラム名は 'reaction_time_ms'
+    reaction_time_ms = models.IntegerField(db_column='reaction_time_ms')  # 反応時間（ミリ秒）
     created_at = models.DateTimeField(auto_now_add=True, db_column='created_at')
     updated_at = models.DateTimeField(auto_now=True, db_column='updated_at')
     
     class Meta:
-        indexes = [
-            models.Index(fields=['user']),
-            models.Index(fields=['created_at']),
-        ]
-        # DBの制約に合わせる（quiz_item_idがユニーク制約）
-        # unique_together = ['quiz_set', 'quiz_item']  # quiz_setが存在しないため削除
-        # 実際の DB テーブル名は quiz_quiz_response
-        db_table = 'quiz_quiz_response'
+        # managed=False かつ既存テーブルのため、起動時のフィールド解決を避ける目的で indexes は明示しない
+        # このモデルは既存テーブルに合わせているため Django による管理を行わない
+        managed = False
+        db_table = 'quiz_quizresponse'
     
     @property
-    def quiz_set(self):
-        """quiz_itemを経由してquiz_setにアクセス"""
-        return self.quiz_item.quiz_set
+    def user(self):
+        """互換性のため、quiz_set を経由して user を返す"""
+        try:
+            return self.quiz_set.user
+        except Exception:
+            return None
+
+    @property
+    def selected_answer(self):
+        """互換性のため、selected_translation のテキストを返す（旧 API 互換）"""
+        try:
+            return getattr(self.selected_translation, 'text', '')
+        except Exception:
+            return ''
     
-    @property 
-    def selected_translation(self):
-        """後方互換性のため、selected_answerをWordTranslationとして解釈"""
-        # 実装は必要に応じて追加（現在は文字列として保存されている）
-        return None
+    # 注意: selected_translation は実在の外部キーです（@property で上書きしないこと）
     
     def __str__(self):
         return f"Response: {self.quiz_item.word.text} - {'正解' if self.is_correct else '不正解'}"

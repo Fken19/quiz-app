@@ -171,6 +171,20 @@ REST_FRAMEWORK = {
 # CORS settings
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000', cast=lambda v: [s.strip() for s in v.split(',')])
+# 明示的にヘッダ/メソッドを許可（プリフライトの相性問題回避）
+CORS_ALLOW_HEADERS = [
+    'authorization',
+    'content-type',
+    'accept',
+    'origin',
+    'user-agent',
+    'dnt',
+    'cache-control',
+    'x-requested-with',
+]
+CORS_ALLOW_METHODS = [
+    'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'
+]
 
 # CSRF settings
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='http://localhost:3000', cast=lambda v: [s.strip() for s in v.split(',')])

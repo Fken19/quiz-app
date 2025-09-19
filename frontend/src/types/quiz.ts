@@ -124,6 +124,19 @@ export interface DashboardStats {
   today_correct_count?: number; // 今日の正答数
 }
 
+// Minimal v2 session shape returned by backend as `recent_quiz_sessions_v2`.
+// We'll map this into the existing QuizResult-like shape for display on the dashboard.
+export interface NewQuizSessionSummary {
+  id: string;
+  user_id?: string;
+  started_at?: string;
+  finished_at?: string | null;
+  score?: number; // 0-100
+  total_questions?: number;
+  total_correct?: number;
+  total_duration_ms?: number;
+}
+
 // API レスポンス型
 export interface ApiResponse<T> {
   data: T;

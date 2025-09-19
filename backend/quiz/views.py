@@ -312,19 +312,25 @@ class QuizSetViewSet(viewsets.ModelViewSet):
                     is_correct = (chosen_text == (quiz_item.correct_answer or ''))
 
         # QuizResponse を作成（新しいスキーマに対応）
-        create_kwargs = dict(
-            quiz_item=quiz_item,
-            selected_answer=chosen_text or "Unknown",
-            is_correct=is_correct,
-            reaction_time_ms=reaction_time_ms,
-            user=request.user
-        )
+        # 選択肢は selected_translation(FK) で保存。テキストのみの場合は NULL のままにする。
+        create_kwargs = {
+            'quiz_item': quiz_item,
+            'quiz_set': quiz_set,
+            'is_correct': is_correct,
+            'reaction_time_ms': reaction_time_ms,
+        }
+        try:
+            if selected_id_int is not None:
+                create_kwargs['selected_translation'] = WordTranslation.objects.get(id=selected_id_int)
+        except WordTranslation.DoesNotExist:
+            # ありえないが安全側
+            pass
 
         quiz_response = QuizResponse.objects.create(**create_kwargs)
         response_id = str(quiz_response.id) if quiz_response else 'unknown'
 
         return Response({
-            'is_correct': is_correct, 
+            'is_correct': is_correct,
             'response_id': response_id,
             'message': f'正誤判定完了: {"正解" if is_correct else "不正解"}'
         })
@@ -472,27 +478,60 @@ def dashboard_stats(request):
     user = request.user
     try:
         # 基本統計
-        total_responses = QuizResponse.objects.filter(user=user).count()
-        correct_responses = QuizResponse.objects.filter(user=user, is_correct=True).count()
+        # サイトはレガシーな QuizResponse テーブルと新しい NewQuizResult / NewQuizSession を併用している可能性がある。
+        # 両方を合算して統計を算出することで、DB移行後もダッシュボードに学習データが反映される。
+        # 注意: マイグレーションでレガシーテーブルが削除/未配置の場合、直接アクセスすると ProgrammingError が発生する。
+        # そのため legacy クエリは安全に count/exists を行うヘルパーでラップする。
+        def safe_count(qs):
+            try:
+                return qs.count()
+            except Exception:
+                return 0
+
+        def safe_exists(qs):
+            try:
+                return qs.exists()
+            except Exception:
+                return False
+
+        legacy_total = safe_count(QuizResponse.objects.filter(quiz_set__user=user))
+        legacy_correct = safe_count(QuizResponse.objects.filter(quiz_set__user=user, is_correct=True))
+
+        try:
+            v2_sessions = NewQuizSession.objects.filter(user=user)
+            v2_results = NewQuizResult.objects.filter(session__in=v2_sessions)
+            v2_total = v2_results.count()
+            v2_correct = v2_results.filter(is_correct=True).count()
+        except Exception:
+            # New models/tables が存在しない場合はゼロ扱い
+            v2_total = 0
+            v2_correct = 0
+
+        total_responses = legacy_total + v2_total
+        correct_responses = legacy_correct + v2_correct
         accuracy = (correct_responses / total_responses * 100) if total_responses > 0 else 0
 
-        # 今週の活動量
+        # 今週の活動量（legacy/new を合算）
         week_ago = timezone.now() - timedelta(days=7)
-        weekly_responses = QuizResponse.objects.filter(
-            user=user,
-            created_at__gte=week_ago
-        ).count()
+        weekly_legacy = safe_count(QuizResponse.objects.filter(quiz_set__user=user, created_at__gte=week_ago))
+        try:
+            weekly_v2 = NewQuizResult.objects.filter(session__user=user, created_at__gte=week_ago).count()
+        except Exception:
+            weekly_v2 = 0
+        weekly_responses = weekly_legacy + weekly_v2
 
         # 連続達成日数（その日に1件でも回答があれば継続とする簡易版）
         current_streak = 0
         today = timezone.now().date()
         for i in range(30):
             check_date = today - timedelta(days=i)
-            daily_responses = QuizResponse.objects.filter(
-                user=user,
-                created_at__date=check_date
-            )
-            if not daily_responses.exists():
+            daily_legacy = safe_exists(QuizResponse.objects.filter(quiz_set__user=user, created_at__date=check_date))
+            try:
+                daily_v2 = NewQuizResult.objects.filter(session__user=user, created_at__date=check_date).exists()
+            except Exception:
+                daily_v2 = False
+
+            if not (daily_legacy or daily_v2):
                 if i == 0:
                     continue
                 break
@@ -501,29 +540,97 @@ def dashboard_stats(request):
         # レベル（総回答数ベース）
         level = total_responses // 100 + 1
 
-        # 月間進歩
+        # 月間進歩（legacy/new 合算）
         month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        monthly_responses = QuizResponse.objects.filter(
-            user=user,
-            created_at__gte=month_start
-        )
-        if monthly_responses.exists():
-            monthly_correct = monthly_responses.filter(is_correct=True).count()
-            monthly_accuracy = (monthly_correct / monthly_responses.count() * 100)
-        else:
-            monthly_accuracy = 0
+        monthly_legacy_qs = QuizResponse.objects.filter(quiz_set__user=user, created_at__gte=month_start)
+        monthly_legacy_total = safe_count(monthly_legacy_qs)
+        monthly_legacy_correct = safe_count(monthly_legacy_qs.filter(is_correct=True))
+        try:
+            monthly_v2_qs = NewQuizResult.objects.filter(session__user=user, created_at__gte=month_start)
+            monthly_v2_total = monthly_v2_qs.count()
+            monthly_v2_correct = monthly_v2_qs.filter(is_correct=True).count()
+        except Exception:
+            monthly_v2_total = 0
+            monthly_v2_correct = 0
 
-        # 最近のクイズセット
-        recent_quiz_sets = QuizSet.objects.filter(user=user).order_by('-created_at')[:5]
+        monthly_total = monthly_legacy_total + monthly_v2_total
+        monthly_correct = monthly_legacy_correct + monthly_v2_correct
+        monthly_accuracy = (monthly_correct / monthly_total * 100) if monthly_total > 0 else 0
+
+        # 最近のクイズセット（legacy の QuizSet と v2 の NewQuizSession 両方を考慮）
+        recent_quiz_sets = list(QuizSet.objects.filter(user=user).order_by('-created_at')[:5])
+        try:
+            recent_sessions = list(NewQuizSession.objects.filter(user=user).order_by('-started_at')[:5])
+            # NewQuizSession を legacy の出力スキーマにマッピングして追加
+            mapped_sessions = []
+            for s in recent_sessions:
+                try:
+                    # レガシー QuizSetListSerializer が期待するフィールドに揃える
+                    mapped = {
+                        'id': str(s.id),
+                        'mode': getattr(s, 'mode', 'default'),
+                        'level': (getattr(s.segment, 'level_id', None) and getattr(s.segment.level_id, 'level_name', None)) or 1,
+                        'segment': getattr(s, 'segment_id', None) or getattr(s, 'segment', None) or 1,
+                        'question_count': getattr(s, 'question_count', 10) or 10,
+                        'created_at': (getattr(s, 'started_at') or timezone.now()).isoformat(),
+                        'started_at': (getattr(s, 'started_at') or timezone.now()).isoformat(),
+                        'finished_at': (getattr(s, 'completed_at') or getattr(s, 'started_at') or timezone.now()).isoformat(),
+                        'score': int(getattr(s, 'score', 0) or 0)
+                    }
+                except Exception:
+                    mapped = {
+                        'id': str(s.id), 'mode': 'default', 'level': 1, 'segment': 1,
+                        'question_count': 10, 'created_at': timezone.now().isoformat(),
+                        'started_at': timezone.now().isoformat(), 'finished_at': timezone.now().isoformat(), 'score': 0
+                    }
+                mapped_sessions.append(mapped)
+
+            # recent_quiz_sets は QuizSet インスタンスのリストだったが、ここでは dict も混在させ
+            # 最終的に serializer に渡す際は QuizSet インスタンスのみを渡す既存ロジックを保つため、
+            # recent_quiz_sets_for_serializer（QuizSetインスタンスのみ）と recent_quiz_sets_mapped（dict）を別管理する
+            recent_quiz_sets_mapped = mapped_sessions
+            # Combine and sort by datetime string (ISO)
+            combined = []
+            for q in recent_quiz_sets:
+                try:
+                    t = getattr(q, 'created_at', None) or getattr(q, 'started_at', None)
+                    ts = t.isoformat() if hasattr(t, 'isoformat') else str(t)
+                except Exception:
+                    ts = ''
+                combined.append((ts, q))
+            for m in recent_quiz_sets_mapped:
+                combined.append((m.get('started_at') or m.get('created_at') or '', m))
+
+            combined.sort(key=lambda x: x[0] or '', reverse=True)
+            top5 = [item for _, item in combined][:5]
+            # serializer 用の QuizSet インスタンスのみ抽出
+            recent_quiz_sets_for_serializer = [q for q in top5 if isinstance(q, QuizSet)]
+            # mapped dict は別に API 出力に付与する
+        except Exception:
+            # 新スキーマがなければ legacy のまま
+            recent_quiz_sets_for_serializer = recent_quiz_sets
+            recent_quiz_sets_mapped = []
+        except Exception:
+            # 新スキーマがなければ legacy のまま
+            pass
+
+        # total_quizzes は legacy の QuizSet と NewQuizSession の合算を試みる
+        try:
+            v2_count = NewQuizSession.objects.filter(user=user).count()
+        except Exception:
+            v2_count = 0
 
         stats_data = {
-            'total_quizzes': QuizSet.objects.filter(user=user).count(),
+            'total_quizzes': QuizSet.objects.filter(user=user).count() + v2_count,
             'average_score': accuracy,
             'current_streak': current_streak,
             'weekly_activity': weekly_responses,
             'level': level,
             'monthly_progress': monthly_accuracy,
-            'recent_quiz_sets': QuizSetListSerializer(recent_quiz_sets, many=True).data
+            # 既存 serializer は QuizSet インスタンスのみ扱うため、そちらを優先で渡す
+            'recent_quiz_sets': QuizSetListSerializer(recent_quiz_sets_for_serializer, many=True).data,
+            # しかし v2 のセッションがあれば互換辞書として追加情報を付与する
+            'recent_quiz_sessions_v2': recent_quiz_sets_mapped if 'recent_quiz_sets_mapped' in locals() else []
         }
 
         return Response(stats_data)
@@ -574,31 +681,106 @@ def learning_metrics(request):
 
     try:
         # ユーザーの回答
-        base_qs = QuizResponse.objects.filter(user=user)
-        # Timeout の定義: 不正解 かつ (reaction_time_ms が 0 or NULL or selected_answer='Unknown')
-        timeout_expr = Case(
-            When(Q(is_correct=False) & (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0) | Q(selected_answer='Unknown')), then=1),
+        # レガシーと v2 の結果を合算して集計する。まず legacy の QuerySet を準備。
+        base_qs = QuizResponse.objects.filter(quiz_set__user=user)
+        # レガシーテーブルの存在判定（実クエリで .exists() を評価して確認）
+        legacy_available = True
+        try:
+            # 実テーブルにアクセスする軽量クエリ
+            _ = QuizResponse.objects.all().exists()
+        except Exception:
+            legacy_available = False
+            try:
+                from django.db import connection as _conn
+                last = (_conn.queries[-1] if hasattr(_conn, 'queries') and _conn.queries else None)
+                logger.debug('[legacy_available] table not available. last SQL query: %s', last)
+            except Exception:
+                pass
+
+        # 安全な count/exists（レガシーテーブルが無い環境でも落ちないように）
+        def safe_count(qs):
+            try:
+                return qs.count()
+            except Exception:
+                return 0
+
+        def safe_exists(qs):
+            try:
+                return qs.exists()
+            except Exception:
+                return False
+
+        # Helper: check whether a given table/column exists in the connected DB
+        def _has_column(table_name: str, column_name: str) -> bool:
+            try:
+                with connection.cursor() as cur:
+                    cur.execute("SELECT 1 FROM information_schema.columns WHERE table_name=%s AND column_name=%s", [table_name, column_name])
+                    return cur.fetchone() is not None
+            except Exception:
+                return False
+
+        # Detect whether legacy schema columns exist. If they don't, skip legacy aggregation entirely
+        legacy_available = legacy_available and True
+        if not _has_column('quiz_wordtranslation', 'translation'):
+            logger.info('legacy column quiz_wordtranslation.translation not present; will treat legacy as unavailable')
+            legacy_available = False
+        if not _has_column('quiz_quiz_set', 'grade'):
+            logger.info('legacy column quiz_quiz_set.grade not present; will treat legacy as unavailable')
+            legacy_available = False
+
+        # 集計式（legacy / v2 を分ける）
+        # legacy: selected_answer を考慮
+        # legacy: selected_answer は既に selected_translation_id として参照されるため
+        # selected_answer を直接比較するのではなく selected_translation の有無 / テキストで判定する
+        legacy_timeout_expr = Case(
+            When(Q(is_correct=False) & (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0) | Q(selected_translation__isnull=True)), then=1),
             default=0,
             output_field=IntegerField()
         )
-        incorrect_non_timeout_expr = Case(
-            When(Q(is_correct=False) & ~ (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0) | Q(selected_answer='Unknown')), then=1),
+        legacy_incorrect_non_timeout_expr = Case(
+            When(Q(is_correct=False) & ~ (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0) | Q(selected_translation__isnull=True)), then=1),
             default=0,
             output_field=IntegerField()
         )
-        correct_expr = Case(
+        legacy_correct_expr = Case(
             When(is_correct=True, then=1),
             default=0,
             output_field=IntegerField()
         )
 
-        def aggregate_by(trunc_func, qs):
+        # v2: selected_text/choice の有無に依らず、timeout は reaction_time_ms が 0/NULL かつ不正解
+        v2_timeout_expr = Case(
+            When(Q(is_correct=False) & (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0)), then=1),
+            default=0,
+            output_field=IntegerField()
+        )
+        v2_incorrect_non_timeout_expr = Case(
+            When(Q(is_correct=False) & ~ (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0)), then=1),
+            default=0,
+            output_field=IntegerField()
+        )
+        v2_correct_expr = Case(
+            When(is_correct=True, then=1),
+            default=0,
+            output_field=IntegerField()
+        )
+
+        def aggregate_by(trunc_func, qs, correct_expr, incorrect_expr, timeout_expr):
+            # Debug: log the SQL for the queryset about to be evaluated
+            try:
+                # use print to ensure visibility in container logs irrespective of logging config
+                try:
+                    print('[aggregate_by] queryset SQL:', str(qs.annotate(bucket=trunc_func('created_at')).values('bucket').annotate(correct=Sum(correct_expr), incorrect=Sum(incorrect_expr), timeout=Sum(timeout_expr), total=Count('id')).order_by('bucket').query))
+                except Exception:
+                    logger.info('[aggregate_by] failed to stringify query')
+            except Exception:
+                logger.info('[aggregate_by] failed to stringify query')
             grouped = (
                 qs.annotate(bucket=trunc_func('created_at'))
                   .values('bucket')
                   .annotate(
                       correct=Sum(correct_expr),
-                      incorrect=Sum(incorrect_non_timeout_expr),
+                      incorrect=Sum(incorrect_expr),
                       timeout=Sum(timeout_expr),
                       total=Count('id')
                   )
@@ -617,36 +799,150 @@ def learning_metrics(request):
             return out
 
         # 期間フィルタ（要件）
-        last_15_days = now - timezone.timedelta(days=15)
-        last_8_weeks = now - timezone.timedelta(weeks=8)
-        last_12_months = now - timezone.timedelta(days=365)
+        last_15_days = now - timedelta(days=15)
+        last_8_weeks = now - timedelta(weeks=8)
+        last_12_months = now - timedelta(days=365)
 
-        daily = aggregate_by(TruncDate, base_qs.filter(created_at__gte=last_15_days))
-        weekly = aggregate_by(TruncWeek, base_qs.filter(created_at__gte=last_8_weeks))
-        monthly = aggregate_by(TruncMonth, base_qs.filter(created_at__gte=last_12_months))
+        # legacy の集計（テーブルが無ければ空）
+        if legacy_available:
+            try:
+                logger.debug('[learning_metrics] legacy daily qs SQL: %s', str(base_qs.filter(created_at__gte=last_15_days).annotate(bucket=TruncDate('created_at')).values('bucket').annotate(correct=Sum(legacy_correct_expr), incorrect=Sum(legacy_incorrect_non_timeout_expr), timeout=Sum(legacy_timeout_expr), total=Count('id')).order_by('bucket').query))
+            except Exception:
+                logger.debug('[learning_metrics] failed to stringify legacy daily qs')
+            daily_legacy = aggregate_by(TruncDate, base_qs.filter(created_at__gte=last_15_days), legacy_correct_expr, legacy_incorrect_non_timeout_expr, legacy_timeout_expr)
+            weekly_legacy = aggregate_by(TruncWeek, base_qs.filter(created_at__gte=last_8_weeks), legacy_correct_expr, legacy_incorrect_non_timeout_expr, legacy_timeout_expr)
+            monthly_legacy = aggregate_by(TruncMonth, base_qs.filter(created_at__gte=last_12_months), legacy_correct_expr, legacy_incorrect_non_timeout_expr, legacy_timeout_expr)
+        else:
+            daily_legacy, weekly_legacy, monthly_legacy = [], [], []
 
-        # Streak: 直近から遡って、その日に1件でも回答があれば連続カウント
+        # v2 の集計を取得してマージする（安全に try/except）
+        try:
+            v2_base = NewQuizResult.objects.filter(session__user=user)
+            daily_v2 = aggregate_by(TruncDate, v2_base.filter(created_at__gte=last_15_days), v2_correct_expr, v2_incorrect_non_timeout_expr, v2_timeout_expr)
+            weekly_v2 = aggregate_by(TruncWeek, v2_base.filter(created_at__gte=last_8_weeks), v2_correct_expr, v2_incorrect_non_timeout_expr, v2_timeout_expr)
+            monthly_v2 = aggregate_by(TruncMonth, v2_base.filter(created_at__gte=last_12_months), v2_correct_expr, v2_incorrect_non_timeout_expr, v2_timeout_expr)
+        except Exception:
+            daily_v2 = []
+            weekly_v2 = []
+            monthly_v2 = []
+
+        # v2 結果が空の場合のフェールバック: セッション情報からバケットを合成
+        # 仕様: 1セッション=10問、正解数=score、残りは不正解と見なす（Timeoutは0に集約）
+        try:
+            # フォールバックでは completed_at に依存しない（score が入っている未完了セッションも考慮）
+            v2_sessions_qs = NewQuizSession.objects.filter(user=user)
+
+            def session_aggregate_by(trunc_func, sessions_qs):
+                grouped = (
+                    sessions_qs.annotate(bucket=trunc_func('started_at'))
+                    .values('bucket')
+                    .annotate(
+                        sessions=Count('id'),
+                        correct=Sum('score')
+                    )
+                    .order_by('bucket')
+                )
+                out = []
+                for row in grouped:
+                    b = row['bucket']
+                    sessions_cnt = int(row.get('sessions') or 0)
+                    correct_cnt = int(row.get('correct') or 0)
+                    total_cnt = sessions_cnt * 10
+                    incorrect_cnt = max(total_cnt - correct_cnt, 0)
+                    out.append({
+                        'bucket': b.isoformat() if hasattr(b, 'isoformat') else str(b),
+                        'correct': correct_cnt,
+                        'incorrect': incorrect_cnt,
+                        'timeout': 0,
+                        'total': total_cnt,
+                    })
+                return out
+
+            if not daily_v2:
+                daily_v2 = session_aggregate_by(TruncDate, v2_sessions_qs.filter(started_at__gte=last_15_days))
+            if not weekly_v2:
+                weekly_v2 = session_aggregate_by(TruncWeek, v2_sessions_qs.filter(started_at__gte=last_8_weeks))
+            if not monthly_v2:
+                monthly_v2 = session_aggregate_by(TruncMonth, v2_sessions_qs.filter(started_at__gte=last_12_months))
+        except Exception:
+            # セッション集計も不可ならそのまま
+            pass
+
+        # 日次/週次/月次のバケットを日付でマージするユーティリティ
+        def merge_buckets(a, b):
+            # a,b は [{'bucket': iso, 'correct':n, 'incorrect':n, 'timeout':n, 'total':n}, ...]
+            d = {}
+            for row in a:
+                d[row['bucket']] = dict(row)
+            for row in b:
+                if row['bucket'] in d:
+                    for k in ('correct', 'incorrect', 'timeout', 'total'):
+                        d[row['bucket']][k] = (d[row['bucket']].get(k, 0) or 0) + (row.get(k, 0) or 0)
+                else:
+                    d[row['bucket']] = dict(row)
+            # ソートして返す
+            out = [d[k] for k in sorted(d.keys())]
+            return out
+
+        daily = merge_buckets(daily_legacy, daily_v2)
+        weekly = merge_buckets(weekly_legacy, weekly_v2)
+        monthly = merge_buckets(monthly_legacy, monthly_v2)
+
+        # Streak: legacy/new を合わせて判定
         streak = 0
-        # 過去90日分を計算ベースに
         max_days = 90
         for i in range(max_days):
-            day = (now - timezone.timedelta(days=i)).date()
-            day_qs = base_qs.filter(created_at__date=day)
-            if not day_qs.exists():
+            day = (now - timedelta(days=i)).date()
+            legacy_exists = safe_exists(QuizResponse.objects.filter(quiz_set__user=user, created_at__date=day)) if legacy_available else False
+            try:
+                v2_exists = NewQuizResult.objects.filter(session__user=user, created_at__date=day).exists()
+            except Exception:
+                v2_exists = False
+            # 結果が無い日でも、セッションが開始されているなら streak に含める
+            if not v2_exists:
+                try:
+                    v2_exists = NewQuizSession.objects.filter(user=user, started_at__date=day).exists()
+                except Exception:
+                    pass
+            if not (legacy_exists or v2_exists):
                 if i == 0:
-                    # 今日が未回答でも streak は継続可能性ありなのでスキップ
                     continue
                 break
-            # その日に1件でも回答があればOK
             streak += 1
 
-        # 直近7日ヒートマップ
+        # 直近7日ヒートマップ（legacy/new 合算）
         heatmap7 = []
+        # v2 セッションのフェールバック用に、直近7日分をまとめて事前集計
+        try:
+            seven_days_ago = (now - timedelta(days=6)).date()
+            sessions_7 = (
+                NewQuizSession.objects.filter(user=user, started_at__date__gte=seven_days_ago)
+                .annotate(d=TruncDate('started_at'))
+                .values('d')
+                .annotate(sessions=Count('id'), score=Sum('score'))
+            )
+            session_map = {row['d']: {'sessions': int(row.get('sessions') or 0), 'score': int(row.get('score') or 0)} for row in sessions_7}
+        except Exception:
+            session_map = {}
+
         for i in range(6, -1, -1):
-            day = (now - timezone.timedelta(days=i)).date()
-            day_qs = base_qs.filter(created_at__date=day)
-            total = day_qs.count()
-            correct = day_qs.filter(is_correct=True).count()
+            day = (now - timedelta(days=i)).date()
+            legacy_total = safe_count(QuizResponse.objects.filter(quiz_set__user=user, created_at__date=day)) if legacy_available else 0
+            legacy_correct = safe_count(QuizResponse.objects.filter(quiz_set__user=user, created_at__date=day, is_correct=True)) if legacy_available else 0
+            try:
+                v2_total = NewQuizResult.objects.filter(session__user=user, created_at__date=day).count()
+                v2_correct = NewQuizResult.objects.filter(session__user=user, created_at__date=day, is_correct=True).count()
+            except Exception:
+                v2_total = 0
+                v2_correct = 0
+            # フェールバック: v2結果が0で、セッションがある日はセッション合成値で埋める
+            if v2_total == 0:
+                sm = session_map.get(day)
+                if sm and sm['sessions'] > 0:
+                    v2_total = sm['sessions'] * 10
+                    v2_correct = sm['score']
+            total = legacy_total + v2_total
+            correct = legacy_correct + v2_correct
             heatmap7.append({
                 'date': day.isoformat(),
                 'total': total,
@@ -654,12 +950,36 @@ def learning_metrics(request):
             })
 
         # 期間別サマリー（今日/今週/今月/全体）
-        def compute_summary(qs):
-            total = qs.count()
-            correct = qs.filter(is_correct=True).count()
+        def compute_summary(qs, v2_qs=None):
+            # qs: legacy queryset, v2_qs: NewQuizResult queryset（任意）
+            def sc(q):
+                try:
+                    return q.count()
+                except Exception:
+                    return 0
+            def sc_f(q):
+                try:
+                    return q.filter(is_correct=True).count()
+                except Exception:
+                    return 0
+            def savg(q):
+                try:
+                    return q.filter(reaction_time_ms__gt=0).aggregate(avg=Avg('reaction_time_ms'))['avg'] or 0
+                except Exception:
+                    return 0
+
+            total = (sc(qs) if qs is not None else 0) + (sc(v2_qs) if v2_qs is not None else 0)
+            correct = (sc_f(qs) if qs is not None else 0) + (sc_f(v2_qs) if v2_qs is not None else 0)
             acc = float((correct / total * 100.0) if total else 0.0)
-            avg_latency = qs.filter(reaction_time_ms__gt=0).aggregate(avg=Avg('reaction_time_ms'))['avg'] or 0
-            # 現状、平均スコアは平均正答率と同義（クイズ単位の平均が必要な場合はQuizSet単位集計に拡張）
+            # 平均反応時間は legacy と v2 に対して別々に avg を取り、重み付き平均を算出（安全に）
+            legacy_avg = savg(qs) if qs is not None else 0
+            v2_avg = savg(v2_qs) if v2_qs is not None else 0
+            # 重みづけのための件数
+            legacy_count = sc(qs.filter(reaction_time_ms__gt=0)) if qs is not None else 0
+            v2_count = sc(v2_qs.filter(reaction_time_ms__gt=0)) if v2_qs is not None else 0
+            avg_latency = 0
+            if legacy_count + v2_count > 0:
+                avg_latency = int(round(((legacy_avg or 0) * legacy_count + (v2_avg or 0) * v2_count) / max(1, (legacy_count + v2_count))))
             return {
                 'total_questions': int(total),
                 'avg_latency_ms': int(round(avg_latency or 0)),
@@ -668,15 +988,73 @@ def learning_metrics(request):
             }
 
         # 週: 直近7日、月: 月初から
-        week_start = now - timezone.timedelta(days=7)
+        week_start = now - timedelta(days=7)
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        try:
+            v2_base = NewQuizResult.objects.filter(session__user=user)
+        except Exception:
+            v2_base = None
+
         periods = {
-            'today': base_qs.filter(created_at__date=now.date()),
-            'week': base_qs.filter(created_at__gte=week_start),
-            'month': base_qs.filter(created_at__gte=month_start),
-            'all': base_qs,
+            'today': (base_qs.filter(created_at__date=now.date()) if legacy_available else None, v2_base.filter(created_at__date=now.date()) if v2_base is not None else None),
+            'week': (base_qs.filter(created_at__gte=week_start) if legacy_available else None, v2_base.filter(created_at__gte=week_start) if v2_base is not None else None),
+            'month': (base_qs.filter(created_at__gte=month_start) if legacy_available else None, v2_base.filter(created_at__gte=month_start) if v2_base is not None else None),
+            'all': (base_qs if legacy_available else None, v2_base),
         }
-        summary = {k: compute_summary(qs) for k, qs in periods.items()}
+        summary = {k: compute_summary(pair[0], pair[1]) for k, pair in periods.items()}
+
+        # 結果が全く無い期間は、セッションから概算で補完（1セッション=10問、score=正解数）
+        try:
+            def sessions_for(period_key: str):
+                if period_key == 'today':
+                    return NewQuizSession.objects.filter(user=user, started_at__date=now.date())
+                if period_key == 'week':
+                    return NewQuizSession.objects.filter(user=user, started_at__gte=week_start)
+                if period_key == 'month':
+                    return NewQuizSession.objects.filter(user=user, started_at__gte=month_start)
+                return NewQuizSession.objects.filter(user=user)
+
+            for key in list(summary.keys()):
+                try:
+                    if int(summary[key].get('total_questions', 0) or 0) == 0:
+                        sess_qs = sessions_for(key)
+                        s_cnt = sess_qs.count()
+                        s_score = sess_qs.aggregate(s=Sum('score'))['s'] or 0
+                        total_q = s_cnt * 10
+                        acc_pct = float((s_score / total_q * 100.0) if total_q else 0.0)
+                        summary[key] = {
+                            'total_questions': int(total_q),
+                            'avg_latency_ms': 0,
+                            'avg_accuracy_pct': round(acc_pct, 1),
+                            'avg_score_pct': round(acc_pct, 1),
+                        }
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # DEBUG: include lightweight debug info to help UI troubleshooting
+        debug_info = {
+            'legacy_available': legacy_available,
+            'legacy_counts': {
+                'total': safe_count(base_qs) if legacy_available else 0,
+            },
+            'v2_counts': {
+                'total': NewQuizResult.objects.filter(session__user=user).count() if NewQuizResult is not None else 0,
+            },
+            'recent_v2_sample': []
+        }
+        try:
+            # sample up to 5 recent v2 result timestamps
+            s = NewQuizResult.objects.filter(session__user=user).order_by('-created_at')[:5]
+            debug_info['recent_v2_sample'] = [getattr(r, 'created_at').isoformat() for r in s]
+        except Exception:
+            debug_info['recent_v2_sample'] = []
+        # セッション件数も併記
+        try:
+            debug_info['v2_counts']['sessions_total'] = NewQuizSession.objects.filter(user=user).count()
+        except Exception:
+            debug_info['v2_counts']['sessions_total'] = 0
 
         return Response({
             'daily': daily,
@@ -685,6 +1063,7 @@ def learning_metrics(request):
             'streak': streak,
             'heatmap7': heatmap7,
             'summary': summary,
+            '_debug': debug_info,
         })
 
     except ProgrammingError:
@@ -722,19 +1101,23 @@ def _fetch_last_two_by_word(user_id, word_ids):
     # 動的プレースホルダを生成
     placeholders = ','.join(['%s'] * len(word_ids))
     params = [user_id] + list(word_ids)
+    # Build SQL that fetches selected translation text (if any) and the quiz_set user via quiz_item -> quiz_set
+    # This avoids referencing non-existent columns like r.selected_answer or r.user_id directly.
     sql = f"""
         WITH ranked AS (
             SELECT
                 r.id,
                 qi.word_id AS word_id,
                 r.is_correct AS is_correct,
-                r.response_time_ms AS reaction_time_ms,
-                r.selected_answer AS selected_answer,
+                r.reaction_time_ms AS reaction_time_ms,
+                COALESCE(wt.text, '') AS selected_answer,
                 r.created_at AS created_at,
                 ROW_NUMBER() OVER (PARTITION BY qi.word_id ORDER BY r.created_at DESC) AS rn
-            FROM quiz_quiz_response r
-            JOIN quiz_quiz_item qi ON r.quiz_item_id = qi.id
-            WHERE r.user_id = %s AND qi.word_id IN ({placeholders})
+            FROM quiz_quizresponse r
+            JOIN quiz_quizitem qi ON r.quiz_item_id = qi.id
+            LEFT JOIN quiz_wordtranslation wt ON r.selected_translation_id = wt.id
+            JOIN quiz_quiz_set qs ON qi.quiz_set_id = qs.id
+            WHERE qs.user_id = %s AND qi.word_id IN ({placeholders})
         )
         SELECT word_id, is_correct, reaction_time_ms, selected_answer, rn
         FROM ranked
@@ -1220,8 +1603,8 @@ def user_profile(request):
 
     # GET は従来のプロフィールデータを返す（DB欠損で 500 にならないよう保護）
     try:
-        total_responses = QuizResponse.objects.filter(user=user).count()
-        correct_responses = QuizResponse.objects.filter(user=user, is_correct=True).count()
+        total_responses = QuizResponse.objects.filter(quiz_set__user=user).count()
+        correct_responses = QuizResponse.objects.filter(quiz_set__user=user, is_correct=True).count()
 
         difficulty_stats = QuizSet.objects.filter(user=user).values('grade').annotate(
             count=Count('id')
@@ -1229,7 +1612,7 @@ def user_profile(request):
 
         favorite_level = difficulty_stats.first()['grade'] if difficulty_stats else 1
 
-        avg_response_time = QuizResponse.objects.filter(user=user).aggregate(
+        avg_response_time = QuizResponse.objects.filter(quiz_set__user=user).aggregate(
             avg_time=Avg('reaction_time_ms')
         )['avg_time'] or 0
 
@@ -1668,8 +2051,8 @@ class TeacherStudentViewSet(viewsets.ReadOnlyModelViewSet):
         # エイリアス
         alias = TeacherStudentAlias.objects.filter(teacher=request.user, student=student).first()
         # 統計
-        total = QuizResponse.objects.filter(user=student).count()
-        correct = QuizResponse.objects.filter(user=student, is_correct=True).count()
+        total = QuizResponse.objects.filter(quiz_set__user=student).count()
+        correct = QuizResponse.objects.filter(quiz_set__user=student, is_correct=True).count()
         acc = (correct / total * 100) if total > 0 else 0
         return Response({
             'student': UserSerializer(student, context={'request': request}).data,
@@ -1874,7 +2257,7 @@ class TeacherGroupViewSet(viewsets.ModelViewSet):
             start = now - timedelta(days=30)
 
         user_ids = list(GroupMembership.objects.filter(group=group).values_list('user_id', flat=True))
-        base_qs = QuizResponse.objects.filter(user_id__in=user_ids, created_at__gte=start)
+        base_qs = QuizResponse.objects.filter(quiz_set__user_id__in=user_ids, created_at__gte=start)
 
         # 集計
         rows = []
@@ -1922,7 +2305,7 @@ class TeacherGroupViewSet(viewsets.ModelViewSet):
         start = now - timedelta(days=days)
 
         user_ids = list(GroupMembership.objects.filter(group=group).values_list('user_id', flat=True))
-        base_qs = QuizResponse.objects.filter(user_id__in=user_ids, created_at__gte=start)
+        base_qs = QuizResponse.objects.filter(quiz_set__user_id__in=user_ids, created_at__gte=start)
 
         # 総計
         total = base_qs.count()
@@ -2151,7 +2534,7 @@ class TeacherStudentDetailViewSet(viewsets.GenericViewSet):
         # 直近30日の統計
         now = timezone.now()
         start = now - timedelta(days=30)
-        qs = QuizResponse.objects.filter(user=student, created_at__gte=start)
+        qs = QuizResponse.objects.filter(quiz_set__user=student, created_at__gte=start)
         total = qs.count()
         correct = qs.filter(is_correct=True).count()
         acc = float((correct / total * 100) if total else 0.0)
@@ -2183,15 +2566,15 @@ class TeacherStudentDetailViewSet(viewsets.GenericViewSet):
             return Response({'error': 'この生徒はあなたの管理対象ではありません'}, status=status.HTTP_403_FORBIDDEN)
         student = link.student
         now = timezone.now()
-        base_qs = QuizResponse.objects.filter(user=student)
+        base_qs = QuizResponse.objects.filter(quiz_set__user=student)
 
         timeout_expr = Case(
-            When(Q(is_correct=False) & (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0) | Q(selected_answer='Unknown')), then=1),
+            When(Q(is_correct=False) & (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0) | Q(selected_translation__isnull=True) | Q(selected_translation__text='Unknown')), then=1),
             default=0,
             output_field=IntegerField()
         )
         incorrect_non_timeout_expr = Case(
-            When(Q(is_correct=False) & ~ (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0) | Q(selected_answer='Unknown')), then=1),
+            When(Q(is_correct=False) & ~ (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0) | Q(selected_translation__isnull=True) | Q(selected_translation__text='Unknown')), then=1),
             default=0,
             output_field=IntegerField()
         )

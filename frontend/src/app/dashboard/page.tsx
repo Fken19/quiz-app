@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { DashboardStats } from '@/types/quiz';
+import { DashboardStats, NewQuizSessionSummary, QuizResult, QuizSet } from '@/types/quiz';
 import { apiGet } from '@/lib/api-utils';
 import { normalizeAvatarUrl } from '@/lib/avatar';
 
@@ -37,6 +37,7 @@ export default function Dashboard() {
 
         const data = await apiGet('/dashboard/stats/');
         // バックエンドは { total_quizzes, average_score, current_streak, weekly_activity, level, monthly_progress, recent_quiz_sets }
+        // さらに v2 の recent_quiz_sessions_v2 を返すようになった
         // フロントのDashboardStatsへ最低限マップ
         const mapped: DashboardStats = {
           total_quiz_sets: Number(data?.total_quizzes || 0),
@@ -49,6 +50,46 @@ export default function Dashboard() {
           today_quiz_count: Number(data?.weekly_activity || 0),
           today_correct_count: 0,
         };
+
+        // v2 セッションがあれば recent_results にマップして埋める
+        try {
+          const v2: NewQuizSessionSummary[] = data?.recent_quiz_sessions_v2 || [];
+          if (Array.isArray(v2) && v2.length > 0) {
+            // Map minimal v2 session summary into a lightweight QuizResult-like object
+            const mappedResults: QuizResult[] = v2.map((s) => {
+              const quizSet: QuizSet = {
+                id: s.id,
+                mode: 'default',
+                level: 0,
+                segment: 0,
+                question_count: s.total_questions || 0,
+              } as any;
+
+              const qr: QuizResult = {
+                quiz_set: quizSet,
+                quiz_items: [],
+                quiz_responses: [],
+                total_score: s.score || 0,
+                total_questions: s.total_questions || 0,
+                total_duration_ms: s.total_duration_ms || 0,
+                average_latency_ms: s.total_duration_ms && s.total_questions ? Math.round((s.total_duration_ms || 0) / Math.max(1, s.total_questions || 1)) : 0,
+              } as any;
+              return qr;
+            });
+
+            mapped.recent_results = mappedResults;
+
+            // 今日の学習数 / 正答数は粗めの算出（finished_at が今日のものを数える）
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const todayCount = v2.filter((s) => (s.finished_at || '').slice(0, 10) === todayStr).length;
+            const todayCorrect = v2.reduce((acc, s) => acc + (s.total_correct || 0), 0);
+            mapped.today_quiz_count = todayCount;
+            mapped.today_correct_count = todayCorrect;
+          }
+        } catch (e) {
+          // 念のため失敗してもフォールバック（backend が古い場合など）
+          console.warn('Failed to map recent_quiz_sessions_v2', e);
+        }
         setStats(mapped);
       } catch (err) {
         console.error('Failed to fetch dashboard stats:', err);
