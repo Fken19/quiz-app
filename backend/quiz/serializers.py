@@ -5,6 +5,7 @@ from .models import (
     TestTemplate, TestTemplateItem, AssignedTest,
     Question, Option, QuizSession, QuizResult
 )
+from .models_new import NewQuizSession, NewQuizResult
 from .utils import generate_invite_code, normalize_invite_code, get_code_expiry_time
 
 
@@ -477,16 +478,34 @@ class AcceptInviteCodeSerializer(serializers.Serializer):
 # 講師↔生徒紐付け関連シリアライザー
 class TeacherStudentLinkSerializer(serializers.ModelSerializer):
     teacher = UserSerializer(read_only=True)
-    student = UserSerializer(read_only=True)
-    revoked_by = UserSerializer(read_only=True)
+    # 生徒情報は講師向けの最小形式で返す（Email を含めないなど）
+    student = MinimalUserSerializer(read_only=True)
+    revoked_by = MinimalUserSerializer(read_only=True)
+    # v2 統計（講師ダッシュボードで使用）
+    stats = serializers.SerializerMethodField()
     
     class Meta:
         model = TeacherStudentLink
         fields = [
             'id', 'teacher', 'student', 'status', 'linked_at',
-            'revoked_at', 'revoked_by'
+            'revoked_at', 'revoked_by', 'stats'
         ]
-        read_only_fields = ['id', 'linked_at', 'revoked_at', 'revoked_by']
+        read_only_fields = ['id', 'linked_at', 'revoked_at', 'revoked_by', 'stats']
+
+    def get_stats(self, obj):
+        """生徒ごとの v2 集計: total_answers, accuracy_pct
+        フロントで表示する簡易的な学習実績を返す。DBエラー時は安全にゼロを返す。
+        """
+        try:
+            student = obj.student
+            sessions_qs = NewQuizSession.objects.filter(user=student)
+            results_qs = NewQuizResult.objects.filter(session__in=sessions_qs)
+            total = results_qs.count()
+            correct = results_qs.filter(is_correct=True).count()
+            acc = round((correct / total * 100.0) if total else 0.0, 2)
+            return {'total_answers': int(total), 'accuracy_pct': float(acc)}
+        except Exception:
+            return {'total_answers': 0, 'accuracy_pct': 0.0}
 
 
 # --- テストテンプレート ---
