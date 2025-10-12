@@ -11,8 +11,9 @@ RUN npm ci
 # アプリケーションコードをコピー
 COPY . .
 
-# 環境変数ファイルをコピー
-COPY .env.docker .env.local
+# 環境変数ファイルをコピー (存在しない場合はスキップ)
+# CI/CD環境では環境変数を直接設定するため不要
+RUN if [ -f .env.docker ]; then cp .env.docker .env.local; fi
 
 # ポート3000を公開
 EXPOSE 3000

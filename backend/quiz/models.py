@@ -9,7 +9,6 @@ from typing import Optional
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
-from django.contrib.postgres.fields import CITextField
 from django.db import models
 from django.db.models import F, Q
 from django.db.models.functions import Lower
@@ -97,7 +96,7 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin, CreatedUpdatedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_column="user_id")
-    email = models.EmailField(max_length=255)
+    email = models.EmailField(max_length=255, unique=True)  # unique=True を追加
     oauth_provider = models.CharField(max_length=32, default="google")
     oauth_sub = models.CharField(max_length=255)
     disabled_at = models.DateTimeField(null=True, blank=True)
@@ -105,6 +104,9 @@ class User(AbstractBaseUser, PermissionsMixin, CreatedUpdatedModel):
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+
+    # usernameフィールドを追加（Django管理画面用）
+    username = models.CharField(max_length=150, unique=True, blank=True, null=True)
 
     objects = UserManager()
 
@@ -114,11 +116,6 @@ class User(AbstractBaseUser, PermissionsMixin, CreatedUpdatedModel):
     class Meta:
         db_table = "users"
         constraints = [
-            models.UniqueConstraint(
-                Lower("email"),
-                condition=Q(deleted_at__isnull=True),
-                name="users_email_active_uniq",
-            ),
             models.UniqueConstraint(
                 fields=["oauth_provider", "oauth_sub"],
                 name="users_oauth_uniq",
@@ -135,6 +132,9 @@ class User(AbstractBaseUser, PermissionsMixin, CreatedUpdatedModel):
     def save(self, *args, **kwargs):  # type: ignore[override]
         if self.email:
             self.email = self.__class__.objects.normalize_email(self.email)
+        # usernameが未設定の場合、emailから生成
+        if not self.username:
+            self.username = self.email.split('@')[0] + '_' + str(uuid.uuid4())[:8]
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
@@ -450,7 +450,8 @@ class VocabStatus(models.TextChoices):
 class Vocabulary(CreatedUpdatedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_column="vocabulary_id")
     text_en = models.CharField(max_length=120)
-    text_key = CITextField(editable=False)
+    # CITextFieldの代わりにTextFieldとdb_collationを使用（Django 5.1対応）
+    text_key = models.TextField(editable=False, db_collation="case_insensitive")
     part_of_speech = models.CharField(max_length=30, null=True, blank=True)
     explanation = models.TextField(null=True, blank=True)
     example_en = models.TextField(null=True, blank=True)
