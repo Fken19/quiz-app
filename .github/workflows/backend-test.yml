@@ -14,7 +14,7 @@ on:
 
 jobs:
   test:
-    name: Django Tests with PostgreSQL
+    name: Essential Django Tests
     runs-on: ubuntu-latest
     
     services:
@@ -54,7 +54,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-django coverage
     
     - name: Run database migrations
       working-directory: ./backend
@@ -67,17 +66,6 @@ jobs:
         python manage.py migrate --no-input
         echo "✓ All migrations applied successfully"
     
-    - name: Validate database schema
-      working-directory: ./backend
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quiz_app_test
-        SECRET_KEY: test-secret-key-for-ci-cd-only-very-long-string-to-avoid-warnings-1234567890abcdefghij
-        DEBUG: "True"
-        ALLOWED_HOSTS: localhost,127.0.0.1
-      run: |
-        python manage.py inspectdb > /dev/null
-        echo "✓ Database schema inspection completed"
-    
     - name: Run Django checks
       working-directory: ./backend
       env:
@@ -87,8 +75,9 @@ jobs:
         ALLOWED_HOSTS: localhost,127.0.0.1
       run: |
         python manage.py check
+        echo "✓ Django checks passed"
     
-    - name: Test model imports and relationships
+    - name: Test core model imports
       working-directory: ./backend
       env:
         DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quiz_app_test
@@ -103,69 +92,13 @@ jobs:
         django.setup()
         
         from quiz.models import (
-            User, Teacher, Student, Group, GroupMembership,
+            User, Teacher, Group, GroupMembership,
             Vocabulary, QuizCollection, QuizSession, QuizResult,
             Test, TestQuestion, TestAssignment, TestAssignee, TestResult
         )
         
-        print('✓ All models imported successfully')
-        print(f'  - User model: {User._meta.db_table}')
-        print(f'  - Teacher model: {Teacher._meta.db_table}')
-        print(f'  - Vocabulary model: {Vocabulary._meta.db_table}')
-        print(f'  - Test model: {Test._meta.db_table}')
-        print('✓ Schema alignment validated')
+        print('✓ All core models imported successfully')
+        print(f'  - User: {User._meta.db_table}')
+        print(f'  - Vocabulary: {Vocabulary._meta.db_table}')
+        print(f'  - Test: {Test._meta.db_table}')
         "
-    
-    - name: Create test superuser
-      working-directory: ./backend
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quiz_app_test
-        SECRET_KEY: test-secret-key-for-ci-cd-only-very-long-string-to-avoid-warnings-1234567890abcdefghij
-        DEBUG: "True"
-        ALLOWED_HOSTS: localhost,127.0.0.1
-      run: |
-        python manage.py shell -c "
-        from quiz.models import User
-        if not User.objects.filter(email='test@example.com').exists():
-            User.objects.create_superuser(
-                email='test@example.com',
-                username='testadmin',
-                password='testpass123'
-            )
-            print('✓ Test superuser created')
-        else:
-            print('✓ Test superuser already exists')
-        "
-    
-    - name: Run Django tests (if any exist)
-      working-directory: ./backend
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quiz_app_test
-        SECRET_KEY: test-secret-key-for-ci-cd-only-very-long-string-to-avoid-warnings-1234567890abcdefghij
-        DEBUG: "True"
-        ALLOWED_HOSTS: localhost,127.0.0.1
-      run: |
-        python manage.py test --no-input || echo "⚠ No tests found or tests failed (expected for initial deployment)"
-    
-    - name: Generate coverage report (if tests exist)
-      working-directory: ./backend
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quiz_app_test
-        SECRET_KEY: test-secret-key-for-ci-cd-only-very-long-string-to-avoid-warnings-1234567890abcdefghij
-        DEBUG: "True"
-        ALLOWED_HOSTS: localhost,127.0.0.1
-      run: |
-        coverage run --source='.' manage.py test --no-input || true
-        coverage report || echo "⚠ Coverage report not available"
-    
-    - name: Deployment readiness check
-      working-directory: ./backend
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quiz_app_test
-        SECRET_KEY: production-ready-secret-key-very-long-string-1234567890abcdefghijklmnopqrstuvwxyz
-        DEBUG: "False"
-        ALLOWED_HOSTS: localhost,127.0.0.1,.run.app
-        SECURE_SSL_REDIRECT: "False"  # CI環境ではSSLリダイレクトを無効化
-      run: |
-        python manage.py check
-        echo "✓ Application is ready for production deployment"

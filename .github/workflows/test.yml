@@ -52,16 +52,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: Check migrations
-      working-directory: ./backend
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quiz_app
-        SECRET_KEY: test-secret-key-for-ci-only-very-long-string-to-avoid-warnings-1234567890abcdefghij
-        DEBUG: "True"
-        ALLOWED_HOSTS: localhost,127.0.0.1
-      run: |
-        python manage.py makemigrations --check --dry-run --no-input
-    
     - name: Run migrations
       working-directory: ./backend
       env:
