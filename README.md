@@ -1,23 +1,80 @@
 
 
-# 英単語クイズアプリ
+# Quiz App - 英単語学習プラットフォーム
 
-![Tests](https://github.com/Fken19/quiz-app/actions/workflows/test.yml/badge.svg)
+![Backend Tests](https://github.com/Fken19/quiz-app/actions/workflows/backend-test.yml/badge.svg)
+![Full Stack Tests](https://github.com/Fken19/quiz-app/actions/workflows/test.yml/badge.svg)
+![Deploy Status](https://github.com/Fken19/quiz-app/actions/workflows/deploy.yml/badge.svg)
 
 ---
 
 ## 🚀 プロジェクト概要
 
-このプロジェクトは、**Django REST Framework + Next.js + PostgreSQL + Google認証** を用いた英単語クイズアプリです。生徒がGoogleアカウントでログインし、クイズ結果を記録・可視化できます。塾や教育現場での利用を想定し、管理者（教師）機能も含みます。
+**Django REST Framework + Next.js + PostgreSQL + Google OAuth** を用いた統合型英単語クイズ学習プラットフォームです。
+
+### 主な機能
+- 👨‍🎓 **生徒機能**: Google認証でログイン、レベル別クイズ、学習履歴の可視化
+- 👨‍🏫 **教師機能**: グループ管理、テスト作成・配信、学習進捗の追跡
+- 📊 **統計・分析**: 日次学習統計、正答率分析、学習傾向の把握
+- 🔐 **セキュアな認証**: Google OAuth2 + Django REST Framework Token認証
 
 ---
 
 ## 🏗️ 技術スタック
 
-- **バックエンド**: Django REST Framework + PostgreSQL
+- **バックエンド**: Django 4.2+ REST Framework + PostgreSQL 15
 - **フロントエンド**: Next.js 15 (App Router, TypeScript, TanStack Query, Tailwind CSS)
 - **認証**: Google OAuth2（NextAuth.js + Django連携）
-- **インフラ**: Docker Compose（開発用）
+- **インフラ**: Docker Compose（開発）/ GCP Cloud Run（本番）
+- **CI/CD**: GitHub Actions
+- **データベース**: PostgreSQL 15（論理削除、UUID主キー採用）
+
+---
+
+## 🔄 CI/CD パイプライン
+
+### GitHub Actions ワークフロー
+
+1. **Full Stack CI/CD Tests** (`.github/workflows/test.yml`)
+   - バックエンド: スキーマチェック、マイグレーション検証、Django system check
+   - フロントエンド: TypeScriptビルド、型チェック
+   - Docker: バックエンド・フロントエンドのDockerイメージビルド検証
+
+2. **Backend Integration Tests** (`.github/workflows/backend-test.yml`)
+   - PostgreSQL 15でのDB統合テスト
+   - マイグレーション実行とスキーマ検証
+   - モデル関係性の検証
+   - デプロイ準備チェック
+
+3. **Deploy to GCP** (`.github/workflows/deploy.yml`)
+   - バックエンド: Cloud Run へのデプロイ
+   - フロントエンド: Cloud Run へのデプロイ
+   - 自動マイグレーション実行
+
+4. **Backend Standalone Deploy** (`.github/workflows/backend-deploy.yml`)
+   - バックエンドのみの単独デプロイ
+   - テスト実行後の自動デプロイ
+
+### デプロイトリガー
+- `main` ブランチへのプッシュで自動デプロイ
+- `migration/**` ブランチでもテスト実行
+- 手動デプロイも可能（workflow_dispatch）
+
+---
+
+## 🧪 テスト戦略
+
+### 現在の実装
+- **スキーマ検証**: Django migrationの整合性チェック
+- **モデル検証**: 全モデルのインポート・関係性チェック
+- **システムチェック**: Django の `check --deploy` でセキュリティ検証
+- **Docker検証**: 本番用Dockerイメージのビルド成功確認
+
+### 今後の拡張予定
+- ユニットテスト（pytest-django）
+- APIエンドポイントの統合テスト
+- E2Eテスト（Playwright）
+- パフォーマンステスト
 
 ---
 
