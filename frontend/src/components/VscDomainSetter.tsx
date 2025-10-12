@@ -17,7 +17,7 @@ export default function VscDomainSetter() {
       domain = domain.replace(/^\"|\"$/g, '');
 
       document.documentElement.style.setProperty('--vsc-domain', domain);
-    } catch (e) {
+    } catch {
       // ignore in environments where document is not available
     }
   }, []);

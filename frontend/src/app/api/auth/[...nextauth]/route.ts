@@ -1,8 +1,6 @@
 import NextAuth, { NextAuthOptions } from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 
-const isProd = process.env.NODE_ENV === "production"
-
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
   providers: [
@@ -67,16 +65,18 @@ export const authOptions: NextAuthOptions = {
           console.log('[jwt] django handshake response candidate', { chosenBackendUrl });
 
           const text = await r.text().catch(() => '')
-          let data: any = {}
-          try { data = text ? JSON.parse(text) : {} } catch (e) { data = { raw: text } }
+          let data: unknown = {}
+          try { data = text ? JSON.parse(text) : {} } catch { data = text }
           console.log("[jwt] django handshake response", { status: r.status, body: data, rawTextSample: (typeof text === 'string' ? text.slice(0,1000) : '') })
 
-          if (r.ok) {
+          const handshakePayload = isHandshakeResponse(data) ? data : undefined;
+
+          if (r.ok && handshakePayload) {
             // Django が返すアクセストークン/ロールを保存
-            token.backendAccessToken = data.access_token
-            token.backendExpiresAt = Date.now() + (data.expires_in ?? 3600) * 1000
-            token.role = data.role ?? "user"
-            token.userId = data.user?.id
+            token.backendAccessToken = handshakePayload.access_token
+            token.backendExpiresAt = Date.now() + (handshakePayload.expires_in ?? 3600) * 1000
+            token.role = handshakePayload.role ?? "user"
+            token.userId = handshakePayload.user?.id
           } else if (r.status === 403) {
             // 本当に禁止の場合のみフラグを立てる
             token.denied = true
@@ -86,8 +86,8 @@ export const authOptions: NextAuthOptions = {
             // 追加ログ保存
             console.warn('[jwt] handshake non-ok status', { status: r.status, body: data })
           }
-        } catch (e) {
-          console.error("[jwt] django fetch error", e)
+        } catch (error) {
+          console.error("[jwt] django fetch error", error)
           token.backendError = "handshake_exception"
         }
       }
@@ -122,3 +122,14 @@ export const authOptions: NextAuthOptions = {
 
 const handler = NextAuth(authOptions)
 export { handler as GET, handler as POST }
+
+type HandshakeResponse = {
+  access_token?: string;
+  expires_in?: number;
+  role?: string;
+  user?: { id?: string };
+};
+
+function isHandshakeResponse(value: unknown): value is HandshakeResponse {
+  return typeof value === 'object' && value !== null;
+}

@@ -18,12 +18,11 @@ const LS_TOKEN_SAVED_AT = 'quizapp.backend.token.savedAt';
 
 function now() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
 
-function devLog(...args: any[]) {
+function devLog(...args: unknown[]) {
   try { console.log('[auth-client]', ...args); } catch { /* noop */ }
 }
 
 export async function getCachedSession(force = false): Promise<Session | null> {
-  const t0 = now();
   if (!force && cachedSession && (Date.now() - cachedSessionAt) < SESSION_TTL_MS) {
     return cachedSession;
   }
@@ -82,7 +81,7 @@ export async function getBackendToken(): Promise<string> {
   };
 
   const tStart = now();
-  const res = await fetch(`${API_BASE_URL}/debug/create-user/`, {
+  const res = await fetch(`${API_BASE_URL}/api/debug/create-user/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -93,8 +92,11 @@ export async function getBackendToken(): Promise<string> {
   if (!res.ok) {
     throw new Error('Django認証に失敗しました');
   }
-  const data = await res.json();
-  const token = data.access_token as string;
+  const data = (await res.json()) as { access_token?: string };
+  if (!data.access_token) {
+    throw new Error('Django認証に失敗しました');
+  }
+  const token = data.access_token;
   cachedBackendToken = token;
   cachedBackendTokenAt = Date.now();
   writeTokenToLocalStorage(token);

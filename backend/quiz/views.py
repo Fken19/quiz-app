@@ -1,2418 +1,341 @@
-from django.contrib.auth import get_user_model
-from django.db.models import Count, Avg, Q, F, Sum
-from django.db.models import Case, When, IntegerField
-from django.db.models.functions import TruncDate, TruncWeek, TruncMonth
-from django.db import transaction, connection, DatabaseError, ProgrammingError
-from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
-from django.http import JsonResponse
-from rest_framework import viewsets, status, permissions
-from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+"""新スキーマ用APIビュー"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Any
+
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.authtoken.models import Token
-from django.contrib.auth import authenticate
-from django.shortcuts import get_object_or_404
-from datetime import datetime, timedelta, date as dt_date, time as dt_time
-import uuid
-import json
-import logging
-from collections import defaultdict, deque
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.response import Response
 
-from .models import (
-    User, Word, WordTranslation, QuizSet, QuizItem, QuizResponse,
-    InviteCode, TeacherStudentLink, Group, GroupMembership, TeacherStudentAlias, AssignedTest, TestTemplate, TestTemplateItem,
-    Question, Option, QuizSession, QuizResult
-)
-from .models_new import NewQuizSession, NewQuizResult, Segment, SegmentWord, NewWord, NewWordChoice
-from .serializers import (
-    UserSerializer, WordSerializer, WordTranslationSerializer,
-    QuizSetSerializer, QuizItemSerializer, QuizResponseSerializer,
-    QuizSetListSerializer, QuizSetCreateSerializer, DashboardStatsSerializer,
-    InviteCodeSerializer, CreateInviteCodeSerializer, AcceptInviteCodeSerializer,
-    TeacherStudentLinkSerializer, GroupSerializer, GroupCreateUpdateSerializer,
-    GroupMembershipSerializer, TeacherStudentAliasSerializer, UpsertAliasSerializer,
-    SearchStudentsSerializer, GroupMembershipAttributesUpdateSerializer, GroupRankingItemSerializer, MinimalUserSerializer,
-    TestTemplateSerializer, AssignedTestSerializer,
-    QuestionSerializer as LegacyQuestionSerializer, OptionSerializer as LegacyOptionSerializer,
-    QuizSessionSerializer as LegacyQuizSessionSerializer
-)
-from .utils import is_teacher_whitelisted
-from .v2_compat import extract_numeric_level, map_session_summary
-# v2の WordViewSet をこのモジュール経由でも参照できるように再エクスポート
-try:
-    from .views_new import WordViewSet as WordViewSet  # noqa: F401
-except Exception:
-    # マイグレーション途中などで読み込みに失敗しても他のビューは動かせるようにする
-    WordViewSet = None  # type: ignore
-
-User = get_user_model()
-
-logger = logging.getLogger(__name__)
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def google_auth(request):
-    """暫定のGoogle認証エンドポイント（スタブ）。
-    本実装が未移行のため、テスト用に200を返すのみ。
-    """
-    payload = request.data if isinstance(request.data, dict) else {}
-    return Response({'status': 'ok', 'message': 'google_auth placeholder', 'received': payload})
-class QuestionViewSet(viewsets.ReadOnlyModelViewSet):
-    """既存テスト互換: 質問一覧API（question-list）"""
-    queryset = Question.objects.all().order_by('created_at')
-    serializer_class = LegacyQuestionSerializer
-    permission_classes = [permissions.AllowAny]
-
-    def get_queryset(self):
-        # 未認証は403にする（テスト互換）
-        if not self.request.user or self.request.user.is_anonymous:
-            raise PermissionDenied('Authentication required')
-        qs = Question.objects.all()
-        level = self.request.query_params.get('level')
-        segment = self.request.query_params.get('segment')
-        if level:
-            qs = qs.filter(level=level)
-        if segment:
-            qs = qs.filter(segment=segment)
-        return qs.order_by('created_at')
+from . import models, serializers
 
 
-class QuizSessionViewSet(viewsets.ModelViewSet):
-    """既存テスト互換: セッション作成/回答/完了（quizsession-*）"""
-    queryset = QuizSession.objects.all()
-    serializer_class = LegacyQuizSessionSerializer
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size_query_param = "page_size"
+    max_page_size = 200
+
+
+class BaseModelViewSet(viewsets.ModelViewSet):
+    pagination_class = StandardResultsSetPagination
+
+
+class UserViewSet(BaseModelViewSet):
+    queryset = models.User.objects.all().order_by("created_at")
+    serializer_class = serializers.UserSerializer
+
+    def get_permissions(self):
+        if self.action in {"list", "create", "destroy"}:
+            return [permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
+
+    def get_queryset(self):  # type: ignore[override]
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.is_authenticated and not user.is_staff:
+            qs = qs.filter(pk=user.pk)
+        return qs
+
+    @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="me")
+    def me(self, request):
+        serializer = self.get_serializer(request.user)
+        return Response(serializer.data)
+
+
+class UserProfileViewSet(BaseModelViewSet):
+    serializer_class = serializers.UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        return QuizSession.objects.filter(user=self.request.user).order_by('-started_at')
-
-    def create(self, request, *args, **kwargs):
-        session = QuizSession.objects.create(user=request.user)
-        serializer = self.get_serializer(session)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-    @action(detail=True, methods=['post'], url_path='answers', url_name='answers')
-    def submit_answers(self, request, pk=None):
-        session = self.get_object()
-        question_id = request.data.get('question_id')
-        chosen_option_id = request.data.get('chosen_option_id')
-        elapsed_ms = int(request.data.get('elapsed_ms', 0) or 0)
-
-        try:
-            question = Question.objects.get(id=question_id)
-            option = Option.objects.get(id=chosen_option_id, question=question)
-        except (Question.DoesNotExist, Option.DoesNotExist):
-            return Response({'error': 'Invalid question/option'}, status=status.HTTP_400_BAD_REQUEST)
-
-        result = QuizResult.objects.create(
-            session=session,
-            question=question,
-            chosen_option=option,
-            is_correct=bool(option.is_correct),
-            elapsed_ms=elapsed_ms,
-        )
-        return Response({'is_correct': result.is_correct})
-
-    @action(detail=True, methods=['post'], url_path='complete', url_name='complete')
-    def complete(self, request, pk=None):
-        session = self.get_object()
-        total_time_ms = int(request.data.get('total_time_ms', 0) or 0)
-        session.total_time_ms = total_time_ms
-        session.completed_at = timezone.now()
-        session.save(update_fields=['total_time_ms', 'completed_at'])
-        return Response({'status': 'completed'})
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def dashboard_stats(request):
-    """ダッシュボード統計データ（v2専用）"""
-    user = request.user
-    try:
-        sessions_qs = NewQuizSession.objects.filter(user=user)
-        results_qs = NewQuizResult.objects.filter(session__in=sessions_qs)
-
-        total_responses = results_qs.count()
-        correct_responses = results_qs.filter(is_correct=True).count()
-        accuracy = (correct_responses / total_responses * 100) if total_responses else 0.0
-
-        week_ago = timezone.now() - timedelta(days=7)
-        weekly_responses = results_qs.filter(created_at__gte=week_ago).count()
-
-        # 連続達成日数: 直近30日で、その日付に Result または Session があれば継続
-        current_streak = 0
-        today = timezone.now().date()
-        for i in range(30):
-            day = today - timedelta(days=i)
-            has_activity = results_qs.filter(created_at__date=day).exists() or sessions_qs.filter(started_at__date=day).exists()
-            if not has_activity:
-                if i == 0:
-                    continue
-                break
-            current_streak += 1
-
-        # 月間進歩
-        month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        month_results = results_qs.filter(created_at__gte=month_start)
-        monthly_total = month_results.count()
-        monthly_correct = month_results.filter(is_correct=True).count()
-        monthly_accuracy = (monthly_correct / monthly_total * 100) if monthly_total else 0.0
-
-        # 直近セッション（v2）
-        recent_sessions = list(sessions_qs.order_by('-started_at')[:5])
-        mapped_sessions = []
-        for s in recent_sessions:
-            mapped_sessions.append(map_session_summary(s))
-
-        content = {
-            'total_quizzes': int(total_responses),
-            'average_score': float(accuracy),
-            'current_streak': int(current_streak),
-            'weekly_activity': int(weekly_responses),
-            'level': int((total_responses // 100) + 1),
-            'monthly_progress': {
-                'total': int(monthly_total),
-                'correct': int(monthly_correct),
-                'accuracy': float(monthly_accuracy),
-            },
-            # legacy recent_quiz_sets は空配列で互換キーだけ残す
-            'recent_quiz_sets': [],
-            # v2 セッションのサマリ
-            'recent_quiz_sessions_v2': mapped_sessions,
-        }
-        return Response(content)
-    except Exception as e:
-        logger.exception('dashboard_stats failed')
-        return Response({'error': 'failed to build dashboard stats', 'detail': str(e)}, status=500)
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def debug_link_teacher_student(request):
-    """開発用: 既存の teacher email と student email を渡して TeacherStudentLink を作成する
-    body: { teacher_email: str, student_email: str }
-    既存ユーザが見つかれば link を作成して返す。既に存在する場合はそれを返す。
-    このエンドポイントは開発用のみに使う想定。
-    """
-    body = request.data or {}
-    teacher_email = body.get('teacher_email')
-    student_email = body.get('student_email')
-    if not teacher_email or not student_email:
-        return Response({'error': 'teacher_email and student_email are required'}, status=400)
-    try:
-        teacher = User.objects.filter(email=teacher_email).first()
-        student = User.objects.filter(email=student_email).first()
-        if not teacher or not student:
-            return Response({'error': 'teacher or student not found'}, status=404)
-
-        link, created = TeacherStudentLink.objects.get_or_create(teacher=teacher, student=student, defaults={'status': 'active', 'linked_at': timezone.now()})
-        if not created and link.status == 'revoked':
-            link.status = 'active'
-            link.revoked_at = None
-            link.revoked_by = None
-            link.save()
-
-        return Response({'created': created, 'link': TeacherStudentLinkSerializer(link, context={'request': request}).data})
-    except Exception as exc:
-        logger.exception('debug_link_teacher_student failed: %s', exc)
-        # 開発用: 詳細を返して原因特定をしやすくする
-        return Response({'error': 'internal error', 'exception': str(exc)}, status=500)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def learning_metrics(request):
-    """学習ダッシュボード用メトリクス（v2専用）
-    返却スキーマ（フロント依存）:
-      {
-        daily: [{ bucket, correct, incorrect, timeout, total }],
-        weekly: [...],
-        monthly: [...],
-        summary: { today|week|month|all: { total_questions, avg_latency_ms, avg_accuracy_pct, avg_score_pct } },
-        streak: int,
-        heatmap7: [{ date: 'YYYY-MM-DD', total, correct }]
-      }
-    """
-    user = request.user
-    try:
-        base = NewQuizResult.objects.filter(session__user=user)
-
-        timeout_expr = Case(
-            When(Q(is_correct=False) & (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0)), then=1),
-            default=0,
-            output_field=IntegerField()
-        )
-        incorrect_non_timeout_expr = Case(
-            When(Q(is_correct=False) & ~ (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0)), then=1),
-            default=0,
-            output_field=IntegerField()
-        )
-        correct_expr = Case(When(is_correct=True, then=1), default=0, output_field=IntegerField())
-
-        def aggregate_by(trunc_func, qs):
-            rows = (
-                qs.annotate(bucket=trunc_func('created_at'))
-                  .values('bucket')
-                  .annotate(
-                      correct=Sum(correct_expr),
-                      incorrect=Sum(incorrect_non_timeout_expr),
-                      timeout=Sum(timeout_expr),
-                      total=Count('id')
-                  )
-                  .order_by('bucket')
-            )
-            out = []
-            for r in rows:
-                b = r['bucket']
-                out.append({
-                    'bucket': b.isoformat() if hasattr(b, 'isoformat') else str(b),
-                    'correct': int(r.get('correct') or 0),
-                    'incorrect': int(r.get('incorrect') or 0),
-                    'timeout': int(r.get('timeout') or 0),
-                    'total': int(r.get('total') or 0),
-                })
-            return out
-
-        now = timezone.now()
-        daily = aggregate_by(TruncDate, base.filter(created_at__gte=now - timedelta(days=15)))
-        weekly = aggregate_by(TruncWeek, base.filter(created_at__gte=now - timedelta(weeks=8)))
-        monthly = aggregate_by(TruncMonth, base.filter(created_at__gte=now - timedelta(days=365)))
-
-        def compute_summary(qs):
-            total = qs.count()
-            correct = qs.filter(is_correct=True).count()
-            acc = float((correct / total * 100.0) if total else 0.0)
-            avg_latency = qs.filter(reaction_time_ms__gt=0).aggregate(avg=Avg('reaction_time_ms'))['avg'] or 0
-            return {
-                'total_questions': int(total),
-                'avg_latency_ms': int(round(avg_latency or 0)),
-                'avg_accuracy_pct': round(acc, 1),
-                'avg_score_pct': round(acc, 1),
-            }
-
-        week_start = now - timedelta(days=7)
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        periods = {
-            'today': base.filter(created_at__date=now.date()),
-            'week': base.filter(created_at__gte=week_start),
-            'month': base.filter(created_at__gte=month_start),
-            'all': base,
-        }
-        summary = {k: compute_summary(qs) for k, qs in periods.items()}
-
-        # Streak: 直近30日で連続アクティビティの長さ
-        streak = 0
-        for i in range(30):
-            day = now.date() - timedelta(days=i)
-            has_activity = base.filter(created_at__date=day).exists() or NewQuizSession.objects.filter(user=user, started_at__date=day).exists()
-            if not has_activity:
-                if i == 0:
-                    continue
-                break
-            streak += 1
-
-        # heatmap7: 直近7日（今日含む）の日別 total/correct
-        heatmap7 = []
-        for i in range(6, -1, -1):
-            d = now.date() - timedelta(days=i)
-            day_qs = base.filter(created_at__date=d)
-            t = day_qs.count()
-            c = day_qs.filter(is_correct=True).count()
-            heatmap7.append({'date': d.isoformat(), 'total': int(t), 'correct': int(c)})
-
-        return Response({
-            'daily': daily,
-            'weekly': weekly,
-            'monthly': monthly,
-            'summary': summary,
-            'streak': streak,
-            'heatmap7': heatmap7,
-        })
-    except (ProgrammingError, DatabaseError):
-        logger.exception('learning_metrics: DB error')
-        # セーフ値で返す
-        zero = {'total_questions': 0, 'avg_latency_ms': 0, 'avg_accuracy_pct': 0.0, 'avg_score_pct': 0.0}
-        return Response({
-            'daily': [], 'weekly': [], 'monthly': [],
-            'summary': {k: zero for k in ['today', 'week', 'month', 'all']},
-            'streak': 0,
-            'heatmap7': []
-        })
-    except Exception:
-        logger.exception('learning_metrics: unexpected error')
-        return Response({'error': 'internal server error'}, status=500)
-
-
-
-def _fetch_last_two_by_word(user_id, word_ids):
-    """DB側（PostgreSQLウィンドウ関数）で各単語ごと最新2件の回答を取得
-    戻り値: { word_id: [ {is_correct, reaction_time_ms, selected_answer}, ...最新→過去 ] }
-    """
-    result = {}
-    # short-circuit if no words
-    if not word_ids:
-        return result
-
-    # Build parameterized SQL to fetch latest 2 responses per word using window function
-    placeholders = ','.join(['%s'] * len(word_ids))
-    params = [user_id] + list(word_ids)
-
-    sql = f"""
-    WITH ranked AS (
-        SELECT
-            qi.word_id AS word_id,
-            r.is_correct AS is_correct,
-            r.reaction_time_ms AS reaction_time_ms,
-            COALESCE(wt.text, '') AS selected_answer,
-            r.created_at AS created_at,
-            ROW_NUMBER() OVER (PARTITION BY qi.word_id ORDER BY r.created_at DESC) AS rn
-        FROM quiz_quizresponse r
-        JOIN quiz_quizitem qi ON r.quiz_item_id = qi.id
-        LEFT JOIN quiz_wordtranslation wt ON r.selected_translation_id = wt.id
-        JOIN quiz_quiz_set qs ON qi.quiz_set_id = qs.id
-        WHERE qs.user_id = %s AND qi.word_id IN ({placeholders})
-    )
-    SELECT word_id, is_correct, reaction_time_ms, selected_answer, rn
-    FROM ranked
-    WHERE rn <= 2
-    ORDER BY word_id, rn
-    """
-
-    from django.db import connection
-    with connection.cursor() as cur:
-        cur.execute(sql, params)
-        rows = cur.fetchall()
-        # rows: (word_id, is_correct, reaction_time_ms, selected_answer, rn) with rn=1 latest
-        for word_id, is_correct, reaction_time_ms, selected_answer, rn in rows:
-            lst = result.setdefault(int(word_id), [])
-            lst.append({
-                'is_correct': bool(is_correct),
-                'reaction_time_ms': reaction_time_ms,
-                'selected_answer': selected_answer or ''
-            })
-    return result
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def focus_status_counts(request):
-    """
-    フォーカス学習用のステータス別件数を返す。
-    クエリ:
-      - level: int | 'all' （未指定はユーザのlevel_preference）
-    ルール（直近履歴ベース／相互排他）:
-      - 未学習: QuizResponse がまだない
-      - 苦手: 直近1回が不正解 or Timeout（Timeout=不正解 かつ 反応時間0/NULL or Unknown）
-      - 学習済み: 直近1回は正解 だが 直近2回連続正解ではない
-      - 得意: 直近2回が連続正解
-    返却: { level_counts: { level: {unseen, weak, learned, strong} }, total: {...} }
-    """
-    user = request.user
-    level_param = request.query_params.get('level')
-    levels = []
-    if level_param in (None, '', 'auto'):
-        levels = [int(getattr(user, 'level_preference', 1) or 1)]
-    elif level_param == 'all':
-        # 既存のWordのgradeから存在するレベルを拾う（上限5程度）
-        levels = list(
-            Word.objects.values_list('grade', flat=True).distinct().order_by('grade')[:50]
-        )
-    else:
-        try:
-            levels = [int(level_param)]
-        except ValueError:
-            return Response({'error': 'invalid level parameter'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # 全対象単語IDを取得（レベル別に）
-    words_by_level = {
-        lv: list(Word.objects.filter(grade=lv).values_list('id', flat=True)) for lv in levels
-    }
-
-    try:
-        # 全対象単語ID集合
-        all_word_ids = set()
-        for arr in words_by_level.values():
-            all_word_ids.update(arr)
-        if not all_word_ids:
-            return Response({'level_counts': {lv: {'unseen': 0, 'weak': 0, 'learned': 0, 'strong': 0} for lv in levels}, 'total': {'unseen': 0, 'weak': 0, 'learned': 0, 'strong': 0}})
-        # DB側で各単語ごと最新2件のみ取得
-        last_two_by_word = _fetch_last_two_by_word(user.id, list(all_word_ids))
-
-        def is_timeout(rec):
-            return (not rec['is_correct']) and (
-                rec['reaction_time_ms'] in (None, 0) or rec['selected_answer'] == 'Unknown'
-            )
-
-        def classify(word_id: int) -> str:
-            arr = last_two_by_word.get(word_id)
-            if not arr or len(arr) == 0:
-                return 'unseen'
-            # 直近1件は配列の先頭（rn=1）
-            last = arr[0]
-            if (not last['is_correct']) or is_timeout(last):
-                return 'weak'
-            # 直近1回が正解
-            if len(arr) >= 2 and arr[1]['is_correct'] and (not is_timeout(arr[1])):
-                return 'strong'
-            return 'learned'
-
-        result = {}
-        total = {'unseen': 0, 'weak': 0, 'learned': 0, 'strong': 0}
-        for lv, word_ids in words_by_level.items():
-            counts = {'unseen': 0, 'weak': 0, 'learned': 0, 'strong': 0}
-            for wid in word_ids:
-                c = classify(wid)
-                counts[c] += 1
-            result[lv] = counts
-            for k in total:
-                total[k] += counts[k]
-
-        return Response({'level_counts': result, 'total': total})
-    except (ProgrammingError, DatabaseError):
-        logger.exception('Database error in focus_status_counts')
-        safe = {'unseen': 0, 'weak': 0, 'learned': 0, 'strong': 0}
-        return Response({'level_counts': {lv: safe for lv in levels}, 'total': safe})
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def focus_start(request):
-    """
-    フォーカス学習を開始してクイズセットを生成。
-    入力(JSON): { status: 'unseen'|'weak'|'learned'|'strong', level: int|'all', count?: int=10,
-                   extend?: boolean, extend_levels?: [int], pos_filter?: [str] }
-    仕様:
-      - まず選択レベル内で指定statusの単語を抽出。
-      - 足りなければ extend=true の場合、extend_levels（指定がなければ全レベル）で補完。
-      - それでも足りなければ足りない件数を明示しつつ、そのまま開始可能。
-    戻り値: { requested: n, available: m, started: boolean, message, quiz_set?: QuizSetSerializer }
-    """
-    user = request.user
-    body = request.data or {}
-    status_key = body.get('status')
-    level_param = body.get('level')
-    target_count = int(body.get('count', 10))
-    extend = bool(body.get('extend', False))
-    extend_levels = body.get('extend_levels')
-
-    if status_key not in ('unseen', 'weak', 'learned', 'strong'):
-        return Response({'error': 'invalid status'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # レベル集合決定
-    if level_param in (None, '', 'auto'):
-        base_levels = [int(getattr(user, 'level_preference', 1) or 1)]
-    elif str(level_param) == 'all':
-        base_levels = list(Word.objects.values_list('grade', flat=True).distinct())
-    else:
-        try:
-            base_levels = [int(level_param)]
-        except ValueError:
-            return Response({'error': 'invalid level parameter'}, status=status.HTTP_400_BAD_REQUEST)
-
-    if extend and not extend_levels:
-        extend_levels = list(Word.objects.values_list('grade', flat=True).distinct())
-
-    # 対象候補単語IDを列挙する関数（focus_status_counts と同ロジック）
-    def collect_ids_for_levels(levels_list):
-        words_by_level = {
-            lv: list(Word.objects.filter(grade=lv).values_list('id', flat=True)) for lv in levels_list
-        }
-        all_ids = set()
-        for ids in words_by_level.values():
-            all_ids.update(ids)
-
-        last_two_by_word = _fetch_last_two_by_word(user.id, list(all_ids))
-
-        def is_timeout(rec):
-            return (not rec['is_correct']) and (
-                rec['reaction_time_ms'] in (None, 0) or rec['selected_answer'] == 'Unknown'
-            )
-
-        def classify(word_id: int) -> str:
-            arr = last_two_by_word.get(word_id)
-            if not arr or len(arr) == 0:
-                return 'unseen'
-            last = arr[0]
-            if (not last['is_correct']) or is_timeout(last):
-                return 'weak'
-            if len(arr) >= 2 and arr[1]['is_correct'] and (not is_timeout(arr[1])):
-                return 'strong'
-            return 'learned'
-
-        # 指定 status のものだけ集める
-        candidates = [wid for wid in all_ids if classify(wid) == status_key]
-        return candidates
-
-    try:
-        # まずベースレベルから
-        candidate_ids = collect_ids_for_levels(base_levels)
-        available_base = len(candidate_ids)
-
-        # 足りなければ拡張（extend_levelsの中で base_levels に無いものを追加）
-        if available_base < target_count and extend and extend_levels:
-            extra_levels = [lv for lv in extend_levels if lv not in base_levels]
-            extra_ids = collect_ids_for_levels(extra_levels)
-            candidate_ids = list(candidate_ids) + [wid for wid in extra_ids if wid not in candidate_ids]
-
-        available_total = len(candidate_ids)
-
-        # 候補が0の場合は開始せず件数のみ返す
-        if available_total == 0:
-            return Response({
-                'requested': target_count,
-                'available': 0,
-                'started': False,
-                'message': f"選択された条件（status={status_key}）に該当する単語がありません"
-            })
-
-        # ランダム抽出（重複なし）
-        import random
-        random.shuffle(candidate_ids)
-        selected_word_ids = candidate_ids[:target_count]
-
-        # QuizSet を作って QuizItem を単語から生成（pos_filterは現状未使用）
-        with transaction.atomic():
-            quiz_set = QuizSet.objects.create(
-                user=user,
-                grade=base_levels[0] if base_levels else 1,
-                total_questions=len(selected_word_ids),
-                pos_filter={'focus': status_key}
-            )
-
-            # 各単語に対して QuizItem を作成
-            words = list(Word.objects.filter(id__in=selected_word_ids))
-            # id の順ではなくランダム順を保ったまま order を振る
-            wid_to_word = {w.id: w for w in words}
-            for idx, wid in enumerate(selected_word_ids, start=1):
-                word = wid_to_word.get(wid)
-                if not word:
-                    continue
-                correct_translation = word.translations.filter(is_correct=True).first()
-                correct_answer = correct_translation.text if correct_translation else word.text
-                # 選択肢（正解 + ダミー）
-                all_translations = list(word.translations.all()[:4])
-                if len(all_translations) < 4:
-                    dummy_translations = WordTranslation.objects.exclude(word=word).order_by('?')[:4 - len(all_translations)]
-                    all_translations.extend(dummy_translations)
-                choices = [{"text": t.text, "is_correct": (t.word_id == word.id and t.is_correct)} for t in all_translations]
-
-                QuizItem.objects.create(
-                    quiz_set=quiz_set,
-                    word=word,
-                    question_number=idx,
-                    choices=choices,
-                    correct_answer=correct_answer,
-                )
-
-        return Response({
-            'requested': target_count,
-            'available': available_total,
-            'started': True,
-            'message': f"{min(target_count, available_total)}問で開始します（要求{target_count}問、対象{available_total}問）",
-            'quiz_set': QuizSetSerializer(quiz_set, context={'request': request}).data
-        })
-    except (ProgrammingError, DatabaseError):
-        logger.exception('Database error in focus_start (legacy)')
-        return Response({
-            'requested': int(target_count),
-            'available': 0,
-            'started': False,
-            'message': 'Legacy focus mode is not available with the new database schema. Please use /api/v2/segments and /api/v2/quiz-sessions.'
-        }, status=status.HTTP_410_GONE)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def quiz_history(request):
-    """クイズ履歴の取得（v2-only）"""
-    user = request.user
-    date_from = request.query_params.get('date_from')
-    date_to = request.query_params.get('date_to')
-    level_param = request.query_params.get('level')
-    sort_by = request.query_params.get('sort_by', 'date')
-    sort_order = request.query_params.get('sort_order', 'desc')
-
-    history_data = []
-
-    try:
-        v2_qs = NewQuizSession.objects.filter(user=user)
-        if date_from:
-            try:
-                v2_qs = v2_qs.filter(started_at__date__gte=dt_date.fromisoformat(date_from))
-            except Exception:
-                pass
-        if date_to:
-            try:
-                v2_qs = v2_qs.filter(started_at__date__lte=dt_date.fromisoformat(date_to))
-            except Exception:
-                pass
-        if level_param not in (None, ''):
-            try:
-                lv = int(level_param)
-                v2_qs = v2_qs.filter(segment__level_id__level_name__iregex=rf"(^|[^0-9]){lv}([^0-9]|$)")
-            except Exception:
-                pass
-        if sort_by == 'date':
-            v2_qs = v2_qs.order_by('-started_at' if sort_order == 'desc' else 'started_at')
-        else:
-            v2_qs = v2_qs.order_by('-started_at')
-        v2_sessions = list(v2_qs[:50])
-
-        for s in v2_sessions:
-            try:
-                res_qs = NewQuizResult.objects.filter(session=s)
-                agg = res_qs.aggregate(total=Sum('reaction_time_ms'), avg=Avg('reaction_time_ms'))
-                total_duration_ms = int(agg.get('total') or (s.total_time_ms or 0))
-                average_latency_ms = int(round(agg.get('avg') or 0))
-            except (ProgrammingError, DatabaseError):
-                total_duration_ms = int(s.total_time_ms or 0)
-                average_latency_ms = 0
-
-            try:
-                level_name = getattr(s.segment.level_id, 'level_name', '') or ''
-                import re
-                m = re.search(r'(\d+)', level_name)
-                level_val = int(m.group(1)) if m else 1
-            except Exception:
-                level_val = 1
-
-            history_data.append({
-                'quiz_set': {
-                    'id': str(s.id),
-                    'mode': 'default',
-                    'level': level_val,
-                    'segment': 1,
-                    'question_count': 10,
-                    'created_at': s.started_at.isoformat(),
-                    'started_at': s.started_at.isoformat(),
-                    'finished_at': (s.completed_at or s.started_at).isoformat(),
-                    'score': int(s.score or 0)
-                },
-                'total_questions': 10,
-                'total_score': int(s.score or 0),
-                'total_duration_ms': total_duration_ms,
-                'average_latency_ms': average_latency_ms
-            })
-    except (ProgrammingError, DatabaseError):
-        logger.exception('V2 history query failed')
-    except Exception:
-        logger.exception('Unexpected v2 history error')
-
-    # 最後に並べ替え
-    try:
-        history_data.sort(
-            key=lambda r: r['quiz_set'].get('started_at') or r['quiz_set'].get('created_at'),
-            reverse=(sort_order == 'desc')
-        )
-    except Exception:
-        pass
-
-    return Response(history_data)
-
-
-@api_view(['GET', 'POST'])
-@permission_classes([IsAuthenticated])
-def user_profile(request):
-    """
-    ユーザープロフィール情報（GET）および更新（POST: display_name, email, avatar）
-    """
-    user = request.user
-    
-    # 権限はホワイトリストで判定（role は更新しない）
-
-    # POST は更新を受け付ける
-    if request.method == 'POST':
-        display_name = request.POST.get('display_name')
-        email = request.POST.get('email')
-        organization = request.POST.get('organization')
-        bio = request.POST.get('bio')
-        avatar_file = request.FILES.get('avatar')
-
-        changed = False
-        original_avatar = user.avatar
-        
-        if display_name is not None and display_name != user.display_name:
-            user.display_name = display_name
-            changed = True
-            
-        if email is not None and email != user.email:
-            user.email = email
-            changed = True
-
-        if organization is not None and organization != getattr(user, 'organization', ''):
-            user.organization = organization
-            changed = True
-
-        if bio is not None and bio != getattr(user, 'bio', ''):
-            user.bio = bio
-            changed = True
-            
-        if avatar_file is not None:
-            # avatar ImageField が存在すれば保存
-            try:
-                user.avatar = avatar_file
-                changed = True
-            except Exception as e:
-                # avatar フィールドが無い場合はavatar_urlフィールドに保存を試みる
-                try:
-                    # 一時的にファイルを保存してURLを生成
-                    import os
-                    from django.core.files.storage import default_storage
-                    file_name = f"avatars/{user.id}_{avatar_file.name}"
-                    file_path = default_storage.save(file_name, avatar_file)
-                    user.avatar_url = request.build_absolute_uri(default_storage.url(file_path))
-                    changed = True
-                except Exception:
-                    pass
-
-        if changed:
-            user.save()
-            # 更新後のユーザー情報をシリアライザーで返す
-            return Response({
-                'success': True,
-                'message': 'プロフィールが更新されました',
-                'user': UserSerializer(user, context={'request': request}).data
-            })
-
-        return Response({
-            'success': False,
-            'message': '変更はありませんでした',
-            'user': UserSerializer(user, context={'request': request}).data
-        })
-
-    # GET は v2 ベースのプロフィール統計を返す（例外時は0で返す）
-    try:
-        v2_res = NewQuizResult.objects.filter(session__user=user)
-        total_responses = v2_res.count()
-        correct_responses = v2_res.filter(is_correct=True).count()
-
-        # お気に入りレベル（最多出現レベル番号を抽出）
-        try:
-            from django.db.models.functions import Cast
-            import re as _re
-            # level_name から数字を抽出して集計（欠損時は1）
-            lvl_counts = (
-                NewQuizSession.objects.filter(user=user)
-                .values('segment__level_id__level_name')
-                .annotate(c=Count('id'))
-                .order_by('-c')
-            )
-            def _extract_lv(name: str) -> int:
-                if not name:
-                    return 1
-                m = _re.search(r'(\d+)', name)
-                return int(m.group(1)) if m else 1
-            favorite_level = _extract_lv(lvl_counts[0]['segment__level_id__level_name']) if lvl_counts else 1
-        except Exception:
-            favorite_level = 1
-
-        avg_response_time = v2_res.filter(reaction_time_ms__gt=0).aggregate(
-            avg_time=Avg('reaction_time_ms')
-        )['avg_time'] or 0
-
-        profile_data = {
-            'user': UserSerializer(user, context={'request': request}).data,
-            'stats': {
-                'total_quizzes': QuizSet.objects.filter(user=user).defer('pos_filter', 'textbook_scope_id').count(),
-                'total_questions_answered': total_responses,
-                'accuracy_rate': (correct_responses / total_responses * 100) if total_responses > 0 else 0,
-                'favorite_level': favorite_level,
-                'average_response_time': round(avg_response_time / 1000, 2) if avg_response_time else 0,  # ms を秒に変換
-                'member_since': user.created_at,
-            },
-            'achievements': {
-                'quiz_master': total_responses >= 1000,
-                'accuracy_expert': (correct_responses / total_responses * 100) >= 90 if total_responses > 0 else False,
-                'speed_demon': (avg_response_time / 1000) <= 5.0 if avg_response_time else False,  # 5秒以下
-                'consistent_learner': True,  # 実装を簡略化
-            }
-        }
-
-        # debug: log profile_data for verification of avatar_url
-        try:
-            import logging
-            logging.getLogger('quiz.middleware').info('Profile GET response: %s', profile_data)
-        except Exception:
-            pass
-
-        return Response(profile_data)
-    except ProgrammingError:
-        logger.exception('Database schema error in user_profile GET')
-        safe = {
-            'user': UserSerializer(user, context={'request': request}).data,
-            'stats': {
-                'total_quizzes': 0,
-                'total_questions_answered': 0,
-                'accuracy_rate': 0,
-                'favorite_level': 1,
-                'average_response_time': 0,
-                'member_since': user.created_at,
-            },
-            'achievements': {
-                'quiz_master': False,
-                'accuracy_expert': False,
-                'speed_demon': False,
-                'consistent_learner': False,
-            }
-        }
-        return Response(safe)
-    except DatabaseError:
-        logger.exception('Database error in user_profile GET')
-        safe = {
-            'user': UserSerializer(user, context={'request': request}).data,
-            'stats': {
-                'total_quizzes': 0,
-                'total_questions_answered': 0,
-                'accuracy_rate': 0,
-                'favorite_level': 1,
-                'average_response_time': 0,
-                'member_since': user.created_at,
-            },
-            'achievements': {
-                'quiz_master': False,
-                'accuracy_expert': False,
-                'speed_demon': False,
-                'consistent_learner': False,
-            }
-        }
-        return Response(safe)
-    except Exception:
-        logger.exception('Unexpected error in user_profile GET')
-        return Response({'error': 'internal server error'}, status=500)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])  # 一時的にパーミッション緩和
-def quiz_result(request, quiz_set_id):
-    """クイズ結果を取得する"""
-    # まず、UUIDなら v2 の NewQuizSession を見る
-    try:
-        import uuid as _uuid
-        is_uuid = False
-        try:
-            _ = _uuid.UUID(str(quiz_set_id))
-            is_uuid = True
-        except Exception:
-            is_uuid = False
-
-        if is_uuid:
-            # v2 セッション詳細
-            session = get_object_or_404(NewQuizSession, id=quiz_set_id)
-            # 結果一覧（問題単位）
-            results = list(NewQuizResult.objects.filter(session=session).order_by('question_order'))
-
-            # items: 結果ベースで構築（item.id と response.quiz_item_id を question_order で一致）
-            import re as _re
-            try:
-                level_name = getattr(session.segment.level_id, 'level_name', '') or ''
-                m = _re.search(r'(\d+)', level_name)
-                level_val = int(m.group(1)) if m else 1
-            except Exception:
-                level_val = 1
-
-            items_data = []
-            responses_data = []
-
-            # 先に total/avg を集計
-            agg = NewQuizResult.objects.filter(session=session).aggregate(total=Sum('reaction_time_ms'), avg=Avg('reaction_time_ms'))
-            total_duration_ms = int(agg.get('total') or (session.total_time_ms or 0) or 0)
-            average_latency_ms = int(round(agg.get('avg') or 0))
-
-            for r in results:
-                # 選択肢プール（全choices）
-                choices = list(NewWordChoice.objects.filter(word_id=r.word))
-                translations = [
-                    {
-                        'id': str(c.word_choice_id),
-                        'word_id': str(r.word.word_id),
-                        'ja': c.text_ja,
-                        'is_correct': bool(c.is_correct),
-                        'context': ''
-                    } for c in choices
-                ]
-
-                # item
-                items_data.append({
-                    'id': str(r.question_order),
-                    'quiz_set_id': str(session.id),
-                    'word_id': str(r.word.word_id),
-                    'word': {
-                        'id': str(r.word.word_id),
-                        'text': r.word.text_en,
-                        'pos': getattr(r.word, 'part_of_speech', 'unknown') or 'unknown',
-                        'level': level_val,
-                        'tags': [],
-                        'description': getattr(r.word, 'explanation', None)
-                    },
-                    'translations': translations,
-                    'order_no': r.question_order
-                })
-
-                # response
-                # 回答テキスト（空の場合は選択肢の文言をフォールバック）
-                try:
-                    chosen_text_out = r.selected_text or (getattr(r.selected_choice, 'text_ja', None) or '')
-                except Exception:
-                    chosen_text_out = r.selected_text or ''
-                # それでも空で、かつ正解フラグが立っている場合は正解選択肢から補完
-                if (not chosen_text_out) and bool(getattr(r, 'is_correct', False)):
-                    try:
-                        correct = NewWordChoice.objects.filter(word_id=r.word, is_correct=True).first()
-                        if correct:
-                            chosen_text_out = correct.text_ja
-                    except Exception:
-                        pass
-
-                responses_data.append({
-                    'id': str(r.id),
-                    'quiz_item_id': str(r.question_order),
-                    'user_id': str(session.user.id) if getattr(session, 'user', None) else None,
-                    'chosen_translation_id': (str(r.selected_choice_id) if getattr(r, 'selected_choice_id', None) else None),
-                    'chosen_translation_text': chosen_text_out,
-                    'is_correct': bool(r.is_correct),
-                    'latency_ms': r.reaction_time_ms,
-                    'answered_at': r.created_at.isoformat()
-                })
-
-            total_questions = len(items_data) or 10
-            total_correct = int(session.score or 0)
-
-            result_data = {
-                'quiz_set': {
-                    'id': str(session.id),
-                    'mode': 'default',
-                    'level': level_val,
-                    'segment': 1,
-                    'question_count': total_questions,
-                    'started_at': session.started_at.isoformat(),
-                    'finished_at': (session.completed_at or session.started_at).isoformat(),
-                    'score': round((total_correct / max(total_questions, 1)) * 100)
-                },
-                'quiz_items': items_data,
-                'quiz_responses': responses_data,
-                'total_score': total_correct,
-                'total_questions': total_questions,
-                'total_duration_ms': total_duration_ms,
-                'average_latency_ms': average_latency_ms
-            }
-            return Response(result_data)
-
-        # ここまで来たらレガシー数値ID扱い
-        quiz_set = get_object_or_404(QuizSet, id=quiz_set_id)
-
-        # クイズセットに関連するクイズアイテムと回答を取得
-        quiz_items = QuizItem.objects.filter(quiz_set=quiz_set).order_by('question_number')
-        quiz_responses = QuizResponse.objects.filter(quiz_item__quiz_set=quiz_set).order_by('quiz_item__question_number')
-
-        # スコア計算
-        total_questions = quiz_items.count()
-        total_correct = quiz_responses.filter(is_correct=True).count()
-        score_percentage = round((total_correct / total_questions * 100)) if total_questions > 0 else 0
-
-        # 回答時間統計
-        total_duration_ms = quiz_responses.aggregate(total=Sum('reaction_time_ms'))['total'] or 0
-        average_latency_ms = quiz_responses.aggregate(avg=Avg('reaction_time_ms'))['avg'] or 0
-
-        # データ構築
-        items_data = []
-        responses_data = []
-        # 各クイズアイテムごとに、訳文テキスト -> 翻訳ID のマップを保持（ID復元用）
-        text_id_map_by_item = {}
-
-        for item in quiz_items:
-            translations = WordTranslation.objects.filter(word=item.word)
-            try:
-                primary = next((t for t in translations if getattr(t, 'is_correct', False)), None)
-            except Exception:
-                primary = None
-
-            items_data.append({
-                'id': str(item.id),
-                'quiz_set_id': str(quiz_set.id),
-                'word_id': str(item.word.id),
-                'word': {
-                    'id': str(item.word.id),
-                    'text': item.word.text,
-                    'pos': getattr(item.word, 'pos', 'unknown'),
-                    'level': item.word.grade,
-                    'tags': [],
-                    'description': (getattr(primary, 'context', '') or None)
-                },
-                'translations': [
-                    {
-                        'id': str(t.id),
-                        'word_id': str(t.word_id),
-                        'ja': t.text,
-                        'is_correct': bool(getattr(t, 'is_correct', False)),
-                        'context': getattr(t, 'context', '')
-                    } for t in translations
-                ],
-                'order_no': item.order
-            })
-            try:
-                text_id_map_by_item[int(item.id)] = {(t.text or ''): int(t.id) for t in translations}
-            except Exception:
-                text_id_map_by_item[int(item.id)] = {}
-
-        for response in quiz_responses:
-            # 回答テキストから翻訳IDを復元（可能な場合）
-            chosen_id = None
-            try:
-                m = text_id_map_by_item.get(int(response.quiz_item.id), {})
-                cid = m.get(response.selected_answer or '')
-                if cid is not None:
-                    chosen_id = str(cid)
-            except Exception:
-                chosen_id = None
-
-            responses_data.append({
-                'id': str(response.id),
-                'quiz_item_id': str(response.quiz_item.id),
-                'user_id': str(response.user.id) if getattr(response, 'user', None) else None,
-                'chosen_translation_id': chosen_id,
-                'chosen_translation_text': response.selected_answer,
-                'is_correct': response.is_correct,
-                'latency_ms': response.reaction_time_ms,
-                'answered_at': response.created_at.isoformat()
-            })
-
-        result_data = {
-            'quiz_set': {
-                'id': str(quiz_set.id),
-                'mode': quiz_set.mode,
-                'level': quiz_set.level,
-                'segment': quiz_set.segment,
-                'question_count': quiz_set.question_count,
-                'started_at': quiz_set.started_at.isoformat() if quiz_set.started_at else quiz_set.created_at.isoformat(),
-                'finished_at': quiz_set.finished_at.isoformat() if quiz_set.finished_at else timezone.now().isoformat(),
-                'score': score_percentage
-            },
-            'quiz_items': items_data,
-            'quiz_responses': responses_data,
-            'total_score': total_correct,
-            'total_questions': total_questions,
-            'total_duration_ms': total_duration_ms,
-            'average_latency_ms': round(average_latency_ms)
-        }
-
-        return Response(result_data)
-    except Exception as e:
-        logger.error(f'Error fetching quiz result: {str(e)}')
-        return Response(
-            {'error': f'クイズ結果の取得に失敗しました: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def generate_quiz_set(request):
-    """新しいクイズセットを生成"""
-    # フロントからは { level, segment, mode, question_count } を期待
-    level = int(request.data.get('level', 1))
-    segment = int(request.data.get('segment', 1))
-    mode = request.data.get('mode', 'default')
-    question_count = min(int(request.data.get('question_count', 10)), 50)  # 上限50問
-
-    # デバッグログ: 受け取ったリクエストデータ
-    try:
-        print(f"[generate_quiz_set] request.data={request.data}")
-    except Exception as e:
-        print(f"[generate_quiz_set] failed to print request.data: {e}")
-
-    # 旧エンドポイントは新スキーマでは廃止。常に案内のみ返す（500防止）。
-    return Response({
-        'error': 'This endpoint is deprecated with the new database schema.',
-        'message': 'Use the v2 API to start quizzes. See /api/v2/segments and /api/v2/quiz-sessions.',
-        'how_to': {
-            'list_segments': '/api/v2/segments/?level_id=<level_uuid>',
-            'get_segment_quiz': '/api/v2/segments/<segment_uuid>/quiz/',
-            'create_session': '/api/v2/quiz-sessions/',
-            'submit_results': '/api/v2/quiz-sessions/<session_uuid>/submit_results/'
-        }
-    }, status=status.HTTP_410_GONE)
-
-
-import json
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def google_auth_simple(request):
-    """シンプルなGoogle認証テスト（DRF使わない）"""
-    try:
-        data = json.loads(request.body)
-        id_token = data.get('id_token')
-        
-        if not id_token:
-            return JsonResponse({'error': 'id_token required'}, status=400)
-            
-        # ダミーレスポンス（テスト用）
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Google auth endpoint is working',
-            'access_token': 'dummy_token_123'
-        })
-        
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=400)
-
-
-# 講師権限チェック用デコレータ
-class IsTeacherPermission(permissions.BasePermission):
-    """講師権限チェック
-    ルール: 認証済み かつ user.is_teacher かつ メールがホワイトリストに登録されていること。
-    ホワイトリストは DB の TeacherWhitelist 優先、無ければ環境変数 TEACHER_WHITELIST を参照。
-    """
-    def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        # 開発中の利便性: 明示的に role が 'teacher' の場合は許可する
-        # 本番では TeacherWhitelist による判定が主眼だが、デバッグで作成したユーザーが
-        # role='teacher' として動かせるようにしておく。（後で削除/厳格化してください）
-        try:
-            if getattr(request.user, 'role', None) == 'teacher':
-                logger.debug(f"IsTeacherPermission: allowed by role for {getattr(request.user, 'email', None)}")
-                return True
-        except Exception:
-            pass
-
-        # ホワイトリスト判定
-        try:
-            return bool(getattr(request.user, 'is_teacher', False)) and is_teacher_whitelisted(getattr(request.user, 'email', ''))
-        except Exception:
-            logger.exception('IsTeacherPermission whitelist check failed')
-            return False
-
-
-# 講師用API Views
-class TeacherInviteCodeViewSet(viewsets.ModelViewSet):
-    """講師用招待コード管理API"""
-    serializer_class = InviteCodeSerializer
-    permission_classes = [IsTeacherPermission]
-    
-    def get_queryset(self):
-        return InviteCode.objects.filter(issued_by=self.request.user).order_by('-issued_at')
-    
-    def create(self, request):
-        """招待コード発行"""
-        serializer = CreateInviteCodeSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            codes = serializer.save()
-            return Response({
-                'codes': InviteCodeSerializer(codes, many=True).data,
-                'message': f'{len(codes)}件の招待コードを発行しました'
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    @action(detail=True, methods=['post'])
-    def revoke(self, request, pk=None):
-        """招待コード失効"""
-        invite_code = self.get_object()
-        invite_code.revoked = True
-        invite_code.revoked_at = timezone.now()
-        invite_code.save()
-        
-        return Response({
-            'message': f'招待コード {invite_code.code} を失効しました'
-        })
-
-
-class TeacherStudentViewSet(viewsets.ReadOnlyModelViewSet):
-    """講師用生徒管理API"""
-    serializer_class = TeacherStudentLinkSerializer
-    permission_classes = [IsTeacherPermission]
-    
-    def get_queryset(self):
-        return TeacherStudentLink.objects.filter(
-            teacher=self.request.user
-        ).exclude(status='revoked').order_by('-linked_at')
-    
-    def list(self, request):
-        """生徒一覧（status でフィルタ可能）"""
-        try:
-            queryset = self.get_queryset()
-
-            # status パラメータでフィルタ
-            status_filter = request.query_params.get('status')
-            if status_filter in ['pending', 'active']:
-                queryset = queryset.filter(status=status_filter)
-
-            serializer = self.get_serializer(queryset, many=True)
-            return Response(serializer.data)
-        except Exception as exc:
-            logger.exception("TeacherStudentViewSet.list failed: %s", exc)
-            return Response({
-                'detail': 'サーバーでエラーが発生しました。後でもう一度お試しください。'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    @action(detail=True, methods=['delete'])
-    def revoke(self, request, pk=None):
-        """生徒との紐付け解除"""
-        link = self.get_object()
-        link.status = 'revoked'
-        link.revoked_at = timezone.now()
-        link.revoked_by = request.user
-        link.save()
-        
-        return Response({
-            'message': f'{link.student.display_name or link.student.email} との紐付けを解除しました'
-        })
-
-    @action(detail=True, methods=['get'])
-    def detail(self, request, pk=None):
-        """講師視点の生徒詳細（エイリアス・所属グループ・基本統計）"""
-        link = self.get_object()
-        student = link.student
-        # 所属グループ（この講師がownerのもの限定）
-        groups = Group.objects.filter(owner_admin=request.user, memberships__user=student).order_by('name')
-        # エイリアス
-        alias = TeacherStudentAlias.objects.filter(teacher=request.user, student=student).first()
-        # 統計
-        total = QuizResponse.objects.filter(quiz_set__user=student).count()
-        correct = QuizResponse.objects.filter(quiz_set__user=student, is_correct=True).count()
-        acc = (correct / total * 100) if total > 0 else 0
-        return Response({
-            'student': UserSerializer(student, context={'request': request}).data,
-            'alias': TeacherStudentAliasSerializer(alias, context={'request': request}).data if alias else None,
-            'groups': GroupSerializer(groups, many=True, context={'request': request}).data,
-            'stats': {
-                'total_answers': total,
-                'correct_answers': correct,
-                'accuracy_pct': round(acc, 2),
-            }
-        })
-
-
-class TeacherGroupViewSet(viewsets.ModelViewSet):
-    """講師用グループ管理API
-    - list/create/update/delete: 自分のグループのみ
-    - members: メンバー一覧
-    - add_members: 生徒検索 + 一括追加
-    - remove_member: メンバー削除
-    """
-    permission_classes = [IsTeacherPermission]
-
-    def get_queryset(self):
-        return Group.objects.filter(owner_admin=self.request.user).order_by('-created_at')
-
-    def get_serializer_class(self):
-        if self.action in ['create', 'update', 'partial_update']:
-            return GroupCreateUpdateSerializer
-        return GroupSerializer
+    def get_queryset(self):  # type: ignore[override]
+        return models.UserProfile.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(owner_admin=self.request.user)
-
-    def create(self, request, *args, **kwargs):
-        """作成時はフルのGroupSerializerで返す（id/owner_admin/created_at含む）"""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        group = serializer.save(owner_admin=request.user)
-        # 返却は詳細用
-        out = GroupSerializer(group, context=self.get_serializer_context())
-        headers = self.get_success_headers(out.data)
-        return Response(out.data, status=status.HTTP_201_CREATED, headers=headers)
-
-    def update(self, request, *args, **kwargs):
-        """更新時もフルのGroupSerializerで返す"""
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        group = serializer.save()
-        out = GroupSerializer(group, context=self.get_serializer_context())
-        return Response(out.data)
-
-    def partial_update(self, request, *args, **kwargs):
-        kwargs['partial'] = True
-        return self.update(request, *args, **kwargs)
-
-    @action(detail=True, methods=['get'])
-    def members(self, request, pk=None):
-        group = self.get_object()
-        qs = GroupMembership.objects.filter(group=group).select_related('user')
-        # filters
-        attr1 = request.query_params.get('attr1')
-        attr2 = request.query_params.get('attr2')
-        q = request.query_params.get('q')
-        if attr1:
-            qs = qs.filter(attr1__icontains=attr1)
-        if attr2:
-            qs = qs.filter(attr2__icontains=attr2)
-        if q:
-            # display_name or username; alias name support via subquery list
-            alias_ids = list(
-                TeacherStudentAlias.objects.filter(teacher=request.user, alias_name__icontains=q)
-                .values_list('student_id', flat=True)
-            )
-            qs = qs.filter(Q(user__display_name__icontains=q) | Q(user__username__icontains=q) | Q(user_id__in=alias_ids))
-
-        # ordering
-        order = request.query_params.get('order', 'created_at')  # 'created_at' | 'name'
-        if order == 'name':
-            # Python-side sort by effective_name for simplicity
-            memberships = list(qs)
-            def eff_name(m):
-                alias = TeacherStudentAlias.objects.filter(teacher=request.user, student=m.user).first()
-                return (alias.alias_name if alias else None) or (m.user.display_name or '')
-            memberships.sort(key=eff_name)
-        else:
-            memberships = list(qs.order_by('created_at'))
-
-        data = GroupMembershipSerializer(memberships, many=True, context={'request': request}).data
-        return Response({'members': data, 'count': len(data)})
-
-    @action(detail=True, methods=['post'], url_path=r'members/(?P<member_id>[^/.]+)/attributes')
-    def update_member_attributes(self, request, pk=None, member_id=None):
-        """グループ内の管理用属性（attr1, attr2）を更新"""
-        group = self.get_object()
-        membership = get_object_or_404(GroupMembership, group=group, id=member_id)
-        ser = GroupMembershipAttributesUpdateSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        changed = False
-        for field in ['attr1', 'attr2']:
-            if field in ser.validated_data:
-                setattr(membership, field, ser.validated_data[field])
-                changed = True
-        if changed:
-            membership.save(update_fields=['attr1', 'attr2'])
-        return Response(GroupMembershipSerializer(membership, context={'request': request}).data)
-
-    @action(detail=True, methods=['post'])
-    def add_members(self, request, pk=None):
-        """生徒検索（絞り込み/フリーワード）+ 一括追加
-        body: { q?: string, status?: 'active'|'pending'|'all', student_ids?: UUID[] }
-        - student_ids があればそれを優先して追加
-        - なければ q/status に基づいて候補を返し、confirm フラグで追加（2段階）
-        """
-        group = self.get_object()
-        body = request.data or {}
-
-        # 明示ID指定での一括追加
-        explicit_ids = body.get('student_ids') or []
-        created = 0
-        skipped = 0
-        created_items = []
-        if explicit_ids:
-            students = list(User.objects.filter(id__in=explicit_ids))
-            existing = set(
-                GroupMembership.objects.filter(group=group, user__in=students).values_list('user_id', flat=True)
-            )
-            for stu in students:
-                if stu.id in existing:
-                    skipped += 1
-                    continue
-                gm = GroupMembership.objects.create(group=group, user=stu, role='student')
-                created += 1
-                created_items.append(gm)
-            return Response({
-                'created': created,
-                'skipped': skipped,
-                'members': GroupMembershipSerializer(created_items, many=True, context={'request': request}).data
-            })
-
-        # 検索用パラメータのバリデーション
-        ser = SearchStudentsSerializer(data=body)
-        ser.is_valid(raise_exception=True)
-        q = ser.validated_data.get('q')
-        status_filter = ser.validated_data.get('status')
-
-        # まず講師と紐付いた生徒から検索（pending/active）
-        links = TeacherStudentLink.objects.filter(teacher=request.user)
-        if status_filter == 'active':
-            links = links.filter(status='active')
-        elif status_filter == 'pending':
-            links = links.filter(status='pending')
-        else:
-            links = links.exclude(status='revoked')
-
-        student_qs = User.objects.filter(id__in=links.values('student_id'))
-        if q:
-            q_icontains = Q(email__icontains=q) | Q(display_name__icontains=q) | Q(username__icontains=q)
-            student_qs = student_qs.filter(q_icontains)
-
-        student_qs = student_qs.order_by('display_name', 'email')[:100]
-
-        # 既にグループにいる生徒を除いた候補
-        existing_ids = set(GroupMembership.objects.filter(group=group).values_list('user_id', flat=True))
-        candidates = [s for s in student_qs if s.id not in existing_ids]
-
-        return Response({
-            'candidates': MinimalUserSerializer(candidates, many=True, context={'request': request}).data,
-            'count': len(candidates)
-        })
-
-    @action(detail=True, methods=['delete'], url_path='remove-member/(?P<member_id>[^/.]+)')
-    def remove_member(self, request, pk=None, member_id=None):
-        group = self.get_object()
-        membership = get_object_or_404(GroupMembership, group=group, id=member_id)
-        membership.delete()
-        return Response({'message': 'メンバーを削除しました'})
-
-    # CSVエクスポート機能は要望により削除しました
-
-    @action(detail=True, methods=['get'], url_path='rankings')
-    def rankings(self, request, pk=None):
-        """グループ内ランキング（日/週/月・正答率や回答数など切り替え）
-        クエリ: ?period=daily|weekly|monthly&metric=answers|accuracy
-        """
-        group = self.get_object()
-        period = request.query_params.get('period', 'weekly')
-        metric = request.query_params.get('metric', 'answers')
-        if period not in ('daily', 'weekly', 'monthly'):
-            period = 'weekly'
-        if metric not in ('answers', 'accuracy'):
-            metric = 'answers'
-
-        # 期間開始
-        now = timezone.now()
-        if period == 'daily':
-            start = now - timedelta(days=1)
-        elif period == 'weekly':
-            start = now - timedelta(days=7)
-        else:
-            start = now - timedelta(days=30)
-
-        user_ids = list(GroupMembership.objects.filter(group=group).values_list('user_id', flat=True))
-        base_qs = QuizResponse.objects.filter(quiz_set__user_id__in=user_ids, created_at__gte=start)
-
-        # 集計
-        rows = []
-        if metric == 'answers':
-            counts = base_qs.values('user_id').annotate(value=Count('id')).order_by('-value')
-            lookup = {c['user_id']: c['value'] for c in counts}
-            for uid in user_ids:
-                rows.append({'user_id': uid, 'value': float(lookup.get(uid, 0))})
-        else:  # accuracy
-            totals = base_qs.values('user_id').annotate(total=Count('id'))
-            corrects = base_qs.filter(is_correct=True).values('user_id').annotate(corr=Count('id'))
-            total_map = {t['user_id']: t['total'] for t in totals}
-            corr_map = {c['user_id']: c['corr'] for c in corrects}
-            for uid in user_ids:
-                t = total_map.get(uid, 0)
-                c = corr_map.get(uid, 0)
-                rows.append({'user_id': uid, 'value': float((c / t * 100) if t else 0.0)})
-
-        # ユーザー最小情報を付与
-        users = {u.id: u for u in User.objects.filter(id__in=[r['user_id'] for r in rows])}
-        out = []
-        for r in sorted(rows, key=lambda x: x['value'], reverse=True):
-            u = users.get(r['user_id'])
-            if not u:
-                continue
-            out.append({
-                'user': MinimalUserSerializer(u, context={'request': request}).data,
-                'value': r['value'],
-                'period': period,
-                'metric': metric,
-            })
-        return Response({'rankings': out, 'count': len(out)})
-
-    @action(detail=True, methods=['get'], url_path='dashboard')
-    def dashboard(self, request, pk=None):
-        """グループダッシュボード（v2集計/分布/上位者）
-        クエリ:
-          - days: 何日分を見るか（デフォルト30）
-          - min_answers_for_accuracy: 上位正答率ランキングに必要な最小回答数（デフォルト20）
-        """
-        group = self.get_object()
-        days = int(request.query_params.get('days', 30) or 30)
-        min_ans = int(request.query_params.get('min_answers_for_accuracy', 20) or 20)
-        now = timezone.now()
-        start = now - timedelta(days=days)
-
-        user_ids = list(GroupMembership.objects.filter(group=group).values_list('user_id', flat=True))
-        base_qs = NewQuizResult.objects.filter(session__user_id__in=user_ids, created_at__gte=start)
-
-        # 総計
-        total = base_qs.count()
-        correct = base_qs.filter(is_correct=True).count()
-        acc_pct = float((correct / total * 100) if total else 0.0)
-
-        # 日別
-        daily_rows = (
-            base_qs.annotate(d=TruncDate('created_at'))
-                   .values('d')
-                   .annotate(total=Count('id'), correct=Count('id', filter=Q(is_correct=True)))
-                   .order_by('d')
-        )
-        daily = [{'date': r['d'].isoformat(), 'total': r['total'], 'correct': r['correct']} for r in daily_rows]
-
-        # 生徒別 集計
-        per_user_totals = (
-            base_qs.values('session__user_id')
-                  .annotate(total=Count('id'), correct=Count('id', filter=Q(is_correct=True)))
-        )
-        # 分布（回答数）
-        def bucket_answers(n):
-            edges = [0, 10, 30, 50, 100, 200, 500, 1000]
-            labels = ['0-9', '10-29', '30-49', '50-99', '100-199', '200-499', '500-999', '1000+']
-            for i, e in enumerate(edges):
-                if i == len(edges) - 1:
-                    return labels[i]
-                nxt = edges[i+1]
-                if n < nxt:
-                    return labels[i]
-            return labels[-1]
-
-        answers_hist = {}
-        acc_hist = { '0-49': 0, '50-69': 0, '70-84': 0, '85-94': 0, '95-100': 0 }
-        top_learners_rows = []
-        top_accuracy_rows = []
-
-        uid_to_stats = {}
-        for r in per_user_totals:
-            uid = r['session__user_id']
-            t = int(r['total'] or 0)
-            c = int(r['correct'] or 0)
-            uid_to_stats[uid] = {'total': t, 'correct': c}
-            # answers hist
-            label = bucket_answers(t)
-            answers_hist[label] = answers_hist.get(label, 0) + 1
-            # accuracy hist
-            a = (c / t * 100) if t else 0.0
-            if a < 50:
-                acc_hist['0-49'] += 1
-            elif a < 70:
-                acc_hist['50-69'] += 1
-            elif a < 85:
-                acc_hist['70-84'] += 1
-            elif a < 95:
-                acc_hist['85-94'] += 1
-            else:
-                acc_hist['95-100'] += 1
-
-        # 上位者
-        for uid, st in uid_to_stats.items():
-            top_learners_rows.append({'user_id': uid, 'value': float(st['total'])})
-            if st['total'] >= min_ans:
-                a = float(st['correct'] / st['total'] * 100.0) if st['total'] else 0.0
-                top_accuracy_rows.append({'user_id': uid, 'value': a, 'total_answers': st['total']})
-
-        users = {u.id: u for u in User.objects.filter(id__in=list(uid_to_stats.keys()))}
-        def attach_users(rows):
-            out = []
-            for r in rows:
-                u = users.get(r['user_id'])
-                if not u:
-                    continue
-                ent = {
-                    'user': MinimalUserSerializer(u, context={'request': request}).data,
-                    'value': r['value']
-                }
-                if 'total_answers' in r:
-                    ent['total_answers'] = r['total_answers']
-                out.append(ent)
-            return out
-
-        top_learners = attach_users(sorted(top_learners_rows, key=lambda x: x['value'], reverse=True)[:5])
-        top_accuracy = attach_users(sorted(top_accuracy_rows, key=lambda x: x['value'], reverse=True)[:5])
-
-        # 属性の内訳（attr1/attr2）
-        mem_qs = GroupMembership.objects.filter(group=group)
-        attr1_counts = (
-            mem_qs.values('attr1').annotate(count=Count('id')).order_by('-count')
-        )
-        attr2_counts = (
-            mem_qs.values('attr2').annotate(count=Count('id')).order_by('-count')
-        )
-
-        def hist_to_list(dct, order_labels=None):
-            if order_labels:
-                return [{'bin': k, 'count': int(dct.get(k, 0))} for k in order_labels]
-            return [{'bin': k, 'count': int(v)} for k, v in dct.items()]
-
-        return Response({
-            'members_count': len(user_ids),
-            'totals': {
-                'total_answers': total,
-                'correct_answers': correct,
-                'accuracy_pct': round(acc_pct, 2),
-                'period_days': days,
-            },
-            'daily': daily,
-            'distributions': {
-                'answers_per_student': hist_to_list(answers_hist, ['0-9','10-29','30-49','50-99','100-199','200-499','500-999','1000+']),
-                'accuracy_per_student': hist_to_list(acc_hist, ['0-49','50-69','70-84','85-94','95-100']),
-            },
-            'top_learners': top_learners,
-            'top_accuracy': top_accuracy,
-            'attr1_breakdown': [{'value': (r['attr1'] or ''), 'count': r['count']} for r in attr1_counts],
-            'attr2_breakdown': [{'value': (r['attr2'] or ''), 'count': r['count']} for r in attr2_counts],
-        })
-
-    @action(detail=True, methods=['post'])
-    def assign_test(self, request, pk=None):
-        """グループにテスト（AssignedTest）を配信"""
-        group = self.get_object()
-        body = request.data or {}
-        title = body.get('title') or f"Assignment - {timezone.now().strftime('%Y-%m-%d %H:%M')}"
-        due_at_raw = (request.data or {}).get('due_at')
-        due_at = None
-        if due_at_raw:
-            try:
-                due_at = timezone.datetime.fromisoformat(due_at_raw)
-                if timezone.is_naive(due_at):
-                    due_at = timezone.make_aware(due_at, timezone.get_current_timezone())
-            except Exception:
-                pass
-        template_id = body.get('template_id') or body.get('template')
-        timer_seconds = body.get('timer_seconds')
-        template_obj = None
-        if template_id:
-            try:
-                template_obj = TestTemplate.objects.get(id=template_id, owner=request.user)
-            except TestTemplate.DoesNotExist:
-                return Response({'error': 'テンプレートが見つかりません'}, status=status.HTTP_400_BAD_REQUEST)
-        test = AssignedTest.objects.create(group=group, title=title, due_at=due_at, template=template_obj, timer_seconds=timer_seconds)
-        return Response({'message': 'テストを配信しました', 'test': AssignedTestSerializer(test, context={'request': request}).data}, status=status.HTTP_201_CREATED)
-
-    @action(detail=True, methods=['get'])
-    def tests(self, request, pk=None):
-        group = self.get_object()
-        tests = group.assigned_tests.order_by('-created_at')
-        out = [
-            {
-                'id': str(t.id), 'title': t.title,
-                'due_at': t.due_at.isoformat() if t.due_at else None,
-                'created_at': t.created_at.isoformat(),
-            } for t in tests
-        ]
-        return Response({'tests': out, 'count': len(out)})
-
-
-class TeacherAliasViewSet(viewsets.GenericViewSet):
-    """講師用 生徒エイリアス設定API"""
-    permission_classes = [IsTeacherPermission]
-
-    def list(self, request):
-        aliases = TeacherStudentAlias.objects.filter(teacher=request.user).select_related('student').order_by('created_at')
-        return Response(TeacherStudentAliasSerializer(aliases, many=True, context={'request': request}).data)
-
-    @action(detail=False, methods=['post'])
-    def upsert(self, request):
-        ser = UpsertAliasSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        student_id = ser.validated_data['student_id']
-        alias_name = ser.validated_data['alias_name']
-        note = ser.validated_data.get('note', '')
-
-        # 教師と生徒の関係チェック（active/pending可）
-        link = TeacherStudentLink.objects.filter(teacher=request.user, student_id=student_id).exclude(status='revoked').first()
-        if not link:
-            return Response({'error': 'この生徒はあなたの管理対象ではありません'}, status=status.HTTP_400_BAD_REQUEST)
-
-        alias, created = TeacherStudentAlias.objects.update_or_create(
-            teacher=request.user,
-            student_id=student_id,
-            defaults={'alias_name': alias_name, 'note': note}
-        )
-        return Response({
-            'created': created,
-            'alias': TeacherStudentAliasSerializer(alias, context={'request': request}).data
-        })
-
-    @action(detail=False, methods=['delete'], url_path=r'(?P<student_id>[0-9a-fA-F-]{32,36})')
-    def delete(self, request, student_id=None):
-        obj = TeacherStudentAlias.objects.filter(teacher=request.user, student_id=student_id).first()
-        if not obj:
-            return Response({'message': 'エイリアスは存在しません'}, status=status.HTTP_404_NOT_FOUND)
-        obj.delete()
-        return Response({'message': 'エイリアスを削除しました'})
-
-
-class TeacherTestTemplateViewSet(viewsets.ModelViewSet):
-    """講師用 テストテンプレート CRUD"""
-    serializer_class = TestTemplateSerializer
-    permission_classes = [IsTeacherPermission]
-
-    def get_queryset(self):
-        return TestTemplate.objects.filter(owner=self.request.user).order_by('-updated_at')
-
-    def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
-
-
-class TeacherStudentDetailViewSet(viewsets.GenericViewSet):
-    """追加: 学生詳細（student_id指定）"""
-    permission_classes = [IsTeacherPermission]
-
-    @action(detail=False, methods=['get'], url_path=r'by-student/(?P<student_id>[^/.]+)/detail')
-    def by_student_detail(self, request, student_id=None):
-        """講師視点の生徒詳細（student_id基準）"""
-        # 紐付け確認
-        link = TeacherStudentLink.objects.filter(teacher=request.user, student_id=student_id).exclude(status='revoked').first()
-        if not link:
-            return Response({'error': 'この生徒はあなたの管理対象ではありません'}, status=status.HTTP_403_FORBIDDEN)
-        student = link.student
-        groups = Group.objects.filter(owner_admin=request.user, memberships__user=student).order_by('name')
-        alias = TeacherStudentAlias.objects.filter(teacher=request.user, student=student).first()
-
-        # 直近30日の統計（v2専用）
-        now = timezone.now()
-        start = now - timedelta(days=30)
-        v2_qs = NewQuizResult.objects.filter(session__user=student, created_at__gte=start)
-        total = v2_qs.count()
-        correct = v2_qs.filter(is_correct=True).count()
-        acc = float((correct / total * 100) if total else 0.0)
-        # 日別（v2）
-        daily_rows = (
-            v2_qs.annotate(d=TruncDate('created_at')).values('d')
-                 .annotate(total=Count('id'), correct=Count('id', filter=Q(is_correct=True)))
-                 .order_by('d')
-        )
-        daily = [{'date': (r['d'].isoformat() if hasattr(r['d'], 'isoformat') else str(r['d'])), 'total': int(r['total'] or 0), 'correct': int(r['correct'] or 0)} for r in daily_rows]
-
-        return Response({
-            'student': MinimalUserSerializer(student, context={'request': request}).data,
-            'alias': TeacherStudentAliasSerializer(alias, context={'request': request}).data if alias else None,
-            'groups': GroupSerializer(groups, many=True, context={'request': request}).data,
-            'stats_30d': {
-                'total_answers': total,
-                'correct_answers': correct,
-                'accuracy_pct': round(acc, 2)
-            },
-            'daily': daily,
-        })
-
-    @action(detail=False, methods=['get'], url_path=r'by-student/(?P<student_id>[^/.]+)/metrics')
-    def by_student_metrics(self, request, student_id=None):
-        """講師向け: 生徒の学習メトリクス（日/週/月の集計とサマリー）v2専用"""
-        link = TeacherStudentLink.objects.filter(teacher=request.user, student_id=student_id).exclude(status='revoked').first()
-        if not link:
-            return Response({'error': 'この生徒はあなたの管理対象ではありません'}, status=status.HTTP_403_FORBIDDEN)
-        student = link.student
-        now = timezone.now()
-        v2_base = NewQuizResult.objects.filter(session__user=student)
-
-        v2_timeout_expr = Case(
-            When(Q(is_correct=False) & (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0)), then=1),
-            default=0,
-            output_field=IntegerField()
-        )
-        v2_incorrect_non_timeout_expr = Case(
-            When(Q(is_correct=False) & ~ (Q(reaction_time_ms__isnull=True) | Q(reaction_time_ms=0)), then=1),
-            default=0,
-            output_field=IntegerField()
-        )
-        v2_correct_expr = Case(
-            When(is_correct=True, then=1),
-            default=0,
-            output_field=IntegerField()
-        )
-
-        def aggregate_by(trunc_func, qs):
-            grouped = (
-                qs.annotate(bucket=trunc_func('created_at'))
-                  .values('bucket')
-                  .annotate(
-                      correct=Sum(v2_correct_expr),
-                      incorrect=Sum(v2_incorrect_non_timeout_expr),
-                      timeout=Sum(v2_timeout_expr),
-                      total=Count('id')
-                  )
-                  .order_by('bucket')
-            )
-            out = []
-            for row in grouped:
-                b = row['bucket']
-                out.append({
-                    'bucket': b.isoformat() if hasattr(b, 'isoformat') else str(b),
-                    'correct': int(row.get('correct') or 0),
-                    'incorrect': int(row.get('incorrect') or 0),
-                    'timeout': int(row.get('timeout') or 0),
-                    'total': int(row.get('total') or 0),
-                })
-            return out
-
-        last_15_days = now - timedelta(days=15)
-        last_8_weeks = now - timedelta(weeks=8)
-        last_12_months = now - timedelta(days=365)
-
-        daily = aggregate_by(TruncDate, v2_base.filter(created_at__gte=last_15_days))
-        weekly = aggregate_by(TruncWeek, v2_base.filter(created_at__gte=last_8_weeks))
-        monthly = aggregate_by(TruncMonth, v2_base.filter(created_at__gte=last_12_months))
-
-        def compute_summary(qs):
-            total = qs.count()
-            correct = qs.filter(is_correct=True).count()
-            acc = float((correct / total * 100.0) if total else 0.0)
-            avg_latency = qs.filter(reaction_time_ms__gt=0).aggregate(avg=Avg('reaction_time_ms'))['avg'] or 0
-            return {
-                'total_questions': int(total),
-                'avg_latency_ms': int(round(avg_latency or 0)),
-                'avg_accuracy_pct': round(acc, 1),
-                'avg_score_pct': round(acc, 1),
-            }
-
-        week_start = now - timedelta(days=7)
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        periods = {
-            'today': v2_base.filter(created_at__date=now.date()),
-            'week': v2_base.filter(created_at__gte=week_start),
-            'month': v2_base.filter(created_at__gte=month_start),
-            'all': v2_base,
-        }
-        summary = {k: compute_summary(qs) for k, qs in periods.items()}
-
-        return Response({
-            'daily': daily,
-            'weekly': weekly,
-            'monthly': monthly,
-            'summary': summary,
-        })
-    @action(detail=False, methods=['get'], url_path=r'by-student/(?P<student_id>[^/.]+)/history')
-    def by_student_history(self, request, student_id=None):
-        """講師向け: 生徒のクイズ履歴（ページング/フィルタ対応）
-        クエリ: page(1..), page_size(<=50), level(optional int), since, until (ISO日付), order(created_at_asc|created_at_desc)
-        返却: { results: [...], page, page_size, total }
-        各要素: { quiz_set: {id, level, created_at, question_count, name}, total_questions, total_correct, score_pct, total_duration_ms, average_latency_ms }
-        """
-        link = TeacherStudentLink.objects.filter(teacher=request.user, student_id=student_id).exclude(status='revoked').first()
-        if not link:
-            return Response({'error': 'この生徒はあなたの管理対象ではありません'}, status=status.HTTP_403_FORBIDDEN)
-        student = link.student
-
-        # v2-first: まず v2 セッションで履歴を構築し、必要なら legacy にフォールバック
-        try:
-            # ページング
-            try:
-                page = max(1, int(request.query_params.get('page', 1)))
-            except Exception:
-                page = 1
-            try:
-                page_size = int(request.query_params.get('page_size', 10))
-                if page_size <= 0:
-                    page_size = 10
-                if page_size > 50:
-                    page_size = 50
-            except Exception:
-                page_size = 10
-
-            # フィルタ
-            level = request.query_params.get('level')
-            since = request.query_params.get('since')
-            until = request.query_params.get('until')
-            order = request.query_params.get('order')
-
-            v2_qs = NewQuizSession.objects.filter(user_id=student.id)
-            if since:
-                try:
-                    raw = str(since).strip()
-                    if len(raw) == 10:
-                        d = dt_date.fromisoformat(raw)
-                        dt = datetime.combine(d, dt_time.min)
-                    else:
-                        dt = datetime.fromisoformat(raw)
-                    if timezone.is_naive(dt):
-                        dt = timezone.make_aware(dt, timezone.get_current_timezone())
-                    v2_qs = v2_qs.filter(started_at__gte=dt)
-                except Exception:
-                    pass
-            if until:
-                try:
-                    raw = str(until).strip()
-                    if len(raw) == 10:
-                        d = dt_date.fromisoformat(raw)
-                        dt = datetime.combine(d, dt_time.max)
-                    else:
-                        dt = datetime.fromisoformat(raw)
-                    if timezone.is_naive(dt):
-                        dt = timezone.make_aware(dt, timezone.get_current_timezone())
-                    v2_qs = v2_qs.filter(started_at__lte=dt)
-                except Exception:
-                    pass
-
-            # 並び順
-            if order == 'created_at_asc':
-                v2_qs = v2_qs.order_by('started_at')
-            else:
-                v2_qs = v2_qs.order_by('-started_at')
-
-            total_v2 = v2_qs.count()
-            start = (page - 1) * page_size
-            v2_items = list(v2_qs[start:start + page_size])
-
-            # levelフィルタ（抽出後での厳密一致）
-            want_level = None
-            try:
-                if level is not None:
-                    want_level = int(level)
-            except Exception:
-                want_level = None
-
-            results = []
-            for s in v2_items:
-                lvl = extract_numeric_level(s)
-                if want_level is not None and lvl != want_level:
-                    continue
-                try:
-                    res_qs = NewQuizResult.objects.filter(session=s)
-                    qi_count = getattr(s, 'question_count', None) or res_qs.count() or 0
-                    total_questions = int(qi_count)
-                    total_correct = res_qs.filter(is_correct=True).count()
-                    total_duration_ms = res_qs.aggregate(total=Sum('reaction_time_ms'))['total'] or getattr(s, 'total_time_ms', 0) or 0
-                except Exception:
-                    total_questions = int(getattr(s, 'question_count', 10) or 10)
-                    total_correct = int(getattr(s, 'score', 0) or 0)
-                    total_duration_ms = int(getattr(s, 'total_time_ms', 0) or 0)
-
-                score_pct = int(round((total_correct / total_questions * 100))) if total_questions else 0
-                avg_latency = 0
-                try:
-                    avg_latency = int(round(NewQuizResult.objects.filter(session=s).aggregate(avg=Avg('reaction_time_ms'))['avg'] or 0))
-                except Exception:
-                    avg_latency = 0
-
-                results.append({
-                    'quiz_set': {
-                        'id': str(s.id),
-                        'level': lvl,
-                        'created_at': (getattr(s, 'started_at') or timezone.now()).isoformat(),
-                        'question_count': total_questions,
-                        'title': f"Level {lvl} - {total_questions}問",
-                        'name': f"Level {lvl} - {total_questions}問",
-                        'segment': getattr(s, 'segment_id', None) or getattr(s, 'segment', None) or 1,
-                    },
-                    'total_questions': total_questions,
-                    'total_correct': total_correct,
-                    'score_pct': score_pct,
-                    'total_duration_ms': int(total_duration_ms or 0),
-                    'average_latency_ms': int(avg_latency or 0),
-                })
-
-            # v2で結果が得られたらそれで返す
-            if results:
-                return Response({
-                    'results': results,
-                    'page': page,
-                    'page_size': page_size,
-                    'total': total_v2,
-                })
-
-            # ここから legacy フォールバック（pos_filterやスキーマ不整合に注意してdefer）
-            qs = QuizSet.objects.filter(user=student).defer('pos_filter', 'textbook_scope_id')
-            if level:
-                try:
-                    lv = int(level)
-                    qs = qs.filter(grade=lv)
-                except Exception:
-                    pass
-            if since:
-                try:
-                    raw = str(since).strip()
-                    if len(raw) == 10:
-                        d = dt_date.fromisoformat(raw)
-                        dt = datetime.combine(d, dt_time.min)
-                    else:
-                        dt = datetime.fromisoformat(raw)
-                    if timezone.is_naive(dt):
-                        dt = timezone.make_aware(dt, timezone.get_current_timezone())
-                    qs = qs.filter(created_at__gte=dt)
-                except Exception:
-                    pass
-            if until:
-                try:
-                    raw = str(until).strip()
-                    if len(raw) == 10:
-                        d = dt_date.fromisoformat(raw)
-                        dt = datetime.combine(d, dt_time.max)
-                    else:
-                        dt = datetime.fromisoformat(raw)
-                    if timezone.is_naive(dt):
-                        dt = timezone.make_aware(dt, timezone.get_current_timezone())
-                    qs = qs.filter(created_at__lte=dt)
-                except Exception:
-                    pass
-
-            if order == 'created_at_asc':
-                qs = qs.order_by('created_at')
-            else:
-                qs = qs.order_by('-created_at')
-
-            total = qs.count()
-            start = (page - 1) * page_size
-            items = list(qs[start:start + page_size])
-
-            results = []
-            for s in items:
-                # Count related items and responses for debug
-                try:
-                    qi_count = s.quiz_items.count()
-                except Exception:
-                    qi_count = 0
-                try:
-                    responses = QuizResponse.objects.filter(quiz_item__quiz_set=s)
-                    resp_count = responses.count()
-                except Exception:
-                    responses = QuizResponse.objects.none()
-                    resp_count = 0
-                logger.debug('[by_student_history] QuizSet id=%s qi_count=%s resp_count=%s', getattr(s, 'id', None), qi_count, resp_count)
-                total_questions = qi_count
-                total_correct = responses.filter(is_correct=True).count() if resp_count > 0 else 0
-                score_pct = int(round((total_correct / total_questions * 100))) if total_questions else 0
-                total_duration_ms = responses.aggregate(total=Sum('reaction_time_ms'))['total'] or 0
-                avg_latency = responses.aggregate(avg=Avg('reaction_time_ms'))['avg'] or 0
-                results.append({
-                        'quiz_set': {
-                            'id': str(s.id),
-                            'level': s.grade,
-                            'created_at': s.created_at.isoformat(),
-                            'question_count': s.total_questions,
-                            # DBにname列がないため、代替のタイトルを生成
-                            'name': f"Level {s.grade} - {s.total_questions}問",
-                            'title': f"Level {s.grade} - {s.total_questions}問",
-                        },
-                    'total_questions': total_questions,
-                    'total_correct': total_correct,
-                    'score_pct': score_pct,
-                    'total_duration_ms': int(total_duration_ms or 0),
-                    'average_latency_ms': int(round(avg_latency or 0)),
-                })
-
-            return Response({
-                'results': results,
-                'page': page,
-                'page_size': page_size,
-                'total': total,
-            })
-        except ProgrammingError:
-            # スキーマ不整合などでテーブル/カラム参照エラーが発生した場合は
-            # まずログを残す。次に v2 スキーマ（NewQuizSession / NewQuizResult）があれば
-            # そちらを使って互換的な履歴を返す。両方なければ空ページを返す。
-            logger.exception('Database schema error in by_student_history')
-            # determine paging params
-            try:
-                page = max(1, int(request.query_params.get('page', 1)))
-            except Exception:
-                page = 1
-            try:
-                page_size = int(request.query_params.get('page_size', 10))
-            except Exception:
-                page_size = 10
-
-            # Try v2 fallback
-            try:
-                # Use NewQuizSession/NewQuizResult if available
-                v2_qs = NewQuizSession.objects.filter(user_id=student.id)
-                # ordering: created/started descending by default
-                if order == 'created_at_asc':
-                    v2_qs = v2_qs.order_by('started_at')
-                else:
-                    v2_qs = v2_qs.order_by('-started_at')
-
-                total_v2 = v2_qs.count()
-                start = (page - 1) * page_size
-                v2_items = list(v2_qs[start:start + page_size])
-
-                results = []
-                # helper to extract numeric level from v2 session's segment -> level_id.level_name
-                def _extract_level_from_session(sess):
-                    try:
-                        ln = ''
-                        if getattr(sess, 'segment', None) and getattr(getattr(sess, 'segment'), 'level_id', None):
-                            ln = getattr(sess.segment.level_id, 'level_name', '') or ''
-                        # fallback: segment_id or segment
-                        if not ln:
-                            return int(getattr(sess, 'segment_id', None) or getattr(sess, 'segment', None) or 1)
-                        import re
-                        m = re.search(r"(\d+)", ln)
-                        return int(m.group(1)) if m else int(getattr(sess, 'segment_id', None) or getattr(sess, 'segment', None) or 1)
-                    except Exception:
-                        return 1
-
-                for s in v2_items:
-                    try:
-                        res_qs = NewQuizResult.objects.filter(session=s)
-                        qi_count = getattr(s, 'question_count', None) or res_qs.count() or 0
-                        total_questions = int(qi_count)
-                        total_correct = res_qs.filter(is_correct=True).count()
-                        score_pct = int(round((total_correct / total_questions * 100))) if total_questions else 0
-                        total_duration_ms = res_qs.aggregate(total=Sum('reaction_time_ms'))['total'] or getattr(s, 'total_time_ms', 0) or 0
-                        avg_latency = int(round(res_qs.aggregate(avg=Avg('reaction_time_ms'))['avg'] or 0))
-                    except Exception:
-                        total_questions = int(getattr(s, 'question_count', 10) or 10)
-                        total_correct = int(getattr(s, 'score', 0) or 0)
-                        score_pct = int(getattr(s, 'score', 0) or 0)
-                        total_duration_ms = int(getattr(s, 'total_time_ms', 0) or 0)
-                        avg_latency = 0
-
-                    lvl = _extract_level_from_session(s)
-
-                    results.append({
-                        'quiz_set': {
-                            'id': str(s.id),
-                            'level': lvl,
-                            'created_at': (getattr(s, 'started_at') or timezone.now()).isoformat(),
-                            'question_count': total_questions,
-                            'title': f"Level {lvl} - {total_questions}問",
-                            'name': f"Level {lvl} - {total_questions}問",
-                            'segment': getattr(s, 'segment_id', None) or getattr(s, 'segment', None) or 1,
-                        },
-                        'total_questions': total_questions,
-                        'total_correct': total_correct,
-                        'score_pct': score_pct,
-                        'total_duration_ms': int(total_duration_ms or 0),
-                        'average_latency_ms': int(avg_latency or 0),
-                    })
-
-                return Response({'results': results, 'page': page, 'page_size': page_size, 'total': total_v2})
-            except Exception:
-                logger.exception('v2 fallback failed in by_student_history')
-                return Response({'results': [], 'page': page, 'page_size': page_size, 'total': 0})
-        except DatabaseError:
-            logger.exception('Database error in by_student_history')
-            try:
-                page = max(1, int(request.query_params.get('page', 1)))
-            except Exception:
-                page = 1
-            try:
-                page_size = int(request.query_params.get('page_size', 10))
-            except Exception:
-                page_size = 10
-            return Response({'results': [], 'page': page, 'page_size': page_size, 'total': 0})
-        except Exception:
-            logger.exception('Unexpected error in by_student_history')
-            return Response({'error': 'internal server error'}, status=500)
-
-    @action(detail=False, methods=['get'], url_path=r'by-student/(?P<student_id>[^/.]+)/memberships')
-    def by_student_memberships(self, request, student_id=None):
-        """講師向け: 生徒が所属する（この講師がownerの）グループメンバーシップ一覧を返す。
-        返却: [{ id, group_id, group_name, attr1, attr2, created_at }]
-        """
-        link = TeacherStudentLink.objects.filter(teacher=request.user, student_id=student_id).exclude(status='revoked').first()
-        if not link:
-            return Response({'error': 'この生徒はあなたの管理対象ではありません'}, status=status.HTTP_403_FORBIDDEN)
-        student = link.student
-        memberships = (
-            GroupMembership.objects
-                .filter(user=student, group__owner_admin=request.user)
-                .select_related('group')
-                .order_by('created_at')
-        )
-        out = [
-            {
-                'id': str(m.id),
-                'group_id': str(m.group.id),
-                'group_name': m.group.name,
-                'attr1': m.attr1 or '',
-                'attr2': m.attr2 or '',
-                'created_at': m.created_at.isoformat(),
-            }
-            for m in memberships
-        ]
-        return Response({'memberships': out, 'count': len(out)})
-
-
-# 生徒用API Views
-class StudentInviteCodeView(viewsets.GenericViewSet):
-    """生徒用招待コード受諾API"""
-    permission_classes = [IsAuthenticated]
-    
-    @action(detail=False, methods=['post'])
-    def accept(self, request):
-        """招待コード受諾（紐付け作成）"""
-        serializer = AcceptInviteCodeSerializer(data=request.data)
-        if serializer.is_valid():
-            invite_code = serializer.validated_data['invite_code']
-            
-            # 既存の紐付けチェック
-            existing_link = TeacherStudentLink.objects.filter(
-                teacher=invite_code.issued_by,
-                student=request.user,
-                status__in=['active', 'pending']
-            ).first()
-            
-            if existing_link:
-                return Response({
-                    'error': 'この講師との紐付けは既に存在します'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # 招待コードを使用済みにして紐付け作成
-            with transaction.atomic():
-                invite_code.used_by = request.user
-                invite_code.used_at = timezone.now()
-                invite_code.save()
-                
-                link = TeacherStudentLink.objects.create(
-                    teacher=invite_code.issued_by,
-                    student=request.user,
-                    status='active',
-                    invite_code=invite_code
-                )
-            
-            return Response({
-                'message': f'{invite_code.issued_by.display_name or invite_code.issued_by.email} との紐付けが完了しました',
-                'link': TeacherStudentLinkSerializer(link).data
-            }, status=status.HTTP_201_CREATED)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class StudentTeacherViewSet(viewsets.ReadOnlyModelViewSet):
-    """生徒用講師管理API"""
-    serializer_class = TeacherStudentLinkSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return TeacherStudentLink.objects.filter(
-            student=self.request.user,
-            status='active'
-        ).order_by('-linked_at')
-    
-    @action(detail=True, methods=['delete'])
-    def revoke(self, request, pk=None):
-        """講師との紐付け解除"""
-        link = self.get_object()
-        link.status = 'revoked'
-        link.revoked_at = timezone.now()
-        link.revoked_by = request.user
-        link.save()
-        
-        return Response({
-            'message': f'{link.teacher.display_name or link.teacher.email} との紐付けを解除しました'
-        })
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def check_teacher_permission(request):
-    """講師権限チェックAPI"""
-    user = request.user
-    
-    # デバッグログを追加
-    logger.info(f"check_teacher_permission called for user: {user}")
-    logger.info(f"User email: {user.email}")
-    logger.info(f"User role: {user.role}")
-    logger.info(f"User is_authenticated: {user.is_authenticated}")
-    
-    # メールアドレスが存在することを確認
-    if not user.email:
-        logger.warning(f"User {user.id} has no email address")
-        return Response({
-            'error': 'メールアドレスが設定されていません',
-            'is_teacher': False,
-            'is_whitelisted': False,
-            'role': user.role,
-            'email': user.email,
-            'permissions': {
-                'can_access_admin': False,
-                'can_create_invites': False,
-                'can_manage_students': False,
-            }
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    # ホワイトリストで判定（role は変更しない）
-    is_whitelisted = is_teacher_whitelisted(user.email)
-    logger.info(f"Whitelist check for {user.email}: {is_whitelisted}")
-    
-    return Response({
-        'is_teacher': is_whitelisted,
-        'is_whitelisted': is_whitelisted,
-        'role': user.role,
-        'email': user.email,
-        'permissions': {
-            'can_access_admin': is_whitelisted,
-            'can_create_invites': is_whitelisted,
-            'can_manage_students': is_whitelisted,
-        }
-    })
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def debug_auth(request):
-    """認証デバッグAPI（テスト用）"""
-    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-    user_info = {
-        'is_authenticated': request.user.is_authenticated,
-        'user_id': str(request.user.id) if request.user.is_authenticated else None,
-        'email': request.user.email if request.user.is_authenticated else None,
-        'username': request.user.username if request.user.is_authenticated else None,
-        'role': getattr(request.user, 'role', None) if request.user.is_authenticated else None,
-    }
-    
-    logger.info(f"Debug auth - Authorization header: {auth_header[:50]}...")
-    logger.info(f"Debug auth - User info: {user_info}")
-    
-    # ホワイトリストチェック
-    if request.user.is_authenticated and request.user.email:
-        is_whitelisted = is_teacher_whitelisted(request.user.email)
-        logger.info(f"Debug auth - Whitelist check for {request.user.email}: {is_whitelisted}")
-        user_info['is_whitelisted'] = is_whitelisted
-    else:
-        user_info['is_whitelisted'] = False
-    
-    return Response({
-        'message': 'Debug authentication info',
-        'auth_header_present': bool(auth_header),
-        'auth_header_length': len(auth_header),
-        'user': user_info,
-        'request_meta_keys': list(request.META.keys())[:10],  # 最初の10個のキーのみ
-    })
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def create_test_user(request):
-    """テスト用ユーザー作成API（デバッグ用）"""
-    email = request.data.get('email')
-    name = request.data.get('name', '')
-    
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        serializer.save(user=self.request.user)
+
+
+class TeacherViewSet(BaseModelViewSet):
+    queryset = models.Teacher.objects.all().order_by("created_at")
+    serializer_class = serializers.TeacherSerializer
+
+    def get_permissions(self):
+        if self.action in {"create", "destroy"}:
+            return [permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
+
+
+class TeacherProfileViewSet(BaseModelViewSet):
+    serializer_class = serializers.TeacherProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        if not self.request.user.is_staff:
+            return models.TeacherProfile.objects.none()
+        return models.TeacherProfile.objects.select_related("teacher")
+
+
+class TeacherWhitelistViewSet(BaseModelViewSet):
+    queryset = models.TeacherWhitelist.objects.all().order_by("created_at")
+    serializer_class = serializers.TeacherWhitelistSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+
+class InvitationCodeViewSet(BaseModelViewSet):
+    queryset = models.InvitationCode.objects.all().order_by("issued_at")
+    serializer_class = serializers.InvitationCodeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class StudentTeacherLinkViewSet(BaseModelViewSet):
+    serializer_class = serializers.StudentTeacherLinkSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        user = self.request.user
+        qs = models.StudentTeacherLink.objects.select_related("teacher", "student").order_by("-linked_at")
+
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            qs = qs.filter(status=status_param)
+
+        if user.is_staff:
+            return qs
+        return qs.filter(Q(student=user) | Q(teacher__email=user.email))
+
+
+class RosterFolderViewSet(BaseModelViewSet):
+    serializer_class = serializers.RosterFolderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        return models.RosterFolder.objects.select_related("owner_teacher", "parent_folder").order_by("name")
+
+
+class RosterMembershipViewSet(BaseModelViewSet):
+    serializer_class = serializers.RosterMembershipSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        return models.RosterMembership.objects.select_related("roster_folder", "student").order_by("-added_at")
+
+
+class VocabularyViewSet(BaseModelViewSet):
+    queryset = models.Vocabulary.objects.all().order_by("sort_key")
+    serializer_class = serializers.VocabularySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class VocabTranslationViewSet(BaseModelViewSet):
+    queryset = models.VocabTranslation.objects.select_related("vocabulary").order_by("-created_at")
+    serializer_class = serializers.VocabTranslationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        qs = super().get_queryset()
+        vocab_id = self.request.query_params.get("vocabulary")
+        if vocab_id:
+            qs = qs.filter(vocabulary_id=vocab_id)
+        return qs
+
+
+class VocabChoiceViewSet(BaseModelViewSet):
+    queryset = models.VocabChoice.objects.select_related("vocabulary", "source_vocabulary").order_by("-created_at")
+    serializer_class = serializers.VocabChoiceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        qs = super().get_queryset()
+        vocab_id = self.request.query_params.get("vocabulary")
+        if vocab_id:
+            qs = qs.filter(vocabulary_id=vocab_id)
+        return qs
+
+
+class QuizCollectionViewSet(BaseModelViewSet):
+    queryset = models.QuizCollection.objects.select_related("owner_user", "origin_collection").order_by("order_index")
+    serializer_class = serializers.QuizCollectionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class QuizViewSet(BaseModelViewSet):
+    queryset = models.Quiz.objects.select_related("quiz_collection", "origin_quiz").order_by("sequence_no")
+    serializer_class = serializers.QuizSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        qs = super().get_queryset()
+        collection_id = self.request.query_params.get("quiz_collection")
+        if collection_id:
+            qs = qs.filter(quiz_collection_id=collection_id)
+        return qs
+
+
+class QuizQuestionViewSet(BaseModelViewSet):
+    queryset = models.QuizQuestion.objects.select_related("quiz", "vocabulary").order_by("question_order")
+    serializer_class = serializers.QuizQuestionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        qs = super().get_queryset()
+        quiz_id = self.request.query_params.get("quiz")
+        if quiz_id:
+            qs = qs.filter(quiz_id=quiz_id)
+        vocabulary_id = self.request.query_params.get("vocabulary")
+        if vocabulary_id:
+            qs = qs.filter(vocabulary_id=vocabulary_id)
+        return qs
+
+
+class QuizResultViewSet(BaseModelViewSet):
+    serializer_class = serializers.QuizResultSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        return models.QuizResult.objects.select_related("user", "quiz").filter(user=self.request.user).order_by("-started_at")
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        serializer.save(user=self.request.user)
+
+
+class QuizResultDetailViewSet(BaseModelViewSet):
+    serializer_class = serializers.QuizResultDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        return models.QuizResultDetail.objects.select_related("quiz_result", "vocabulary").filter(
+            quiz_result__user=self.request.user
+        ).order_by("question_order")
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        quiz_result: models.QuizResult = serializer.validated_data["quiz_result"]
+        if quiz_result.user_id != self.request.user.id:
+            raise PermissionDenied("Quiz result does not belong to the current user.")
+        serializer.save()
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        quiz_result: models.QuizResult = serializer.instance.quiz_result
+        if quiz_result.user_id != self.request.user.id:
+            raise PermissionDenied("Quiz result does not belong to the current user.")
+        serializer.save()
+
+
+class TestViewSet(BaseModelViewSet):
+    queryset = models.Test.objects.select_related("teacher").order_by("-created_at")
+    serializer_class = serializers.TestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class TestQuestionViewSet(BaseModelViewSet):
+    queryset = models.TestQuestion.objects.select_related("test", "vocabulary").order_by("question_order")
+    serializer_class = serializers.TestQuestionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class TestAssignmentViewSet(BaseModelViewSet):
+    queryset = models.TestAssignment.objects.select_related("test", "assigned_by_teacher").order_by("-assigned_at")
+    serializer_class = serializers.TestAssignmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class TestAssigneeViewSet(BaseModelViewSet):
+    queryset = models.TestAssignee.objects.select_related(
+        "test",
+        "student",
+        "test_assignment",
+        "source_folder",
+        "assigned_by_teacher",
+    ).order_by("-assigned_at")
+    serializer_class = serializers.TestAssigneeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class TestResultViewSet(BaseModelViewSet):
+    serializer_class = serializers.TestResultSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        return models.TestResult.objects.select_related("test", "student").filter(student=self.request.user).order_by("-started_at")
+
+
+class TestResultDetailViewSet(BaseModelViewSet):
+    serializer_class = serializers.TestResultDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        return models.TestResultDetail.objects.select_related("test_result", "vocabulary").filter(
+            test_result__student=self.request.user
+        ).order_by("question_order")
+
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def debug_create_user(request):
+    email = (request.data.get("email") or "").strip().lower()
+    name = (request.data.get("name") or "").strip()
     if not email:
-        return Response({'error': 'メールアドレスが必要です'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        user, created = User.objects.get_or_create(
-            email=email,
-            defaults={
-                'username': email,
-                'display_name': name,
-                'role': 'student'
-            }
-        )
-    except User.MultipleObjectsReturned:
-        logger.warning(f"Multiple users returned for email={email} in create_test_user; using first match")
-        user = User.objects.filter(email=email).order_by('id').first()
-        created = False
-    
-    # 権限判定はwhitelistのみ（roleは変更しない）
-    
-    # APIトークン作成
-    token, token_created = Token.objects.get_or_create(user=user)
-    
-    return Response({
-        'message': f'ユーザーが{"作成" if created else "取得"}されました',
-        'user': {
-            'id': str(user.id),
-            'email': user.email,
-            'display_name': user.display_name,
-            'role': user.role
+        return Response({"error": "email is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    user, created = models.User.objects.get_or_create(
+        email=email,
+        defaults={
+            "oauth_provider": "debug",
+            "oauth_sub": f"debug:{uuid.uuid4()}",
+            "is_active": True,
         },
-        'access_token': token.key,
-        'is_whitelisted': is_teacher_whitelisted(email)
-    })
+    )
+
+    display_name = name or email
+    models.UserProfile.objects.update_or_create(
+        user=user,
+        defaults={
+            "display_name": display_name,
+            "avatar_url": "",
+        },
+    )
+
+    token, _ = Token.objects.get_or_create(user=user)
+    data: dict[str, Any] = {
+        "access_token": token.key,
+        "user_id": str(user.pk),
+        "created": created,
+    }
+    return Response(data)
 
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def make_user_teacher(request):
-    """デバッグ用: 指定メールの role を 'teacher' に変更してトークンを返す
-    body: { email: string }
-    """
-    email = (request.data or {}).get('email')
-    if not email:
-        return Response({'error': 'email required'}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        u = User.objects.filter(email=email).first()
-        if not u:
-            return Response({'error': 'user not found'}, status=status.HTTP_404_NOT_FOUND)
-        u.role = 'teacher'
-        u.save(update_fields=['role'])
-        token, _ = Token.objects.get_or_create(user=u)
-        return Response({'message': 'updated', 'user': {'id': str(u.id), 'email': u.email, 'role': u.role}, 'access_token': token.key})
-    except Exception as e:
-        logger.exception('make_user_teacher failed')
-        return Response({'error': str(e)}, status=500)
+__all__ = [
+    "UserViewSet",
+    "UserProfileViewSet",
+    "TeacherViewSet",
+    "TeacherProfileViewSet",
+    "TeacherWhitelistViewSet",
+    "InvitationCodeViewSet",
+    "StudentTeacherLinkViewSet",
+    "RosterFolderViewSet",
+    "RosterMembershipViewSet",
+    "VocabularyViewSet",
+    "VocabTranslationViewSet",
+    "VocabChoiceViewSet",
+    "QuizCollectionViewSet",
+    "QuizViewSet",
+    "QuizQuestionViewSet",
+    "QuizResultViewSet",
+    "QuizResultDetailViewSet",
+    "TestViewSet",
+    "TestQuestionViewSet",
+    "TestAssignmentViewSet",
+    "TestAssigneeViewSet",
+    "TestResultViewSet",
+    "TestResultDetailViewSet",
+    "debug_create_user",
+]

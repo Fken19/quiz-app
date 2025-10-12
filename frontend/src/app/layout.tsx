@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from 'react';
 
 export const dynamic = "force-dynamic";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import ClientWrapper from '@/components/ClientWrapper';
+import SessionProviders from '@/components/providers/SessionProviders';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,9 @@ export default function RootLayout({
   // when present. This avoids hydration mismatch if some tool or extension
   // injects the same variable on the client or server.
   const vscDomain = process.env.NEXT_PUBLIC_VSC_DOMAIN ?? '';
+  const styleVars = vscDomain
+    ? ({ '--vsc-domain': vscDomain } as CSSProperties & Record<'--vsc-domain', string>)
+    : undefined;
 
   return (
     // Add suppressHydrationWarning to avoid noisy mismatch errors when
@@ -38,30 +42,23 @@ export default function RootLayout({
     <html
       lang="ja"
       suppressHydrationWarning
-      style={vscDomain ? ({ ['--vsc-domain' as any]: vscDomain } as React.CSSProperties) : undefined}
+      style={styleVars}
     >
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {/* client-only setter to fill in hostname when no env var is provided */}
-        <ClientWrapper>
-          <script
-            // this script runs on the client and sets the CSS var to the
-            // current hostname when NEXT_PUBLIC_VSC_DOMAIN is not provided.
-            dangerouslySetInnerHTML={{
-              __html: `(() => {
-                try {
-                  var domain = '${vscDomain || ''}';
-                  if (!domain && typeof window !== 'undefined') {
-                    domain = window.location.hostname || '';
-                  }
-                  document.documentElement.style.setProperty('--vsc-domain', domain || '');
-                } catch (e) {}
-              })()`,
-            }}
-          />
-          {children}
-        </ClientWrapper>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(() => {
+              try {
+                var domain = '${vscDomain || ''}';
+                if (!domain && typeof window !== 'undefined') {
+                  domain = window.location.hostname || '';
+                }
+                document.documentElement.style.setProperty('--vsc-domain', domain || '');
+              } catch (e) {}
+            })()`,
+          }}
+        />
+        <SessionProviders>{children}</SessionProviders>
       </body>
     </html>
   );

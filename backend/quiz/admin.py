@@ -1,184 +1,163 @@
+"""Django admin 登録"""
+
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import (
-    User,
-    Group,
-    GroupMembership,
-    Question,
-    Option,
-    AssignedTest,
-    QuizSession,
-    QuizResult,
-    DailyUserStats,
-    DailyGroupStats,
-    # 追加登録
-    Word,
-    WordTranslation,
-    QuizSet,
-    QuizItem,
-    QuizResponse,
-    InviteCode,
-    TeacherStudentLink,
-    TeacherWhitelist,
-    TeacherStudentAlias,
-)
+
+from . import models
 
 
-class CustomUserAdmin(BaseUserAdmin):
-    """カスタムユーザー管理"""
-    list_display = (
-        'email', 'display_name', 'role', 'is_staff', 'is_active', 'created_at'
-    )
-    list_filter = ('is_staff', 'is_active', 'created_at')
-    search_fields = ('email', 'display_name')
-    ordering = ('-created_at',)
-    
-    fieldsets = BaseUserAdmin.fieldsets + (
-        ('追加情報', {
-            'fields': (
-                'display_name', 'organization', 'bio', 'avatar', 'avatar_url',
-                'role', 'level_preference', 'quiz_count', 'total_score',
-            )
-        }),
-    )
+@admin.register(models.User)
+class UserAdmin(admin.ModelAdmin):
+    list_display = ("email", "oauth_provider", "disabled_at", "deleted_at", "created_at")
+    search_fields = ("email", "oauth_sub")
+    list_filter = ("oauth_provider", "disabled_at")
 
 
-@admin.register(Group)
-class GroupAdmin(admin.ModelAdmin):
-    list_display = ('name', 'owner_admin', 'created_at')
-    list_filter = ('created_at',)
-    search_fields = ('name', 'owner_admin__email')
+@admin.register(models.UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "display_name", "grade", "updated_at")
+    search_fields = ("user__email", "display_name")
 
 
-@admin.register(GroupMembership)
-class GroupMembershipAdmin(admin.ModelAdmin):
-    list_display = ('user', 'group', 'role', 'created_at')
-    list_filter = ('role', 'created_at')
-    search_fields = ('user__email', 'group__name')
+@admin.register(models.Teacher)
+class TeacherAdmin(admin.ModelAdmin):
+    list_display = ("email", "oauth_provider", "disabled_at", "created_at")
+    search_fields = ("email", "oauth_sub")
+    list_filter = ("oauth_provider", "disabled_at")
 
 
-class OptionInline(admin.TabularInline):
-    model = Option
-    extra = 4
+@admin.register(models.TeacherProfile)
+class TeacherProfileAdmin(admin.ModelAdmin):
+    list_display = ("teacher", "display_name", "affiliation", "updated_at")
+    search_fields = ("teacher__email", "display_name", "affiliation")
 
 
-@admin.register(Question)
-class QuestionAdmin(admin.ModelAdmin):
-    list_display = ('text', 'level', 'segment', 'created_at')
-    list_filter = ('level', 'segment', 'created_at')
-    search_fields = ('text',)
-    inlines = [OptionInline]
-
-
-class WordTranslationInline(admin.TabularInline):
-    model = WordTranslation
-    extra = 4
-
-
-@admin.register(Word)
-class WordAdmin(admin.ModelAdmin):
-    # Adjusted to match the current `Word` model fields (text maps to DB column `lemma`)
-    list_display = ('text', 'pos', 'grade', 'frequency', 'created_at')
-    list_filter = ('pos', 'grade', 'created_at')
-    search_fields = ('text',)
-    inlines = [WordTranslationInline]
-
-
-@admin.register(AssignedTest)
-class AssignedTestAdmin(admin.ModelAdmin):
-    list_display = ('title', 'group', 'due_at', 'created_at')
-    list_filter = ('due_at', 'created_at')
-    search_fields = ('title', 'group__name')
-
-
-@admin.register(QuizSession)
-class QuizSessionAdmin(admin.ModelAdmin):
-    list_display = ('user', 'started_at', 'completed_at', 'total_time_ms')
-    list_filter = ('started_at', 'completed_at')
-    search_fields = ('user__email',)
-
-
-@admin.register(QuizResult)
-class QuizResultAdmin(admin.ModelAdmin):
-    list_display = ('session', 'question', 'is_correct', 'elapsed_ms', 'created_at')
-    list_filter = ('is_correct', 'created_at')
-    search_fields = ('session__user__email', 'question__text')
-
-
-@admin.register(DailyUserStats)
-class DailyUserStatsAdmin(admin.ModelAdmin):
-    list_display = ('user', 'date', 'attempts', 'correct', 'total_time_ms')
-    list_filter = ('date',)
-    search_fields = ('user__email',)
-
-
-@admin.register(DailyGroupStats)
-class DailyGroupStatsAdmin(admin.ModelAdmin):
-    list_display = ('group', 'date', 'attempts', 'correct')
-    list_filter = ('date',)
-    search_fields = ('group__name',)
-
-
-admin.site.register(User, CustomUserAdmin)
-
-
-# 追加: クイズ進行系モデル（参照用）
-@admin.register(QuizSet)
-class QuizSetAdmin(admin.ModelAdmin):
-    list_display = ('user', 'grade', 'total_questions', 'created_at')
-    list_filter = ('grade', 'created_at')
-    search_fields = ('user__email',)
-
-
-@admin.register(QuizItem)
-class QuizItemAdmin(admin.ModelAdmin):
-    list_display = ('quiz_set', 'question_number', 'word', 'created_at')
-    list_filter = ('created_at',)
-    search_fields = ('word__text',)
-
-
-@admin.register(QuizResponse)
-class QuizResponseAdmin(admin.ModelAdmin):
-    list_display = ('user', 'quiz_item', 'is_correct', 'reaction_time_ms', 'created_at')
-    list_filter = ('is_correct', 'created_at')
-    search_fields = ('user__email', 'quiz_item__word__text')
-
-
-# 追加: 招待コード・講師-生徒リンク・ホワイトリスト
-@admin.register(InviteCode)
-class InviteCodeAdmin(admin.ModelAdmin):
-    list_display = ('code', 'issued_by', 'status', 'issued_at', 'expires_at', 'used_by')
-    list_filter = ('revoked', 'issued_at', 'expires_at')
-    search_fields = ('code', 'issued_by__email', 'used_by__email')
-    readonly_fields = ('issued_at', 'used_at', 'revoked_at')
-
-
-@admin.register(TeacherStudentLink)
-class TeacherStudentLinkAdmin(admin.ModelAdmin):
-    list_display = ('teacher', 'student', 'status', 'linked_at', 'revoked_at')
-    list_filter = ('status', 'linked_at')
-    search_fields = ('teacher__email', 'student__email')
-    readonly_fields = ('linked_at',)
-
-
-@admin.register(TeacherWhitelist)
+@admin.register(models.TeacherWhitelist)
 class TeacherWhitelistAdmin(admin.ModelAdmin):
-    # 最小構成（メール中心）。DBに存在する列のみを使用
-    list_display = ('email', 'note', 'created_at', 'created_by')
-    list_filter = ('created_at',)
-    search_fields = ('email', 'note')
-    ordering = ('-created_at',)
-    list_per_page = 25
-
-    readonly_fields = ('created_at',)
-    fieldsets = (
-        (None, {'fields': ('email', 'note')}),
-        ('メタ情報', {'classes': ('collapse',), 'fields': ('created_at', 'created_by')}),
-    )
+    list_display = ("email", "can_publish_vocab", "revoked_at", "created_at")
+    search_fields = ("email",)
+    list_filter = ("can_publish_vocab", "revoked_at")
 
 
-@admin.register(TeacherStudentAlias)
-class TeacherStudentAliasAdmin(admin.ModelAdmin):
-    list_display = ('teacher', 'student', 'alias_name', 'updated_at')
-    list_filter = ('updated_at',)
-    search_fields = ('teacher__email', 'student__email', 'alias_name')
+@admin.register(models.InvitationCode)
+class InvitationCodeAdmin(admin.ModelAdmin):
+    list_display = ("invitation_code", "issued_by", "issued_at", "expires_at", "used_by", "revoked")
+    search_fields = ("invitation_code", "issued_by__email", "used_by__email")
+    list_filter = ("revoked",)
+
+
+@admin.register(models.StudentTeacherLink)
+class StudentTeacherLinkAdmin(admin.ModelAdmin):
+    list_display = ("teacher", "student", "status", "linked_at", "updated_at")
+    search_fields = ("teacher__email", "student__email", "custom_display_name")
+    list_filter = ("status",)
+
+
+@admin.register(models.RosterFolder)
+class RosterFolderAdmin(admin.ModelAdmin):
+    list_display = ("name", "owner_teacher", "parent_folder", "is_dynamic", "archived_at", "created_at")
+    search_fields = ("name", "owner_teacher__email")
+    list_filter = ("is_dynamic", "archived_at")
+
+
+@admin.register(models.RosterMembership)
+class RosterMembershipAdmin(admin.ModelAdmin):
+    list_display = ("roster_folder", "student", "added_at", "removed_at")
+    search_fields = ("roster_folder__name", "student__email")
+    list_filter = ("removed_at",)
+
+
+@admin.register(models.Vocabulary)
+class VocabularyAdmin(admin.ModelAdmin):
+    list_display = ("text_en", "visibility", "status", "sense_count", "created_at")
+    search_fields = ("text_en", "text_key")
+    list_filter = ("visibility", "status")
+
+
+@admin.register(models.VocabTranslation)
+class VocabTranslationAdmin(admin.ModelAdmin):
+    list_display = ("vocabulary", "text_ja", "is_primary", "created_at")
+    search_fields = ("text_ja", "vocabulary__text_en")
+    list_filter = ("is_primary",)
+
+
+@admin.register(models.VocabChoice)
+class VocabChoiceAdmin(admin.ModelAdmin):
+    list_display = ("vocabulary", "text_ja", "is_correct", "weight", "created_at")
+    search_fields = ("text_ja", "vocabulary__text_en")
+    list_filter = ("is_correct",)
+
+
+@admin.register(models.QuizCollection)
+class QuizCollectionAdmin(admin.ModelAdmin):
+    list_display = ("title", "scope", "owner_user", "is_published", "archived_at", "created_at")
+    search_fields = ("title", "owner_user__email")
+    list_filter = ("scope", "is_published", "archived_at")
+
+
+@admin.register(models.Quiz)
+class QuizAdmin(admin.ModelAdmin):
+    list_display = ("quiz_collection", "sequence_no", "timer_seconds", "archived_at", "created_at")
+    search_fields = ("quiz_collection__title",)
+    list_filter = ("archived_at",)
+
+
+@admin.register(models.QuizQuestion)
+class QuizQuestionAdmin(admin.ModelAdmin):
+    list_display = ("quiz", "question_order", "vocabulary", "archived_at", "created_at")
+    search_fields = ("quiz__quiz_collection__title", "vocabulary__text_en")
+    list_filter = ("archived_at",)
+
+
+@admin.register(models.QuizResult)
+class QuizResultAdmin(admin.ModelAdmin):
+    list_display = ("user", "quiz", "started_at", "completed_at", "score")
+    search_fields = ("user__email", "quiz__quiz_collection__title")
+    list_filter = ("started_at",)
+
+
+@admin.register(models.QuizResultDetail)
+class QuizResultDetailAdmin(admin.ModelAdmin):
+    list_display = ("quiz_result", "question_order", "vocabulary", "is_correct", "created_at")
+    search_fields = ("quiz_result__user__email", "vocabulary__text_en")
+    list_filter = ("is_correct",)
+
+
+@admin.register(models.Test)
+class TestAdmin(admin.ModelAdmin):
+    list_display = ("title", "teacher", "due_at", "max_attempts_per_student", "archived_at", "created_at")
+    search_fields = ("title", "teacher__email")
+    list_filter = ("archived_at",)
+
+
+@admin.register(models.TestQuestion)
+class TestQuestionAdmin(admin.ModelAdmin):
+    list_display = ("test", "question_order", "vocabulary", "weight", "timer_seconds")
+    search_fields = ("test__title", "vocabulary__text_en")
+
+
+@admin.register(models.TestAssignment)
+class TestAssignmentAdmin(admin.ModelAdmin):
+    list_display = ("test", "assigned_by_teacher", "assigned_at")
+    search_fields = ("test__title", "assigned_by_teacher__email")
+    list_filter = ("assigned_at",)
+
+
+@admin.register(models.TestAssignee)
+class TestAssigneeAdmin(admin.ModelAdmin):
+    list_display = ("test", "student", "assigned_at", "source_type", "max_attempts")
+    search_fields = ("test__title", "student__email")
+    list_filter = ("source_type",)
+
+
+@admin.register(models.TestResult)
+class TestResultAdmin(admin.ModelAdmin):
+    list_display = ("test", "student", "attempt_no", "started_at", "completed_at", "score")
+    search_fields = ("test__title", "student__email")
+    list_filter = ("attempt_no",)
+
+
+@admin.register(models.TestResultDetail)
+class TestResultDetailAdmin(admin.ModelAdmin):
+    list_display = ("test_result", "question_order", "vocabulary", "is_correct", "created_at")
+    search_fields = ("test_result__student__email", "vocabulary__text_en")
+    list_filter = ("is_correct",)

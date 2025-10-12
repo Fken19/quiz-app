@@ -3,27 +3,33 @@
 export const dynamic = "force-dynamic";
 
 import { signIn, getSession } from 'next-auth/react';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function SignIn() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = useMemo(() => {
+    const raw = searchParams?.get('callbackUrl') || '';
+    if (!raw) return '/student/dashboard';
+    return raw.startsWith('/') ? raw : '/student/dashboard';
+  }, [searchParams]);
 
   useEffect(() => {
     // 既にログインしている場合はダッシュボードにリダイレクト
     getSession().then((session) => {
       if (session) {
-        router.push('/dashboard');
+        router.push(callbackUrl);
       }
     });
-  }, [router]);
+  }, [router, callbackUrl]);
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
       const result = await signIn('google', {
-        callbackUrl: '/dashboard',
+        callbackUrl,
         redirect: false,
       });
       

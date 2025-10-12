@@ -13,7 +13,7 @@ export default function Home() {
     if (status === 'loading') return; // まだローディング中
     
     if (session) {
-      router.push('/dashboard');
+      router.push('/student/dashboard');
     }
   }, [session, status, router]);
 
@@ -72,7 +72,7 @@ export default function Home() {
             </div>
             <div className="flex flex-col">
               <dt className="flex items-center gap-x-3 text-base font-semibold leading-7 text-gray-900">
-                � 教育現場対応
+                🎓 教育現場対応
               </dt>
               <dd className="mt-4 flex flex-auto flex-col text-base leading-7 text-gray-600">
                 <p className="flex-auto">教師による課題配布、クラス管理、成績集計機能で塾・学校での使用に最適化。</p>

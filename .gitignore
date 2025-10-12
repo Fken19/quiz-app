@@ -36,6 +36,15 @@ build/
 .dockerignore
 *.log
 
+# --- GCP/Cloud Deployment ---
+gcp-key.json
+service-account-key.json
+*.key
+*.pem
+.gcloud/
+terraform.tfstate*
+terraform.tfvars
+
 # --- IDE/Editor ---
 .vscode/
 .idea/
@@ -57,4 +66,18 @@ build/
 !.yarn/versions
 .vercel
 *.pem
+
+# --- Local Development ---
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# --- Deployment/Build ---
+dist/
+build/
+.next/
+out/
+*.tgz
+*.tar.gz
 
