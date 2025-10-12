@@ -79,8 +79,16 @@ jobs:
         SECRET_KEY: test-secret-key-for-ci-only-very-long-string-to-avoid-warnings-1234567890abcdefghij
         DEBUG: "True"
         ALLOWED_HOSTS: localhost,127.0.0.1
+        DJANGO_SETTINGS_MODULE: quiz_backend.settings
       run: |
-        python -c "import django; django.setup(); from quiz.models import *; print('✓ All models imported successfully')"
+        python -c "
+        import os
+        import django
+        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'quiz_backend.settings')
+        django.setup()
+        from quiz.models import User, Teacher, Vocabulary, Test
+        print('✓ All models imported successfully')
+        "
     
     - name: Test database schema alignment
       working-directory: ./backend

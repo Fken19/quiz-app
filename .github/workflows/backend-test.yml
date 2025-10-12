@@ -84,15 +84,16 @@ jobs:
         SECRET_KEY: test-secret-key-for-ci-cd-only-very-long-string-to-avoid-warnings-1234567890abcdefghij
         DEBUG: "True"
         ALLOWED_HOSTS: localhost,127.0.0.1
+        DJANGO_SETTINGS_MODULE: quiz_backend.settings
       run: |
         python -c "
-        import django
         import os
+        import django
         os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'quiz_backend.settings')
         django.setup()
         
         from quiz.models import (
-            User, Teacher, Group, GroupMembership,
+            User, Teacher, 
             Vocabulary, QuizCollection, QuizSession, QuizResult,
             Test, TestQuestion, TestAssignment, TestAssignee, TestResult
         )

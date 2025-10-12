@@ -35,7 +35,9 @@ services:
     environment:
       POSTGRES_DB: quiz_db
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # NOTE: This is a development/local environment password only.
+      # In production, use environment variables or secrets management.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
       - "5432:5432"
     volumes:
