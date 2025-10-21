@@ -18,7 +18,7 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_PASSWORD: ${{ secrets.TEST_POSTGRES_PASSWORD || 'postgres' }}
           POSTGRES_USER: postgres
           POSTGRES_DB: quiz_app
         options: >-
@@ -55,7 +55,7 @@ jobs:
     - name: Run migrations
       working-directory: ./backend
       env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quiz_app
+        DATABASE_URL: postgresql://postgres:${{ secrets.TEST_POSTGRES_PASSWORD || 'postgres' }}@localhost:5432/quiz_app
         SECRET_KEY: test-secret-key-for-ci-only-very-long-string-to-avoid-warnings-1234567890abcdefghij
         DEBUG: "True"
         ALLOWED_HOSTS: localhost,127.0.0.1
@@ -65,7 +65,7 @@ jobs:
     - name: Check Django system
       working-directory: ./backend
       env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quiz_app
+        DATABASE_URL: postgresql://postgres:${{ secrets.TEST_POSTGRES_PASSWORD || 'postgres' }}@localhost:5432/quiz_app
         SECRET_KEY: test-secret-key-for-ci-only-very-long-string-to-avoid-warnings-1234567890abcdefghij
         DEBUG: "True"
         ALLOWED_HOSTS: localhost,127.0.0.1
@@ -75,7 +75,7 @@ jobs:
     - name: Validate models
       working-directory: ./backend
       env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quiz_app
+        DATABASE_URL: postgresql://postgres:${{ secrets.TEST_POSTGRES_PASSWORD || 'postgres' }}@localhost:5432/quiz_app
         SECRET_KEY: test-secret-key-for-ci-only-very-long-string-to-avoid-warnings-1234567890abcdefghij
         DEBUG: "True"
         ALLOWED_HOSTS: localhost,127.0.0.1
@@ -93,7 +93,7 @@ jobs:
     - name: Test database schema alignment
       working-directory: ./backend
       env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quiz_app
+        DATABASE_URL: postgresql://postgres:${{ secrets.TEST_POSTGRES_PASSWORD || 'postgres' }}@localhost:5432/quiz_app
         SECRET_KEY: test-secret-key-for-ci-only-very-long-string-to-avoid-warnings-1234567890abcdefghij
         DEBUG: "True"
         ALLOWED_HOSTS: localhost,127.0.0.1
