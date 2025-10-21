@@ -94,12 +94,13 @@ jobs:
         
         from quiz.models import (
             User, Teacher, 
-            Vocabulary, QuizCollection, QuizSession, QuizResult,
+            Vocabulary, QuizCollection, Quiz, QuizResult,
             Test, TestQuestion, TestAssignment, TestAssignee, TestResult
         )
         
         print('✓ All core models imported successfully')
         print(f'  - User: {User._meta.db_table}')
         print(f'  - Vocabulary: {Vocabulary._meta.db_table}')
+        print(f'  - Quiz: {Quiz._meta.db_table}')
         print(f'  - Test: {Test._meta.db_table}')
         "
