@@ -8,7 +8,8 @@
 | 列名 | 型 | NULL | 既定値 | 主/外部 | 制約/索引 | 説明 |
 | --- | --- | --- | --- | --- | --- | --- |
 | user_id | uuid | NO | gen_random_uuid() | PK | PK | 学習当事者ID |
-| email | varchar(255) | NO | – | – | UNIQUE (lower(email)) WHERE deleted_at IS NULL, INDEX | ログインメール |
+| email | varchar(255) | NO | – | – | UNIQUE(lower(email)) WHERE deleted_at IS NULL, INDEX | ログインメール（Django USERNAME_FIELD） |
+| username | varchar(150) | YES | – | – | UNIQUE | Django管理画面互換の内部フィールド（未設定時は自動生成） |
 | oauth_provider | varchar(32) | NO | 'google' | – | INDEX | 認証プロバイダ |
 | oauth_sub | varchar(255) | NO | – | – | UNIQUE(oauth_provider, oauth_sub) | プロバイダ内一意 |
 | last_login | timestamptz | YES | – | – | INDEX | 最終ログイン |

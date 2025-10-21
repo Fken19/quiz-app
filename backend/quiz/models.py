@@ -96,7 +96,7 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin, CreatedUpdatedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_column="user_id")
-    email = models.EmailField(max_length=255, unique=True)  # unique=True を追加
+    email = models.EmailField(max_length=255)  # unique制約はMetaで部分一意として定義
     oauth_provider = models.CharField(max_length=32, default="google")
     oauth_sub = models.CharField(max_length=255)
     disabled_at = models.DateTimeField(null=True, blank=True)
@@ -105,7 +105,7 @@ class User(AbstractBaseUser, PermissionsMixin, CreatedUpdatedModel):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 
-    # usernameフィールドを追加（Django管理画面用）
+    # usernameフィールド（Django管理画面互換の内部フィールド）
     username = models.CharField(max_length=150, unique=True, blank=True, null=True)
 
     objects = UserManager()
@@ -119,6 +119,11 @@ class User(AbstractBaseUser, PermissionsMixin, CreatedUpdatedModel):
             models.UniqueConstraint(
                 fields=["oauth_provider", "oauth_sub"],
                 name="users_oauth_uniq",
+            ),
+            models.UniqueConstraint(
+                Lower("email"),
+                condition=Q(deleted_at__isnull=True),
+                name="users_email_active_uniq",
             ),
         ]
         indexes = [
