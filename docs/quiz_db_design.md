@@ -17,6 +17,12 @@
 | deleted_at | timestamptz | YES | – | – | INDEX | 論理削除（退会） |
 | created_at | timestamptz | NO | now() | – | INDEX | 作成 |
 | updated_at | timestamptz | NO | now() | – | – | 更新 |
+| is_active | boolean | NO | true | – | – | Django互換フラグ（無効化判定はdisabled_atを使用） |
+
+**注記**:
+- `username`フィールドは設計書に明示されていないが、Django管理画面との互換性のため保持
+- 講師権限の判定には`is_staff`フィールドを使用せず、`teachers_whitelists`テーブルで厳密に制御
+- `is_active`はDjango認証システムとの互換性のため保持（実際の無効化は`disabled_at`で判定）
 
 ### users_profile（生徒プロフィール）
 学年・表示名など、生徒の追加属性（users と 1:1）。

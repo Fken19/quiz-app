@@ -8,7 +8,6 @@ import uuid
 from typing import Optional
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
-from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.db.models import F, Q
 from django.db.models.functions import Lower
@@ -68,8 +67,6 @@ class UserManager(BaseUserManager):
         oauth_sub: str = "",
         **extra_fields,
     ):
-        extra_fields.setdefault("is_staff", False)
-        extra_fields.setdefault("is_superuser", False)
         return self._create_user(email, oauth_provider, oauth_sub, password, **extra_fields)
 
     def create_superuser(
@@ -80,12 +77,8 @@ class UserManager(BaseUserManager):
         oauth_sub: str = "superuser",
         **extra_fields,
     ):
-        extra_fields.setdefault("is_staff", True)
-        extra_fields.setdefault("is_superuser", True)
-        if extra_fields.get("is_staff") is not True:
-            raise ValueError("Superuser must have is_staff=True")
-        if extra_fields.get("is_superuser") is not True:
-            raise ValueError("Superuser must have is_superuser=True")
+        # Django管理画面用のスーパーユーザー作成
+        # ホワイトリストへの登録は別途手動で行う必要がある
         return self._create_user(email, oauth_provider, oauth_sub, password, **extra_fields)
 
 
@@ -94,7 +87,15 @@ class UserManager(BaseUserManager):
 # ---------------------------------------------------------------------------
 
 
-class User(AbstractBaseUser, PermissionsMixin, CreatedUpdatedModel):
+class User(AbstractBaseUser, CreatedUpdatedModel):
+    """
+    生徒アカウント（OAuth認証ベース）
+    
+    注意: PermissionsMixinを継承しない独自実装
+    - is_superuser, is_staff フィールドは持たない
+    - Django管理画面へのアクセス制御は別途実装
+    - 講師権限はteachers_whitelistsテーブルで厳密に管理
+    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_column="user_id")
     email = models.EmailField(max_length=255)  # unique制約はMetaで部分一意として定義
     oauth_provider = models.CharField(max_length=32, default="google")
@@ -103,9 +104,9 @@ class User(AbstractBaseUser, PermissionsMixin, CreatedUpdatedModel):
     deleted_at = models.DateTimeField(null=True, blank=True)
 
     is_active = models.BooleanField(default=True)
-    is_staff = models.BooleanField(default=False)
 
     # usernameフィールド（Django管理画面互換の内部フィールド）
+    # 設計書には明示されていないが、Django管理画面との互換性のため保持
     username = models.CharField(max_length=150, unique=True, blank=True, null=True)
 
     objects = UserManager()
@@ -144,6 +145,35 @@ class User(AbstractBaseUser, PermissionsMixin, CreatedUpdatedModel):
 
     def __str__(self) -> str:
         return self.email
+
+    # Django管理画面互換メソッド（PermissionsMixinの代替）
+    def has_perm(self, perm, obj=None):
+        """
+        ユーザーが特定の権限を持っているかチェック
+        ホワイトリスト登録されている場合はTrueを返す
+        """
+        from .utils import is_teacher_whitelisted
+        return self.is_active and is_teacher_whitelisted(self.email)
+
+    def has_perms(self, perm_list, obj=None):
+        """複数の権限をチェック"""
+        return all(self.has_perm(perm, obj) for perm in perm_list)
+
+    def has_module_perms(self, app_label):
+        """アプリケーションへのアクセス権をチェック"""
+        from .utils import is_teacher_whitelisted
+        return self.is_active and is_teacher_whitelisted(self.email)
+
+    @property
+    def is_staff(self):
+        """Django管理画面アクセス判定（ホワイトリストベース）"""
+        from .utils import is_teacher_whitelisted
+        return is_teacher_whitelisted(self.email)
+
+    @property
+    def is_superuser(self):
+        """スーパーユーザー判定（常にFalse）"""
+        return False
 
 
 class UserProfile(models.Model):

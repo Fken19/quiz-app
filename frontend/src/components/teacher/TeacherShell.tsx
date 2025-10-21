@@ -32,12 +32,39 @@ export default function TeacherShell({ children }: TeacherShellProps) {
       try {
         const user = (await apiGet('/api/users/me/')) as ApiUser;
         setCurrentUser(user);
-        if (!user.is_staff) {
-          router.replace('/teacher/access-denied');
+        
+        // 講師権限のホワイトリストチェック
+        // バックエンドで厳密にチェックされるが、フロントエンドでも事前確認
+        try {
+          // 講師APIエンドポイントにアクセスしてホワイトリスト登録を確認
+          await apiGet('/api/teachers/');
+        } catch (teacherErr: any) {
+          // ApiErrorのstatusプロパティをチェック
+          if (teacherErr?.status === 403) {
+            // ホワイトリスト未登録
+            console.warn(
+              `Whitelist check failed for ${user.email}: not registered`,
+              teacherErr
+            );
+            router.replace('/teacher/access-denied');
+            return;
+          }
+          // その他のエラーは無視（講師APIエンドポイントの問題かもしれない）
+          console.error('Teacher API check error:', teacherErr);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('failed to load current user', err);
-        router.replace('/auth/signin?callbackUrl=/teacher/dashboard');
+        
+        // ApiErrorのstatusプロパティをチェック
+        if (err?.status === 403) {
+          router.replace('/teacher/access-denied');
+        } else if (err?.status === 401) {
+          // 認証エラーはログインへ
+          router.replace('/auth/signin?callbackUrl=/teacher/dashboard');
+        } else {
+          // その他のエラーもログインへ
+          router.replace('/auth/signin?callbackUrl=/teacher/dashboard');
+        }
       } finally {
         setLoading(false);
       }
@@ -63,7 +90,7 @@ export default function TeacherShell({ children }: TeacherShellProps) {
     );
   }
 
-  if (!currentUser?.is_staff) {
+  if (!currentUser) {
     return null;
   }
 

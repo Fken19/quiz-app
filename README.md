@@ -329,10 +329,20 @@ docker-compose exec backend python manage.py createsuperuser
 - `POST /api/sessions/{id}/complete/` - セッション完了
 - `GET /api/me/results/?from={date}&to={date}` - 結果履歴
 
-### 管理者向け（is_staff必須）
-- `GET /api/admin/users/` - ユーザー一覧
-- `GET /api/admin/groups/` - グループ一覧
-- `GET /api/admin/stats/daily/?scope={user|group}&from={date}&to={date}` - 日次統計
+### 講師向け（ホワイトリスト登録必須）
+
+> **重要**: 講師ポータルへのアクセスには、システム管理者によるホワイトリスト登録が必要です。
+> 詳細は [`WHITELIST_ACCESS_CONTROL.md`](./WHITELIST_ACCESS_CONTROL.md) を参照してください。
+
+- `GET /api/teachers/` - 講師一覧
+- `GET /api/teacher-profiles/` - 講師プロフィール
+- `GET /api/tests/` - テスト管理
+- `GET /api/roster-folders/` - グループ管理
+- `GET /api/invitation-codes/` - 招待コード管理
+
+**ホワイトリスト管理（管理者専用）**:
+- Django管理画面（`/admin/`）からのみアクセス可能
+- 講師ポータルからは閲覧・変更不可
 
 ---
 

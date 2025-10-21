@@ -8,7 +8,6 @@ export interface ApiUser {
   created_at: string;
   updated_at: string;
   is_active: boolean;
-  is_staff: boolean;
 }
 
 export interface UserProfile {

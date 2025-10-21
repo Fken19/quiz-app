@@ -20,10 +20,8 @@ class UserSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "is_active",
-            "is_staff",
-            "is_superuser",
         ]
-        read_only_fields = ["created_at", "updated_at", "is_superuser"]
+        read_only_fields = ["created_at", "updated_at"]
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

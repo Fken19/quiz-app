@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { apiGet } from '@/lib/api-utils';
+import { apiGet, ApiError } from '@/lib/api-utils';
 import type { ApiUser, Teacher, TeacherProfile, TeacherWhitelistEntry } from '@/types/quiz';
 
 interface TeacherRow {
@@ -11,13 +12,15 @@ interface TeacherRow {
 }
 
 export default function TeacherStaffPage() {
+  const router = useRouter();
   const [currentUser, setCurrentUser] = useState<ApiUser | null>(null);
   const [teachers, setTeachers] = useState<TeacherRow[]>([]);
   const [whitelist, setWhitelist] = useState<TeacherWhitelistEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const isStaff = currentUser?.is_staff ?? false;
+  // 講師ポータルにアクセスできている時点でホワイトリスト登録済み
+  const isStaff = true;
 
   useEffect(() => {
     const fetchTeachers = async () => {
@@ -34,21 +37,18 @@ export default function TeacherStaffPage() {
           : teacherResponse?.results || [];
 
         let profiles: TeacherProfile[] = [];
-        if (user.is_staff && teacherList.length > 0) {
+        if (teacherList.length > 0) {
           const profileResponse = await apiGet('/api/teacher-profiles/?page_size=100').catch(() => ({ results: [] }));
           profiles = Array.isArray(profileResponse) ? profileResponse : profileResponse?.results || [];
         }
         const profileMap = new Map(profiles.map((profile) => [profile.teacher, profile]));
 
-        if (user.is_staff) {
-          const whitelistResponse = await apiGet('/api/teacher-whitelists/?page_size=100').catch(() => ({ results: [] }));
-          const whitelistList: TeacherWhitelistEntry[] = Array.isArray(whitelistResponse)
-            ? whitelistResponse
-            : whitelistResponse?.results || [];
-          setWhitelist(whitelistList);
-        } else {
-          setWhitelist([]);
-        }
+        // ホワイトリスト情報を取得
+        const whitelistResponse = await apiGet('/api/teacher-whitelists/?page_size=100').catch(() => ({ results: [] }));
+        const whitelistList: TeacherWhitelistEntry[] = Array.isArray(whitelistResponse)
+          ? whitelistResponse
+          : whitelistResponse?.results || [];
+        setWhitelist(whitelistList);
 
         setTeachers(
           teacherList.map((teacher) => ({
@@ -57,7 +57,15 @@ export default function TeacherStaffPage() {
           })),
         );
       } catch (err) {
-        console.error(err);
+        console.error('Staff page fetch error:', err);
+        
+        // ApiErrorの場合、403エラーはホワイトリスト未登録
+        if (err instanceof ApiError && err.status === 403) {
+          console.warn('Access denied (403) - redirecting to access-denied page');
+          router.replace('/teacher/access-denied');
+          return;
+        }
+        
         setError('講師情報の取得に失敗しました');
       } finally {
         setLoading(false);
@@ -65,7 +73,7 @@ export default function TeacherStaffPage() {
     };
 
     fetchTeachers();
-  }, []);
+  }, [router]);
 
   const activeWhitelist = useMemo(
     () => whitelist.filter((entry) => !entry.revoked_at),
@@ -95,7 +103,6 @@ export default function TeacherStaffPage() {
           <h1 className="text-2xl font-bold text-slate-900">講師一覧 / ホワイトリスト</h1>
           <p className="text-slate-600">
             登録済みの講師アカウントとホワイトリストを確認できます。
-            {!isStaff && '（講師一覧の詳細は講師アカウントのみ表示されます）'}
           </p>
         </div>
         <Link href="/teacher/dashboard" className="text-indigo-600 font-semibold">← ダッシュボードへ戻る</Link>
@@ -118,14 +125,8 @@ export default function TeacherStaffPage() {
               <span className="truncate">{teacher.teacher_id}</span>
               <span>{teacher.email}</span>
               <span>
-                {isStaff ? (
-                  <>
-                    <span className="font-semibold">{profile?.display_name || '---'}</span>
-                    <span className="block text-xs text-slate-500">{profile?.affiliation || '所属未登録'}</span>
-                  </>
-                ) : (
-                  '---'
-                )}
+                <span className="font-semibold">{profile?.display_name || '---'}</span>
+                <span className="block text-xs text-slate-500">{profile?.affiliation || '所属未登録'}</span>
               </span>
               <span>{teacher.last_login ? new Date(teacher.last_login).toLocaleString() : '---'}</span>
             </div>
@@ -136,8 +137,7 @@ export default function TeacherStaffPage() {
         </div>
       </section>
 
-      {isStaff && (
-        <section className="bg-white shadow rounded-lg overflow-hidden">
+      <section className="bg-white shadow rounded-lg overflow-hidden">
           <header className="px-6 py-4 border-b">
             <h2 className="text-lg font-semibold text-slate-900">講師ホワイトリスト</h2>
             <p className="text-sm text-slate-500">アクティブ {activeWhitelist.length} / 総数 {whitelist.length}</p>
@@ -164,7 +164,6 @@ export default function TeacherStaffPage() {
             )}
           </div>
         </section>
-      )}
     </div>
   );
 }

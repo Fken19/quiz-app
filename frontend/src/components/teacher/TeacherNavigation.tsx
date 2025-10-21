@@ -24,7 +24,7 @@ const NAV_ITEMS = [
   { name: '講師一覧', href: '/teacher/staff', icon: AcademicCapIcon },
   { name: '語彙管理', href: '/teacher/vocab', icon: BookOpenIcon },
   { name: '招待コード', href: '/teacher/invites', icon: TicketIcon },
-  { name: 'ホワイトリスト', href: '/teacher/whitelist', icon: ShieldCheckIcon },
+  // ホワイトリスト管理はDjango管理画面からのみ行う
 ];
 
 export default function TeacherNavigation() {

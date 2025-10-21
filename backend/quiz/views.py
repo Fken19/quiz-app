@@ -38,8 +38,12 @@ class UserViewSet(BaseModelViewSet):
     def get_queryset(self):  # type: ignore[override]
         qs = super().get_queryset()
         user = self.request.user
-        if user.is_authenticated and not user.is_staff:
-            qs = qs.filter(pk=user.pk)
+        # 一般ユーザーは自分のレコードのみ閲覧可能
+        # 講師権限の判定はTeacherAccessControlMiddlewareで行われる
+        if user.is_authenticated:
+            from .utils import is_teacher_whitelisted
+            if not is_teacher_whitelisted(user.email):
+                qs = qs.filter(pk=user.pk)
         return qs
 
     @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="me")
@@ -77,8 +81,8 @@ class TeacherProfileViewSet(BaseModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):  # type: ignore[override]
-        if not self.request.user.is_staff:
-            return models.TeacherProfile.objects.none()
+        # アクセス制御はTeacherAccessControlMiddlewareで実施済み
+        # このエンドポイントに到達した時点でホワイトリスト登録済み
         return models.TeacherProfile.objects.select_related("teacher")
 
 
@@ -106,7 +110,9 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
         if status_param:
             qs = qs.filter(status=status_param)
 
-        if user.is_staff:
+        # 講師はホワイトリスト判定、生徒は自分の関連のみ
+        from .utils import is_teacher_whitelisted
+        if is_teacher_whitelisted(user.email):
             return qs
         return qs.filter(Q(student=user) | Q(teacher__email=user.email))
 

@@ -303,12 +303,8 @@ export default function TeacherProfilePage() {
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">権限</span>
-            <span className={`px-2 py-1 rounded text-xs font-medium ${
-              user?.is_staff 
-                ? 'bg-indigo-100 text-indigo-800' 
-                : 'bg-slate-100 text-slate-800'
-            }`}>
-              {user?.is_staff ? '講師' : '一般ユーザー'}
+            <span className="px-2 py-1 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+              講師（ホワイトリスト登録済み）
             </span>
           </div>
           <div className="flex justify-between">

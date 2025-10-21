@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { apiGet } from '@/lib/api-utils';
+import { apiGet, ApiError } from '@/lib/api-utils';
 import type { Test, TestResult } from '@/types/quiz';
 import { 
   ClipboardDocumentListIcon, 
@@ -22,6 +23,7 @@ interface DashboardStats {
 }
 
 export default function TeacherDashboardPage() {
+  const router = useRouter();
   const [stats, setStats] = useState<DashboardStats>({
     totalTests: 0,
     activeTests: 0,
@@ -62,7 +64,15 @@ export default function TeacherDashboardPage() {
         setPendingTests(activeTests);
         setRecentResults(results);
       } catch (err) {
-        console.error(err);
+        console.error('Dashboard fetch error:', err);
+        
+        // ApiErrorの場合、403エラーはホワイトリスト未登録
+        if (err instanceof ApiError && err.status === 403) {
+          console.warn('Access denied (403) - redirecting to access-denied page');
+          router.replace('/teacher/access-denied');
+          return;
+        }
+        
         setError('ダッシュボード情報の取得に失敗しました');
       } finally {
         setLoading(false);
@@ -70,7 +80,7 @@ export default function TeacherDashboardPage() {
     };
 
     fetchStats();
-  }, []);
+  }, [router]);
 
   if (loading) {
     return (

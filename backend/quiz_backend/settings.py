@@ -50,6 +50,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'quiz.middleware.AuthDebugMiddleware',  # デバッグ用
+    'quiz.middleware.TeacherAccessControlMiddleware',  # 講師ホワイトリストによるアクセス制御
     'quiz.middleware_server_timing.ServerTimingMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',

@@ -1,8 +1,9 @@
 import logging
-from django.http import HttpResponse
+from django.http import JsonResponse
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import get_user_model
 from .utils import is_teacher_whitelisted
+from .models import Teacher
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -28,7 +29,7 @@ class AuthDebugMiddleware:
                         logger.info(f"Valid token found for user: {token.user.email}")
                         request.user = token.user
                         
-                        # 権限はwhitelistで判定（roleは変更しない）
+                        # 権限をログ出力
                         self._log_user_permission(token.user)
                         
                     except Token.DoesNotExist:
@@ -39,7 +40,7 @@ class AuthDebugMiddleware:
                                 logger.info(f"User found by email token: {user.email}")
                                 request.user = user
                                 
-                                # 権限はwhitelistで判定（roleは変更しない）
+                                # 権限をログ出力
                                 self._log_user_permission(user)
                                 
                             except User.DoesNotExist:
@@ -62,11 +63,83 @@ class AuthDebugMiddleware:
         return response
     
     def _log_user_permission(self, user):
-        """ユーザーの講師権限状態をログ出力（roleは変更しない）"""
+        """ユーザーの講師権限状態をログ出力"""
         try:
             if not user.email:
                 return
             is_wl = is_teacher_whitelisted(user.email)
-            logger.info(f"User {user.email} whitelisted={is_wl} role={getattr(user, 'role', None)}")
+            logger.info(f"User {user.email} whitelisted={is_wl}")
         except Exception:
             pass
+
+
+class TeacherAccessControlMiddleware:
+    """
+    講師ポータルへのアクセス制御ミドルウェア
+    
+    設計書の要件:
+    - Google認証OK ∧ メールがteachers_whitelistsに存在 で入場可
+    - ホワイトリストに未登録の場合はアクセス拒否
+    """
+    
+    TEACHER_PATHS = [
+        '/api/teachers/',
+        '/api/teacher-profiles/',
+        '/api/teacher-whitelists/',
+        '/api/tests/',
+        '/api/test-questions/',
+        '/api/test-assignments/',
+        '/api/test-assignees/',
+        '/api/roster-folders/',
+        '/api/roster-memberships/',
+        '/api/invitation-codes/',
+        '/api/student-teacher-links/',
+    ]
+    
+    def __init__(self, get_response):
+        self.get_response = get_response
+    
+    def __call__(self, request):
+        # 講師APIへのアクセスをチェック
+        if self._is_teacher_path(request.path):
+            if not request.user.is_authenticated:
+                return JsonResponse(
+                    {'error': 'Authentication required'},
+                    status=401
+                )
+            
+            # ホワイトリストチェック
+            if not is_teacher_whitelisted(request.user.email):
+                logger.warning(
+                    f"Access denied: {request.user.email} not in teacher whitelist"
+                )
+                return JsonResponse(
+                    {
+                        'error': 'Teacher access denied',
+                        'detail': 'Your email is not registered in the teacher whitelist. '
+                                  'Please contact an administrator.'
+                    },
+                    status=403
+                )
+            
+            # Teacherレコードの存在確認と自動作成
+            teacher, created = Teacher.objects.get_or_create(
+                email=request.user.email.lower(),
+                defaults={
+                    'oauth_provider': getattr(request.user, 'oauth_provider', 'google'),
+                    'oauth_sub': getattr(request.user, 'oauth_sub', '') + '_teacher',
+                }
+            )
+            
+            if created:
+                logger.info(f"Auto-created Teacher record for {request.user.email}")
+            
+            # Teacherインスタンスをrequestに追加（APIで利用可能に）
+            request.teacher = teacher
+        
+        response = self.get_response(request)
+        return response
+    
+    def _is_teacher_path(self, path):
+        """講師専用パスかどうかを判定"""
+        return any(path.startswith(prefix) for prefix in self.TEACHER_PATHS)
