@@ -1,0 +1,281 @@
+export interface ApiUser {
+  user_id: string;
+  email: string;
+  oauth_provider: string;
+  oauth_sub: string;
+  disabled_at: string | null;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  is_active: boolean;
+  is_staff: boolean;
+}
+
+export interface UserProfile {
+  user: string;
+  display_name: string;
+  avatar_url: string;
+  grade?: string | null;
+  self_intro?: string | null;
+  updated_at: string;
+}
+
+export interface Teacher {
+  teacher_id: string;
+  email: string;
+  oauth_provider: string;
+  oauth_sub: string;
+  last_login: string | null;
+  disabled_at: string | null;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeacherProfile {
+  teacher: string;
+  display_name?: string | null;
+  affiliation?: string | null;
+  avatar_url?: string | null;
+  bio?: string | null;
+  updated_at: string;
+}
+
+export interface TeacherWhitelistEntry {
+  teachers_whitelist_id: string;
+  email: string;
+  can_publish_vocab: boolean;
+  note?: string | null;
+  revoked_at?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvitationCode {
+  invitation_code_id: string;
+  invitation_code: string;
+  issued_by: string;
+  issued_at: string;
+  expires_at?: string | null;
+  used_by?: string | null;
+  used_at?: string | null;
+  revoked: boolean;
+  revoked_at?: string | null;
+}
+
+export interface StudentTeacherLink {
+  student_teacher_link_id: string;
+  teacher: string;
+  student: string;
+  status: 'pending' | 'active' | 'revoked';
+  linked_at: string;
+  revoked_at?: string | null;
+  revoked_by_teacher?: string | null;
+  revoked_by_student?: string | null;
+  invitation?: string | null;
+  custom_display_name?: string | null;
+  private_note?: string | null;
+  local_student_code?: string | null;
+  tags?: string[];
+  kana_for_sort?: string | null;
+  color?: string | null;
+  updated_at: string;
+}
+
+export interface RosterFolder {
+  roster_folder_id: string;
+  owner_teacher: string;
+  parent_folder?: string | null;
+  name: string;
+  sort_order: number;
+  is_dynamic: boolean;
+  dynamic_filter?: unknown;
+  notes?: string | null;
+  archived_at?: string | null;
+  created_at: string;
+}
+
+export interface RosterMembership {
+  roster_membership_id: string;
+  roster_folder: string;
+  student: string;
+  added_at: string;
+  removed_at?: string | null;
+  note?: string | null;
+}
+
+export interface Vocabulary {
+  vocabulary_id: string;
+  text_en: string;
+  text_key: string;
+  part_of_speech?: string | null;
+  explanation?: string | null;
+  example_en?: string | null;
+  example_ja?: string | null;
+  sort_key: string;
+  head_letter: string;
+  sense_count: number;
+  visibility: 'private' | 'public';
+  status: 'draft' | 'proposed' | 'published' | 'archived';
+  created_by_user?: string | null;
+  created_by_teacher?: string | null;
+  alias_of?: string | null;
+  published_at?: string | null;
+  archived_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VocabTranslation {
+  vocab_translation_id: string;
+  vocabulary: string;
+  text_ja: string;
+  is_primary: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VocabChoice {
+  vocab_choice_id: string;
+  vocabulary: string;
+  text_ja: string;
+  is_correct: boolean;
+  weight: string;
+  source_vocabulary?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuizCollection {
+  quiz_collection_id: string;
+  scope: 'default' | 'custom';
+  owner_user?: string | null;
+  title: string;
+  description?: string | null;
+  order_index: number;
+  is_published: boolean;
+  published_at?: string | null;
+  origin_collection?: string | null;
+  archived_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Quiz {
+  quiz_id: string;
+  quiz_collection: string;
+  sequence_no: number;
+  title?: string | null;
+  timer_seconds?: number | null;
+  origin_quiz?: string | null;
+  archived_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuizQuestion {
+  quiz_question_id: string;
+  quiz: string;
+  vocabulary: string;
+  question_order: number;
+  note?: string | null;
+  archived_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuizResult {
+  quiz_result_id: string;
+  user: string;
+  quiz: string;
+  started_at: string;
+  completed_at?: string | null;
+  total_time_ms?: number | null;
+  score?: number | null;
+}
+
+export interface QuizResultDetail {
+  quiz_result_detail_id: string;
+  quiz_result: string;
+  question_order: number;
+  vocabulary: string;
+  selected_text?: string | null;
+  is_correct: boolean;
+  reaction_time_ms?: number | null;
+  created_at: string;
+}
+
+export interface Test {
+  test_id: string;
+  teacher: string;
+  title: string;
+  description?: string | null;
+  due_at?: string | null;
+  max_attempts_per_student: number;
+  archived_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TestQuestion {
+  test_question_id: string;
+  test: string;
+  vocabulary: string;
+  question_order: number;
+  weight?: string | null;
+  timer_seconds: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TestAssignment {
+  test_assignment_id: string;
+  test: string;
+  assigned_by_teacher?: string | null;
+  assigned_at: string;
+  note?: string | null;
+  run_params?: unknown;
+}
+
+export interface TestAssignee {
+  test_assignee_id: string;
+  test: string;
+  student: string;
+  test_assignment?: string | null;
+  source_type?: 'folder' | 'manual' | 'api' | null;
+  source_folder?: string | null;
+  assigned_by_teacher?: string | null;
+  assigned_at: string;
+  max_attempts?: number | null;
+}
+
+export interface TestResult {
+  test_result_id: string;
+  test: string;
+  student: string;
+  test_assignee?: string | null;
+  attempt_no: number;
+  started_at: string;
+  completed_at?: string | null;
+  score?: number | null;
+}
+
+export interface TestResultDetail {
+  test_result_detail_id: string;
+  test_result: string;
+  question_order: number;
+  vocabulary: string;
+  selected_choice?: string | null;
+  selected_text?: string | null;
+  is_correct?: boolean | null;
+  reaction_time_ms?: number | null;
+  created_at: string;
+}
+
+export type PaginatedResponse<T> = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+};

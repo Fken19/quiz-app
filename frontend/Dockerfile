@@ -1,0 +1,20 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# package.jsonとpackage-lock.jsonをコピー
+COPY package*.json ./
+
+# 依存関係をインストール
+RUN npm ci
+
+# アプリケーションコードをコピー
+COPY . .
+
+# ポート3000を公開
+EXPOSE 3000
+
+# 開発サーバーを起動（ファイル監視を安定化）
+ENV CHOKIDAR_USEPOLLING=true
+ENV WATCHPACK_POLLING=true
+CMD ["npm", "run", "dev"]

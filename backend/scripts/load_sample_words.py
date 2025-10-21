@@ -1,0 +1,154 @@
+import os
+import django
+import sys
+
+# Djangoの設定
+sys.path.append('/app')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'quiz_backend.settings')
+django.setup()
+
+from quiz.models import Word, WordTranslation
+
+sample_words = [
+    {"word": "apple", "correct": "りんご", "dummy": ["バナナ", "オレンジ", "ぶどう"]},
+    {"word": "dog", "correct": "犬", "dummy": ["猫", "鳥", "馬"]},
+    {"word": "car", "correct": "車", "dummy": ["自転車", "電車", "飛行機"]},
+    {"word": "water", "correct": "水", "dummy": ["火", "土", "空気"]},
+    {"word": "sun", "correct": "太陽", "dummy": ["月", "星", "雲"]},
+    {"word": "computer", "correct": "コンピュータ", "dummy": ["スマートフォン", "タブレット", "テレビ"]},
+    {"word": "school", "correct": "学校", "dummy": ["病院", "公園", "図書館"]},
+    {"word": "book", "correct": "本", "dummy": ["新聞", "雑誌", "手紙"]},
+    {"word": "music", "correct": "音楽", "dummy": ["映画", "ゲーム", "アート"]},
+    {"word": "teacher", "correct": "先生", "dummy": ["学生", "エンジニア", "医者"]},
+    {"word": "cat", "correct": "猫", "dummy": ["犬", "鳥", "魚"]},
+    {"word": "house", "correct": "家", "dummy": ["建物", "アパート", "部屋"]},
+    {"word": "tree", "correct": "木", "dummy": ["花", "草", "葉"]},
+    {"word": "river", "correct": "川", "dummy": ["湖", "海", "滝"]},
+    {"word": "mountain", "correct": "山", "dummy": ["丘", "谷", "平原"]},
+    {"word": "ocean", "correct": "海洋", "dummy": ["湖", "川", "池"]},
+    {"word": "flower", "correct": "花", "dummy": ["葉", "実", "茎"]},
+    {"word": "rain", "correct": "雨", "dummy": ["雪", "霧", "風"]},
+    {"word": "snow", "correct": "雪", "dummy": ["雨", "霜", "氷"]},
+    {"word": "wind", "correct": "風", "dummy": ["嵐", "静寂", "雨"]},
+    {"word": "fire", "correct": "火", "dummy": ["水", "風", "土"]},
+    {"word": "earth", "correct": "地球", "dummy": ["火星", "金星", "月"]},
+    {"word": "moon", "correct": "月", "dummy": ["太陽", "星", "惑星"]},
+    {"word": "star", "correct": "星", "dummy": ["月", "太陽", "彗星"]},
+    {"word": "clock", "correct": "時計", "dummy": ["カレンダー", "日記", "時計台"]},
+    {"word": "phone", "correct": "電話", "dummy": ["メール", "ラジオ", "テレビ"]},
+    {"word": "pen", "correct": "ペン", "dummy": ["鉛筆", "マーカー", "ブラシ"]},
+    {"word": "paper", "correct": "紙", "dummy": ["布", "プラスチック", "木"]},
+    {"word": "desk", "correct": "机", "dummy": ["テーブル", "椅子", "棚"]},
+    {"word": "chair", "correct": "椅子", "dummy": ["机", "ソファ", "ベッド"]},
+    {"word": "window", "correct": "窓", "dummy": ["ドア", "壁", "屋根"]},
+    {"word": "door", "correct": "ドア", "dummy": ["窓", "柵", "壁"]},
+    {"word": "road", "correct": "道", "dummy": ["道程", "道具", "線路"]},
+    {"word": "bicycle", "correct": "自転車", "dummy": ["バイク", "車", "電車"]},
+    {"word": "train", "correct": "電車", "dummy": ["バス", "飛行機", "船"]},
+    {"word": "plane", "correct": "飛行機", "dummy": ["ヘリコプター", "船", "車"]},
+    {"word": "ship", "correct": "船", "dummy": ["飛行機", "電車", "車"]},
+    {"word": "city", "correct": "都市", "dummy": ["村", "町", "郊外"]},
+    {"word": "village", "correct": "村", "dummy": ["都市", "町", "集落"]},
+    {"word": "country", "correct": "国", "dummy": ["都市", "州", "地域"]},
+    {"word": "language", "correct": "言語", "dummy": ["文化", "文字", "発音"]},
+    {"word": "friend", "correct": "友達", "dummy": ["敵", "知人", "仲間"]},
+    {"word": "family", "correct": "家族", "dummy": ["友達", "隣人", "同僚"]},
+    {"word": "child", "correct": "子供", "dummy": ["大人", "少年", "少女"]},
+    {"word": "adult", "correct": "大人", "dummy": ["子供", "少年", "高齢者"]},
+    {"word": "food", "correct": "食べ物", "dummy": ["飲み物", "料理", "デザート"]},
+    {"word": "drink", "correct": "飲み物", "dummy": ["食べ物", "スナック", "料理"]},
+    {"word": "coffee", "correct": "コーヒー", "dummy": ["紅茶", "ジュース", "水"]},
+    {"word": "tea", "correct": "お茶", "dummy": ["コーヒー", "ジュース", "水"]},
+    {"word": "sugar", "correct": "砂糖", "dummy": ["塩", "胡椒", "小麦粉"]},
+    {"word": "salt", "correct": "塩", "dummy": ["砂糖", "酢", "油"]},
+    {"word": "chocolate", "correct": "チョコレート", "dummy": ["キャンディ", "ケーキ", "アイス"]},
+    {"word": "cake", "correct": "ケーキ", "dummy": ["パン", "クッキー", "パイ"]},
+    {"word": "bread", "correct": "パン", "dummy": ["ケーキ", "ご飯", "シリアル"]},
+    {"word": "butter", "correct": "バター", "dummy": ["マーガリン", "チーズ", "クリーム"]},
+    {"word": "cheese", "correct": "チーズ", "dummy": ["バター", "ヨーグルト", "牛乳"]},
+    {"word": "egg", "correct": "卵", "dummy": ["豆", "果物", "肉"]},
+    {"word": "rice", "correct": "米", "dummy": ["小麦", "大麦", "トウモロコシ"]},
+    {"word": "noodle", "correct": "麺", "dummy": ["ご飯", "パン", "米"]},
+    {"word": "soup", "correct": "スープ", "dummy": ["サラダ", "スムージー", "ジュース"]},
+    {"word": "meat", "correct": "肉", "dummy": ["魚", "野菜", "果物"]},
+    {"word": "fish", "correct": "魚", "dummy": ["肉", "貝", "昆虫"]},
+    {"word": "vegetable", "correct": "野菜", "dummy": ["果物", "肉", "穀物"]},
+    {"word": "fruit", "correct": "果物", "dummy": ["野菜", "肉", "菓子"]},
+    {"word": "market", "correct": "市場", "dummy": ["店", "駅", "広場"]},
+    {"word": "shop", "correct": "店", "dummy": ["市場", "商店", "スーパーマーケット"]},
+    {"word": "store", "correct": "店舗", "dummy": ["店", "市場", "商店"]},
+    {"word": "money", "correct": "お金", "dummy": ["時間", "価値", "点数"]},
+    {"word": "bank", "correct": "銀行", "dummy": ["市場", "店", "ATM"]},
+    {"word": "carpet", "correct": "カーペット", "dummy": ["マット", "カーテン", "ラグ"]},
+    {"word": "mirror", "correct": "鏡", "dummy": ["窓", "写真", "テレビ"]},
+    {"word": "table", "correct": "テーブル", "dummy": ["机", "椅子", "棚"]},
+    {"word": "lamp", "correct": "ランプ", "dummy": ["ライト", "テレビ", "時計"]},
+    {"word": "sofa", "correct": "ソファ", "dummy": ["椅子", "ベッド", "机"]},
+    {"word": "bed", "correct": "ベッド", "dummy": ["ソファ", "椅子", "マットレス"]},
+    {"word": "pillow", "correct": "枕", "dummy": ["毛布", "シーツ", "ベッドカバー"]},
+    {"word": "blanket", "correct": "毛布", "dummy": ["枕", "シーツ", "カバー"]},
+    {"word": "bath", "correct": "風呂", "dummy": ["シャワー", "洗面所", "トイレ"]},
+    {"word": "shower", "correct": "シャワー", "dummy": ["風呂", "洗面所", "浴室"]},
+    {"word": "toilet", "correct": "トイレ", "dummy": ["浴室", "洗面所", "部屋"]},
+    {"word": "sink", "correct": "流し", "dummy": ["カウンター", "テーブル", "棚"]},
+    {"word": "keyboard", "correct": "キーボード", "dummy": ["マウス", "ディスプレイ", "プリンター"]},
+    {"word": "mouse", "correct": "マウス", "dummy": ["キーボード", "タッチパッド", "リモコン"]},
+    {"word": "screen", "correct": "画面", "dummy": ["ディスプレイ", "窓", "鏡"]},
+    {"word": "cable", "correct": "ケーブル", "dummy": ["コード", "ワイヤー", "パイプ"]},
+    {"word": "library", "correct": "図書館", "dummy": ["学校", "本屋", "資料室"]},
+    {"word": "magazine", "correct": "雑誌", "dummy": ["新聞", "本", "ポスター"]},
+    {"word": "newspaper", "correct": "新聞", "dummy": ["雑誌", "本", "チラシ"]},
+    {"word": "movie", "correct": "映画", "dummy": ["ドラマ", "アニメ", "ミュージックビデオ"]},
+    {"word": "film", "correct": "フィルム", "dummy": ["映画", "写真", "ドキュメンタリー"]},
+    {"word": "song", "correct": "歌", "dummy": ["詩", "曲", "メロディ"]},
+    {"word": "dance", "correct": "踊り", "dummy": ["歌", "演劇", "曲"]},
+    {"word": "game", "correct": "ゲーム", "dummy": ["スポーツ", "競技", "遊び"]},
+    {"word": "sport", "correct": "スポーツ", "dummy": ["ゲーム", "運動", "レクリエーション"]},
+    {"word": "ball", "correct": "ボール", "dummy": ["円", "球", "ドーム"]},
+    {"word": "goal", "correct": "ゴール", "dummy": ["得点", "勝利", "シュート"]},
+    {"word": "team", "correct": "チーム", "dummy": ["グループ", "個人", "クラブ"]},
+    {"word": "coach", "correct": "コーチ", "dummy": ["監督", "選手", "指導者"]},
+    {"word": "player", "correct": "選手", "dummy": ["観客", "コーチ", "審判"]},
+    {"word": "score", "correct": "得点", "dummy": ["点数", "結果", "評価"]}
+]
+
+
+def get_level_and_segment(idx):
+    # 例: 1レベル=30問, 1セグメント=10問（必要に応じて調整）
+    level = idx // 30 + 1
+    segment = (idx % 30) // 10 + 1
+    return level, segment
+
+def load_sample_data():
+    print("サンプル単語データを読み込んでいます...")
+    for idx, word_data in enumerate(sample_words):
+        if Word.objects.filter(text=word_data['word']).exists():
+            print(f"単語 '{word_data['word']}' は既に存在します。スキップします。")
+            continue
+        level, segment = get_level_and_segment(idx)
+        word = Word.objects.create(
+            text=word_data['word'],
+            level=level,
+            segment=segment,
+            difficulty=0.3 if level == 1 else 0.5 if level == 2 else 0.8
+        )
+        # 正解
+        WordTranslation.objects.create(
+            word=word,
+            text=word_data['correct'],
+            is_correct=True
+        )
+        # ダミー
+        for dummy in word_data['dummy']:
+            WordTranslation.objects.create(
+                word=word,
+                text=dummy,
+                is_correct=False
+            )
+        print(f"単語 '{word.text}' を追加しました。")
+    print(f"サンプルデータの読み込みが完了しました。")
+    print(f"総単語数: {Word.objects.count()}")
+    print(f"総翻訳数: {WordTranslation.objects.count()}")
+
+if __name__ == '__main__':
+    load_sample_data()
