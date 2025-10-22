@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# システム依存関係をインストール
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python依存関係をインストール
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 開発用にコードをボリュームマウントするため、COPYは最小限
+COPY . .
+
+# ポート8080で実行
+EXPOSE 8080
+
+# 開発用: Django runserver（ホットリロード対応）
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8080"]

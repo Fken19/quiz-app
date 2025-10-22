@@ -1,0 +1,322 @@
+[
+  {
+    "text": "apple",
+    "pos": "noun",
+    "primary_translation": "りんご",
+    "dummy_translations": ["バナナ", "オレンジ", "ぶどう"],
+    "level": 1,
+    "segment": 1,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "New Horizon", "edition": "2024", "unit": "Unit 1", "range_note": "pp.10-15" }
+    ],
+    "explanation": "名詞。果物のりんごを表す基本語。",
+    "example_sentences": [
+      { "en": "I eat an apple every morning.", "ja": "私は毎朝りんごを食べます。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "run",
+    "pos": "verb",
+    "primary_translation": "走る",
+    "dummy_translations": ["歩く", "飛ぶ", "泳ぐ"],
+    "level": 2,
+    "segment": 1,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "Sunshine", "edition": "2024", "unit": "Unit 2", "range_note": "pp.18-23" }
+    ],
+    "explanation": "動詞。「走る」の意味で日常的に用いる。",
+    "example_sentences": [
+      { "en": "He runs fast.", "ja": "彼は速く走る。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "big",
+    "pos": "adj",
+    "primary_translation": "大きい",
+    "dummy_translations": ["小さい", "速い", "遅い"],
+    "level": 1,
+    "segment": 2,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "New Crown", "edition": "2025", "unit": "Unit 1", "range_note": "pp.8-12" }
+    ],
+    "explanation": "形容詞。「大きい」の意味。",
+    "example_sentences": [
+      { "en": "This box is big.", "ja": "この箱は大きい。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "book",
+    "pos": "noun",
+    "primary_translation": "本",
+    "dummy_translations": ["ペン", "ノート", "机"],
+    "level": 1,
+    "segment": 3,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "One World", "edition": "2024", "unit": "Unit 1", "range_note": "pp.16-21" }
+    ],
+    "explanation": "名詞。読むための冊子・書籍。",
+    "example_sentences": [
+      { "en": "I read a book at home.", "ja": "私は家で本を読みます。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "study",
+    "pos": "verb",
+    "primary_translation": "勉強する",
+    "dummy_translations": ["教える", "遊ぶ", "眠る"],
+    "level": 3,
+    "segment": 3,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "Total English", "edition": "2024", "unit": "Unit 3", "range_note": "pp.28-33" }
+    ],
+    "explanation": "動詞。学習や勉強を行うこと。",
+    "example_sentences": [
+      { "en": "We study English after school.", "ja": "私たちは放課後に英語を勉強します。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "beautiful",
+    "pos": "adj",
+    "primary_translation": "美しい",
+    "dummy_translations": ["醜い", "きたない", "危険な"],
+    "level": 6,
+    "segment": 4,
+    "grade": "J2",
+    "textbook_scopes": [
+      { "series": "New Horizon", "edition": "2025", "unit": "Unit 5", "range_note": "pp.40-45" }
+    ],
+    "explanation": "形容詞。見た目や音などが美しいさま。",
+    "example_sentences": [
+      { "en": "The flowers are beautiful in spring.", "ja": "春には花が美しい。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "train",
+    "pos": "noun",
+    "primary_translation": "電車",
+    "dummy_translations": ["バス", "自転車", "飛行機"],
+    "level": 4,
+    "segment": 2,
+    "grade": "J2",
+    "textbook_scopes": [
+      { "series": "Sunshine", "edition": "2025", "unit": "Unit 3", "range_note": "pp.22-27" }
+    ],
+    "explanation": "名詞。レール上を走る公共交通機関。",
+    "example_sentences": [
+      { "en": "I go to school by train.", "ja": "私は電車で学校に行きます。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "open",
+    "pos": "verb",
+    "primary_translation": "開ける",
+    "dummy_translations": ["閉める", "押す", "置く"],
+    "level": 2,
+    "segment": 4,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "New Crown", "edition": "2024", "unit": "Unit 2", "range_note": "pp.18-22" }
+    ],
+    "explanation": "動詞。ドアや窓などを開ける。",
+    "example_sentences": [
+      { "en": "Please open the window.", "ja": "窓を開けてください。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "city",
+    "pos": "noun",
+    "primary_translation": "都市",
+    "dummy_translations": ["村", "川", "山"],
+    "level": 5,
+    "segment": 5,
+    "grade": "J2",
+    "textbook_scopes": [
+      { "series": "One World", "edition": "2025", "unit": "Unit 4", "range_note": "pp.30-36" }
+    ],
+    "explanation": "名詞。人口が多く発達した地域。",
+    "example_sentences": [
+      { "en": "Tokyo is a big city.", "ja": "東京は大きな都市です。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "difficult",
+    "pos": "adj",
+    "primary_translation": "難しい",
+    "dummy_translations": ["簡単な", "速い", "新しい"],
+    "level": 7,
+    "segment": 6,
+    "grade": "J3",
+    "textbook_scopes": [
+      { "series": "Total English", "edition": "2025", "unit": "Unit 6", "range_note": "pp.46-52" }
+    ],
+    "explanation": "形容詞。理解や実行が難しいさま。",
+    "example_sentences": [
+      { "en": "This question is difficult.", "ja": "この問題は難しい。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "school",
+    "pos": "noun",
+    "primary_translation": "学校",
+    "dummy_translations": ["病院", "公園", "駅"],
+    "level": 1,
+    "segment": 4,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "New Horizon", "edition": "2024", "unit": "Unit 2", "range_note": "pp.16-21" }
+    ],
+    "explanation": "名詞。学ぶための施設や組織。",
+    "example_sentences": [
+      { "en": "I go to school every day.", "ja": "私は毎日学校に行きます。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "friend",
+    "pos": "noun",
+    "primary_translation": "友だち",
+    "dummy_translations": ["家族", "先生", "生徒"],
+    "level": 2,
+    "segment": 2,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "Sunshine", "edition": "2024", "unit": "Unit 3", "range_note": "pp.22-27" }
+    ],
+    "explanation": "名詞。親しい間柄の人。",
+    "example_sentences": [
+      { "en": "She is my friend.", "ja": "彼女は私の友だちです。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "eat",
+    "pos": "verb",
+    "primary_translation": "食べる",
+    "dummy_translations": ["飲む", "読む", "書く"],
+    "level": 2,
+    "segment": 3,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "One World", "edition": "2024", "unit": "Unit 2", "range_note": "pp.18-23" }
+    ],
+    "explanation": "動詞。食物を口に入れて摂取する。",
+    "example_sentences": [
+      { "en": "We eat lunch at noon.", "ja": "私たちは正午に昼食を食べます。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "play",
+    "pos": "verb",
+    "primary_translation": "遊ぶ",
+    "dummy_translations": ["勉強する", "眠る", "走る"],
+    "level": 3,
+    "segment": 1,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "Total English", "edition": "2025", "unit": "Unit 1", "range_note": "pp.8-13" }
+    ],
+    "explanation": "動詞。遊ぶ／（スポーツ・楽器を）する。",
+    "example_sentences": [
+      { "en": "They play soccer after school.", "ja": "彼らは放課後にサッカーをします。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "cold",
+    "pos": "adj",
+    "primary_translation": "寒い",
+    "dummy_translations": ["暑い", "暖かい", "涼しい"],
+    "level": 4,
+    "segment": 2,
+    "grade": "J2",
+    "textbook_scopes": [
+      { "series": "New Crown", "edition": "2025", "unit": "Unit 2", "range_note": "pp.20-25" }
+    ],
+    "explanation": "形容詞。気温が低いことを表す。",
+    "example_sentences": [
+      { "en": "It is cold today.", "ja": "今日は寒いです。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "happy",
+    "pos": "adj",
+    "primary_translation": "うれしい",
+    "dummy_translations": ["悲しい", "怒っている", "忙しい"],
+    "level": 5,
+    "segment": 5,
+    "grade": "J2",
+    "textbook_scopes": [
+      { "series": "Sunshine", "edition": "2025", "unit": "Unit 4", "range_note": "pp.30-36" }
+    ],
+    "explanation": "形容詞。気持ちが満たされた状態。",
+    "example_sentences": [
+      { "en": "I am happy with the result.", "ja": "私は結果に満足しています。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "teacher",
+    "pos": "noun",
+    "primary_translation": "先生",
+    "dummy_translations": ["生徒", "家族", "友だち"],
+    "level": 3,
+    "segment": 4,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "New Horizon", "edition": "2024", "unit": "Unit 4", "range_note": "pp.26-31" }
+    ],
+    "explanation": "名詞。教えることを職業とする人。",
+    "example_sentences": [
+      { "en": "Our teacher is kind.", "ja": "私たちの先生は親切です。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "water",
+    "pos": "noun",
+    "primary_translation": "水",
+    "dummy_translations": ["牛乳", "ジュース", "お茶"],
+    "level": 1,
+    "segment": 5,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "One World", "edition": "2025", "unit": "Unit 1", "range_note": "pp.10-14" }
+    ],
+    "explanation": "名詞。飲用や生活に不可欠な液体。",
+    "example_sentences": [
+      { "en": "Please drink water.", "ja": "水を飲んでください。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "write",
+    "pos": "verb",
+    "primary_translation": "書く",
+    "dummy_translations": ["読む", "話す", "見る"],
+    "level": 4,
+    "segment": 6,
+    "grade": "J2",
+    "textbook_scopes": [
+      { "series": "Total English", "edition": "2024", "unit": "Unit 5", "range_note": "pp.38-43" }
+    ],
+    "explanation": "動詞。文字や文を記す。",
+    "example_sentences": [
+      { "en": "I write a letter to my friend.", "ja": "私は友だちに手紙を書きます。", "source": "自作" }
+    ]
+  },
+  {
+    "text": "morning",
+    "pos": "noun",
+    "primary_translation": "朝",
+    "dummy_translations": ["夜", "午後", "夕方"],
+    "level": 1,
+    "segment": 6,
+    "grade": "J1",
+    "textbook_scopes": [
+      { "series": "New Crown", "edition": "2024", "unit": "Unit 1", "range_note": "pp.6-9" }
+    ],
+    "explanation": "名詞。日の出から昼頃までの時間帯。",
+    "example_sentences": [
+      { "en": "I get up early in the morning.", "ja": "私は朝早く起きます。", "source": "自作" }
+    ]
+  }
+]
