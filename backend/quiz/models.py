@@ -485,8 +485,8 @@ class VocabStatus(models.TextChoices):
 class Vocabulary(CreatedUpdatedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_column="vocabulary_id")
     text_en = models.CharField(max_length=120)
-    # CITextFieldの代わりにTextFieldとdb_collationを使用（Django 5.1対応）
-    text_key = models.TextField(editable=False, db_collation="case_insensitive")
+    # 大文字小文字を区別しない検索は、アプリケーションレイヤーで正規化して対応
+    text_key = models.TextField(editable=False)
     part_of_speech = models.CharField(max_length=30, null=True, blank=True)
     explanation = models.TextField(null=True, blank=True)
     example_en = models.TextField(null=True, blank=True)

@@ -27,6 +27,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='vocabulary',
             name='text_key',
-            field=models.TextField(db_collation='case_insensitive', editable=False),
+            field=models.TextField(editable=False),
         ),
     ]
