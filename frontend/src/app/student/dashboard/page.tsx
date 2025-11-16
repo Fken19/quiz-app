@@ -103,6 +103,14 @@ export default function DashboardPage() {
         vocabulary_ids: limitedIds,
         status: statusKey,
       };
+      if (res.available_count < res.requested_limit) {
+        const proceed = window.confirm(
+          `「${statusLabels[statusKey]}」は ${res.available_count} 件のみです。このまま始めますか？`,
+        );
+        if (!proceed) {
+          return;
+        }
+      }
       const session = (await apiPost('/api/focus-quiz-sessions/', payload)) as FocusQuizSessionResponse;
       if (session && session.quiz_id) {
         router.push(`/student/quiz/play?quizId=${session.quiz_id}`);

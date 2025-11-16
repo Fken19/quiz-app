@@ -309,10 +309,20 @@ class StudentDashboardSummaryView(APIView):
             )
 
         # Streak
-        latest_entry = (
-            models.LearningSummaryDaily.objects.filter(user=user).order_by("-activity_date").first()
+        # Streak（直近の連続日数を計算し直す）
+        streak_entries = list(
+            models.LearningSummaryDaily.objects.filter(user=user)
+            .order_by("-activity_date")
+            .values_list("activity_date", flat=True)
         )
-        current_streak = latest_entry.streak_count if latest_entry else 0
+        current_streak = 0
+        if streak_entries:
+            current_streak = 1
+            for prev, nxt in zip(streak_entries, streak_entries[1:]):
+                if (prev - nxt).days == 1:
+                    current_streak += 1
+                else:
+                    break
         best_streak = (
             models.LearningSummaryDaily.objects.filter(user=user).aggregate(best=Max("streak_count"))["best"] or 0
         )
@@ -430,8 +440,8 @@ class FocusQuestionView(APIView):
             "status": status_param,
             "requested_limit": limit,
             "available_count": available_count,
-            "vocabulary_ids": vocabulary_ids,
-            "preview": preview,
+            "vocabulary_ids": vocabulary_ids[:limit],
+            "preview": preview[:5],
         }
         return Response(data)
 
@@ -455,7 +465,7 @@ class FocusQuizSessionStartView(APIView):
         if not ordered_vocabs:
             return Response({"detail": "指定された語彙が見つかりません"}, status=status.HTTP_400_BAD_REQUEST)
 
-        collection, _ = models.QuizCollection.objects.get_or_create(
+        focus_collection, _ = models.QuizCollection.objects.get_or_create(
             scope=models.QuizScope.CUSTOM,
             owner_user=user,
             title="フォーカス学習",
@@ -465,13 +475,29 @@ class FocusQuizSessionStartView(APIView):
                 "order_index": 1000,
             },
         )
-        max_seq = collection.quizzes.aggregate(max_seq=Max("sequence_no"))["max_seq"] or 0
-        quiz = models.Quiz.objects.create(
-            quiz_collection=collection,
-            sequence_no=max_seq + 1,
-            title=f"フォーカス({timezone.localtime().strftime('%m/%d %H:%M')})",
-            timer_seconds=10,
+
+        # reuse or create quiz with same set to avoid clutter
+        existing_quiz = (
+            models.Quiz.objects.filter(
+                quiz_collection=focus_collection,
+                question_count=len(ordered_vocabs),
+                section_label__isnull=True,
+            )
+            .order_by("created_at")
+            .first()
         )
+
+        if existing_quiz:
+            quiz = existing_quiz
+            quiz.questions.all().delete()
+        else:
+            max_seq = focus_collection.quizzes.aggregate(max_seq=Max("sequence_no"))["max_seq"] or 0
+            quiz = models.Quiz.objects.create(
+                quiz_collection=focus_collection,
+                sequence_no=max_seq + 1,
+                title=f"フォーカス({timezone.localtime().strftime('%m/%d %H:%M')})",
+                timer_seconds=10,
+            )
 
         quiz_questions = [
             models.QuizQuestion(
