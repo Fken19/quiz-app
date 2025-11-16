@@ -152,6 +152,9 @@ export interface QuizCollection {
   owner_user?: string | null;
   title: string;
   description?: string | null;
+  level_code?: string | null;
+  level_label?: string | null;
+  level_order: number;
   order_index: number;
   is_published: boolean;
   published_at?: string | null;
@@ -166,6 +169,8 @@ export interface Quiz {
   quiz_collection: string;
   sequence_no: number;
   title?: string | null;
+  section_no?: number | null;
+  section_label?: string | null;
   timer_seconds?: number | null;
   origin_quiz?: string | null;
   archived_at?: string | null;
@@ -192,6 +197,8 @@ export interface QuizResult {
   completed_at?: string | null;
   total_time_ms?: number | null;
   score?: number | null;
+  question_count: number;
+  timeout_count: number;
 }
 
 export interface QuizResultDetail {
@@ -201,8 +208,47 @@ export interface QuizResultDetail {
   vocabulary: string;
   selected_text?: string | null;
   is_correct: boolean;
+  is_timeout: boolean;
   reaction_time_ms?: number | null;
   created_at: string;
+}
+
+export interface UserVocabStatus {
+  user_vocab_status_id: string;
+  user: string;
+  vocabulary: string;
+  status: 'unlearned' | 'weak' | 'learning' | 'mastered';
+  last_result?: 'correct' | 'incorrect' | 'timeout' | null;
+  last_answered_at?: string | null;
+  recent_correct_streak: number;
+  total_answer_count: number;
+  total_correct_count: number;
+  timeout_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LearningActivityLog {
+  learning_activity_log_id: string;
+  user: string;
+  quiz_result: string;
+  occurred_at: string;
+  correct_count: number;
+  incorrect_count: number;
+  timeout_count: number;
+  total_time_ms: number;
+}
+
+export interface LearningSummaryDaily {
+  learning_summary_daily_id: string;
+  user: string;
+  activity_date: string;
+  correct_count: number;
+  incorrect_count: number;
+  timeout_count: number;
+  total_time_ms: number;
+  streak_count: number;
+  updated_at: string;
 }
 
 export interface Test {

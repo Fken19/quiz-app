@@ -247,6 +247,9 @@ class QuizCollectionSerializer(serializers.ModelSerializer):
             "owner_user",
             "title",
             "description",
+            "level_code",
+            "level_label",
+            "level_order",
             "order_index",
             "is_published",
             "published_at",
@@ -268,6 +271,8 @@ class QuizSerializer(serializers.ModelSerializer):
             "quiz_collection",
             "sequence_no",
             "title",
+            "section_no",
+            "section_label",
             "timer_seconds",
             "origin_quiz",
             "archived_at",
@@ -308,9 +313,11 @@ class QuizResultSerializer(serializers.ModelSerializer):
             "completed_at",
             "total_time_ms",
             "score",
+            "question_count",
+            "timeout_count",
         ]
         read_only_fields = ["started_at", "user"]
-        
+
 
 class QuizResultDetailSerializer(serializers.ModelSerializer):
     quiz_result_detail_id = serializers.UUIDField(source="id", read_only=True)
@@ -324,10 +331,70 @@ class QuizResultDetailSerializer(serializers.ModelSerializer):
             "vocabulary",
             "selected_text",
             "is_correct",
+            "is_timeout",
             "reaction_time_ms",
             "created_at",
         ]
         read_only_fields = ["created_at"]
+
+
+class UserVocabStatusSerializer(serializers.ModelSerializer):
+    user_vocab_status_id = serializers.UUIDField(source="id", read_only=True)
+
+    class Meta:
+        model = models.UserVocabStatus
+        fields = [
+            "user_vocab_status_id",
+            "user",
+            "vocabulary",
+            "status",
+            "last_result",
+            "last_answered_at",
+            "recent_correct_streak",
+            "total_answer_count",
+            "total_correct_count",
+            "timeout_count",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at", "user"]
+
+
+class LearningActivityLogSerializer(serializers.ModelSerializer):
+    learning_activity_log_id = serializers.UUIDField(source="id", read_only=True)
+
+    class Meta:
+        model = models.LearningActivityLog
+        fields = [
+            "learning_activity_log_id",
+            "user",
+            "quiz_result",
+            "occurred_at",
+            "correct_count",
+            "incorrect_count",
+            "timeout_count",
+            "total_time_ms",
+        ]
+        read_only_fields = ["occurred_at", "user"]
+
+
+class LearningSummaryDailySerializer(serializers.ModelSerializer):
+    learning_summary_daily_id = serializers.UUIDField(source="id", read_only=True)
+
+    class Meta:
+        model = models.LearningSummaryDaily
+        fields = [
+            "learning_summary_daily_id",
+            "user",
+            "activity_date",
+            "correct_count",
+            "incorrect_count",
+            "timeout_count",
+            "total_time_ms",
+            "streak_count",
+            "updated_at",
+        ]
+        read_only_fields = ["updated_at", "user"]
 
 
 class TestSerializer(serializers.ModelSerializer):

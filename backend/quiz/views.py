@@ -258,6 +258,54 @@ class QuizResultDetailViewSet(BaseModelViewSet):
         serializer.save()
 
 
+class UserVocabStatusViewSet(BaseModelViewSet):
+    serializer_class = serializers.UserVocabStatusSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        return models.UserVocabStatus.objects.select_related("vocabulary").filter(user=self.request.user).order_by("-updated_at")
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        if serializer.instance.user_id != self.request.user.id:
+            raise PermissionDenied("Status does not belong to the current user.")
+        serializer.save(user=self.request.user)
+
+
+class LearningActivityLogViewSet(BaseModelViewSet):
+    serializer_class = serializers.LearningActivityLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        return models.LearningActivityLog.objects.select_related("quiz_result").filter(user=self.request.user).order_by("-occurred_at")
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        if serializer.instance.user_id != self.request.user.id:
+            raise PermissionDenied("Activity log does not belong to the current user.")
+        serializer.save(user=self.request.user)
+
+
+class LearningSummaryDailyViewSet(BaseModelViewSet):
+    serializer_class = serializers.LearningSummaryDailySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        return models.LearningSummaryDaily.objects.filter(user=self.request.user).order_by("-activity_date")
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        if serializer.instance.user_id != self.request.user.id:
+            raise PermissionDenied("Summary does not belong to the current user.")
+        serializer.save(user=self.request.user)
+
+
 class TestViewSet(BaseModelViewSet):
     queryset = models.Test.objects.select_related("teacher").order_by("-created_at")
     serializer_class = serializers.TestSerializer
@@ -354,11 +402,14 @@ __all__ = [
     "VocabularyViewSet",
     "VocabTranslationViewSet",
     "VocabChoiceViewSet",
+    "LearningActivityLogViewSet",
+    "LearningSummaryDailyViewSet",
     "QuizCollectionViewSet",
     "QuizViewSet",
     "QuizQuestionViewSet",
     "QuizResultViewSet",
     "QuizResultDetailViewSet",
+    "UserVocabStatusViewSet",
     "TestViewSet",
     "TestQuestionViewSet",
     "TestAssignmentViewSet",
