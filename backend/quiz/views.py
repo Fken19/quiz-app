@@ -10,7 +10,7 @@ from typing import Any
 from django.conf import settings
 from django.core.cache import caches
 from django.core.files.storage import default_storage
-from django.db.models import Count, Max, Q, Sum
+from django.db.models import Count, Max, Prefetch, Q, Sum, F
 from django.db.models.functions import TruncMonth, TruncWeek
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import models, serializers
+from .utils import is_teacher_whitelisted, parse_date_param
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -329,21 +330,716 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
             return Response({"detail": "解除しました。"})
         raise PermissionDenied("解除権限がありません。")
 
+    @action(detail=True, methods=["post", "patch"], permission_classes=[permissions.IsAuthenticated], url_path="alias")
+    def set_alias(self, request, pk=None):
+        """講師が表示名（custom_display_name）を設定/更新する"""
+        link = self.get_object()
+        if getattr(request, "teacher", None) is None or link.teacher_id != request.teacher.id:
+            raise PermissionDenied("表示名を変更する権限がありません。")
+        alias = request.data.get("custom_display_name", "")
+        alias_str = str(alias or "").strip()
+        link.custom_display_name = alias_str or None
+        link.save(update_fields=["custom_display_name", "updated_at"])
+        return Response(serializers.StudentTeacherLinkSerializer(link).data)
+
+    @action(detail=False, methods=["get", "patch"], permission_classes=[permissions.IsAuthenticated], url_path="by-teacher")
+    def list_by_teacher(self, request):
+        """講師用: 個人情報をマスクした生徒一覧と属性更新"""
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            # teacher ミドルウェアが未設定でもメール一致で講師レコードを探す
+            teacher = models.Teacher.objects.filter(email__iexact=request.user.email).first()
+        if teacher is None:
+            raise PermissionDenied("講師アカウントが見つかりません。")
+
+        if request.method.lower() == "patch":
+            link_id = request.data.get("student_teacher_link_id")
+            if not link_id:
+                return Response({"detail": "student_teacher_link_id は必須です。"}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                link = models.StudentTeacherLink.objects.select_related("student__profile").get(pk=link_id, teacher=teacher)
+            except models.StudentTeacherLink.DoesNotExist:
+                raise PermissionDenied("対象が見つからないか、権限がありません。")
+
+            fields = ["custom_display_name", "local_student_code", "tags", "private_note", "kana_for_sort", "color"]
+            for f in fields:
+                if f in request.data:
+                    setattr(link, f, request.data.get(f) or None)
+            link.save(update_fields=fields + ["updated_at"])
+            return Response(serializers.TeacherStudentListSerializer(link).data)
+
+        include_revoked = str(request.query_params.get("include_revoked", "false")).lower() in {"1", "true"}
+        qs = (
+            models.StudentTeacherLink.objects.select_related("student__profile")
+            .filter(teacher=teacher)
+            .order_by("-linked_at")
+        )
+        if not include_revoked:
+            qs = qs.exclude(status=models.LinkStatus.REVOKED)
+        data = serializers.TeacherStudentListSerializer(qs, many=True).data
+        return Response(data)
+
 
 class RosterFolderViewSet(BaseModelViewSet):
     serializer_class = serializers.RosterFolderSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def _get_teacher(self, request):
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            teacher = models.Teacher.objects.filter(email__iexact=request.user.email).first()
+        if teacher is None:
+            raise PermissionDenied("講師アカウントが見つかりません。")
+        return teacher
+
     def get_queryset(self):  # type: ignore[override]
-        return models.RosterFolder.objects.select_related("owner_teacher", "parent_folder").order_by("name")
+        teacher = self._get_teacher(self.request)
+        qs = (
+            models.RosterFolder.objects.select_related("owner_teacher", "parent_folder")
+            .filter(owner_teacher=teacher)
+            .order_by("name")
+        )
+        include_archived = str(self.request.query_params.get("include_archived", "false")).lower() in {"1", "true"}
+        if not include_archived:
+            qs = qs.filter(archived_at__isnull=True)
+        return qs
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        teacher = self._get_teacher(self.request)
+        serializer.save(owner_teacher=teacher)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        teacher = self._get_teacher(self.request)
+        if serializer.instance.owner_teacher_id != teacher.id:
+            raise PermissionDenied("他の講師のグループは更新できません。")
+        serializer.save(owner_teacher=teacher)
+
+    def perform_destroy(self, instance):  # type: ignore[override]
+        teacher = self._get_teacher(self.request)
+        if instance.owner_teacher_id != teacher.id:
+            raise PermissionDenied("他の講師のグループは削除できません。")
+        instance.delete()
 
 
 class RosterMembershipViewSet(BaseModelViewSet):
     serializer_class = serializers.RosterMembershipSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_serializer_context(self):  # type: ignore[override]
+        ctx = super().get_serializer_context()
+        teacher = getattr(self.request, "teacher", None)
+        if teacher is None:
+            teacher = models.Teacher.objects.filter(email__iexact=self.request.user.email).first()
+        ctx["teacher"] = teacher
+        return ctx
+
+    def _get_teacher(self, request):
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            teacher = models.Teacher.objects.filter(email__iexact=request.user.email).first()
+        if teacher is None:
+            raise PermissionDenied("講師アカウントが見つかりません。")
+        return teacher
+
     def get_queryset(self):  # type: ignore[override]
-        return models.RosterMembership.objects.select_related("roster_folder", "student").order_by("-added_at")
+        teacher = self._get_teacher(self.request)
+        qs = (
+            models.RosterMembership.objects.select_related("roster_folder", "student__profile")
+            .prefetch_related(
+                Prefetch(
+                    "student__teacher_links",
+                    queryset=models.StudentTeacherLink.objects.filter(teacher=teacher),
+                    to_attr="prefetched_teacher_links",
+                )
+            )
+            .filter(
+                roster_folder__owner_teacher=teacher,
+                student__teacher_links__teacher=teacher,
+                student__teacher_links__status__in=[models.LinkStatus.ACTIVE, models.LinkStatus.PENDING],
+            )
+            .order_by("-added_at")
+        )
+        roster_folder_id = self.request.query_params.get("roster_folder") or self.request.query_params.get(
+            "roster_folder_id"
+        )
+        include_removed = str(self.request.query_params.get("include_removed", "false")).lower() in {"1", "true"}
+        if roster_folder_id:
+            qs = qs.filter(roster_folder_id=roster_folder_id)
+        if not include_removed:
+            qs = qs.filter(removed_at__isnull=True)
+        qs = qs.distinct()
+        return qs
+
+    def create(self, request, *args, **kwargs):  # type: ignore[override]
+        teacher = self._get_teacher(request)
+        folder_id = request.data.get("roster_folder_id") or request.data.get("roster_folder")
+        student_link_id = request.data.get("student_teacher_link_id")
+        note = request.data.get("note")
+        if not folder_id or not student_link_id:
+            return Response({"detail": "roster_folder_id と student_teacher_link_id は必須です。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            folder = models.RosterFolder.objects.get(id=folder_id, owner_teacher=teacher)
+        except models.RosterFolder.DoesNotExist:
+            raise PermissionDenied("フォルダが見つからないか、権限がありません。")
+
+        try:
+            link = (
+                models.StudentTeacherLink.objects.select_related("student", "student__profile")
+                .get(id=student_link_id, teacher=teacher)
+            )
+        except models.StudentTeacherLink.DoesNotExist:
+            raise PermissionDenied("生徒リンクが見つからないか、権限がありません。")
+
+        if link.status == models.LinkStatus.REVOKED:
+            return Response({"detail": "解除済みの生徒は追加できません。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        active = models.RosterMembership.objects.filter(
+            roster_folder=folder, student=link.student, removed_at__isnull=True
+        ).select_related("student__profile", "roster_folder")
+        if active.exists():
+            membership = active.first()
+            serializer = self.get_serializer(membership)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # 直近削除済みのものがあれば復活、それ以外は作成（ユニーク制約で落ちないよう get_or_create）
+        membership = (
+            models.RosterMembership.objects.filter(roster_folder=folder, student=link.student)
+            .select_related("student__profile", "roster_folder")
+            .order_by("-added_at")
+            .first()
+        )
+        if membership and membership.removed_at:
+            membership.removed_at = None
+            membership.note = note
+            membership.added_at = timezone.now()
+            membership.save(update_fields=["removed_at", "note", "added_at"])
+        else:
+            membership, _ = models.RosterMembership.objects.get_or_create(
+                roster_folder=folder,
+                student=link.student,
+                defaults={"note": note},
+            )
+        try:
+            serializer_obj = (
+                self.get_queryset()
+                .prefetch_related(
+                    Prefetch(
+                        "student__teacher_links",
+                        queryset=models.StudentTeacherLink.objects.filter(teacher=teacher),
+                        to_attr="prefetched_teacher_links",
+                    )
+                )
+                .filter(pk=membership.pk)
+                .first()
+                or membership
+            )
+            serializer = self.get_serializer(serializer_obj)
+            data = serializer.data
+        except Exception:
+            # シリアライズで例外が出ても登録は成功しているため簡易レスポンスを返す
+            data = {
+                "roster_membership_id": str(membership.id),
+                "roster_folder": str(folder.id),
+                "roster_folder_id": str(folder.id),
+                "student": str(link.student.id),
+                "student_teacher_link_id": str(link.id),
+                "note": membership.note,
+                "added_at": membership.added_at,
+                "removed_at": membership.removed_at,
+            }
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):  # type: ignore[override]
+        teacher = self._get_teacher(request)
+        membership: models.RosterMembership = self.get_object()
+        if membership.roster_folder.owner_teacher_id != teacher.id:
+            raise PermissionDenied("他の講師のグループは更新できません。")
+        note = request.data.get("note")
+        if note is not None:
+            membership.note = note
+            membership.save(update_fields=["note"])
+        serializer = self.get_serializer(membership)
+        return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):  # type: ignore[override]
+        teacher = self._get_teacher(request)
+        membership: models.RosterMembership = self.get_object()
+        if membership.roster_folder.owner_teacher_id != teacher.id:
+            raise PermissionDenied("他の講師のグループは削除できません。")
+        if membership.removed_at is None:
+            membership.removed_at = timezone.now()
+            membership.save(update_fields=["removed_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class TeacherStudentProgressView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_teacher(self, request):
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            teacher = models.Teacher.objects.filter(email__iexact=request.user.email).first()
+        if teacher is None:
+            raise PermissionDenied("講師アカウントが見つかりません。")
+        return teacher
+
+    def get(self, request, link_id: uuid.UUID):
+        teacher = self._get_teacher(request)
+        try:
+            link = (
+                models.StudentTeacherLink.objects.select_related("student__profile")
+                .get(id=link_id, teacher=teacher)
+            )
+        except models.StudentTeacherLink.DoesNotExist:
+            raise PermissionDenied("対象の生徒リンクが見つからないか、権限がありません。")
+        if link.status == models.LinkStatus.REVOKED:
+            raise PermissionDenied("解除済みの生徒リンクです。")
+
+        student = link.student
+        profile = getattr(student, "profile", None)
+        today = timezone.localdate()
+        from_param = request.query_params.get("from")
+        to_param = request.query_params.get("to")
+        date_from = parse_date_param(from_param) or (today - timedelta(days=30))
+        date_to = parse_date_param(to_param) or today
+
+        daily_qs = models.LearningSummaryDaily.objects.filter(
+            user=student,
+            activity_date__range=(date_from, date_to),
+        )
+        aggregates = daily_qs.aggregate(
+            correct=Sum("correct_count"),
+            incorrect=Sum("incorrect_count"),
+            timeout=Sum("timeout_count"),
+            time_ms=Sum("total_time_ms"),
+        )
+        daily_chart = [
+            {
+                "date": entry.activity_date.isoformat(),
+                "correct_count": entry.correct_count,
+                "incorrect_count": entry.incorrect_count,
+                "timeout_count": entry.timeout_count,
+                "total_time_ms": entry.total_time_ms,
+            }
+            for entry in daily_qs.order_by("activity_date")
+        ]
+        total_answers = (aggregates["correct"] or 0) + (aggregates["incorrect"] or 0) + (aggregates["timeout"] or 0)
+        accuracy = (aggregates["correct"] or 0) / total_answers * 100 if total_answers else 0.0
+        avg_time = (aggregates["time_ms"] or 0) / total_answers / 1000 if total_answers else 0.0
+
+        last_activity = (
+            models.QuizResult.objects.filter(user=student, completed_at__isnull=False)
+            .order_by("-completed_at")
+            .values_list("completed_at", flat=True)
+            .first()
+        )
+
+        # 所属グループ（講師所有のみ）
+        groups = list(
+            models.RosterMembership.objects.select_related("roster_folder")
+            .filter(
+                roster_folder__owner_teacher=teacher,
+                student=student,
+                removed_at__isnull=True,
+            )
+            .values("roster_folder_id", "roster_folder__name")
+        )
+
+        summary = {
+            "student_teacher_link_id": str(link.id),
+            "display_name": link.custom_display_name or (profile.display_name if profile else ""),
+            "status": link.status,
+            "avatar_url": profile.avatar_url if profile else "",
+            "bio": getattr(profile, "self_intro", "") if profile else "",
+            "last_activity": last_activity.isoformat() if last_activity else None,
+            "groups": [{"roster_folder_id": str(g["roster_folder_id"]), "name": g["roster_folder__name"]} for g in groups],
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "totals": {
+                "answer_count": total_answers,
+                "correct_count": aggregates["correct"] or 0,
+                "incorrect_count": aggregates["incorrect"] or 0,
+                "timeout_count": aggregates["timeout"] or 0,
+                "accuracy": accuracy,
+                "avg_seconds": avg_time,
+            },
+            "daily_chart": daily_chart,
+        }
+        return Response(summary)
+
+
+class TeacherStudentProgressViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_teacher(self, request):
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            teacher = models.Teacher.objects.filter(email__iexact=request.user.email).first()
+        if teacher is None:
+            raise PermissionDenied("講師アカウントが見つかりません。")
+        return teacher
+
+    def _get_link(self, request, link_id: uuid.UUID) -> models.StudentTeacherLink:
+        teacher = self._get_teacher(request)
+        try:
+            link = (
+                models.StudentTeacherLink.objects.select_related("student__profile")
+                .get(id=link_id, teacher=teacher, status__in=[models.LinkStatus.ACTIVE, models.LinkStatus.PENDING])
+            )
+        except models.StudentTeacherLink.DoesNotExist:
+            raise PermissionDenied("対象の生徒リンクが見つからないか、権限がありません。")
+        return link
+
+    def _date_range(self, request):
+        today = timezone.localdate()
+        from_param = request.query_params.get("from")
+        to_param = request.query_params.get("to")
+        date_from = parse_date_param(from_param) or (today - timedelta(days=30))
+        date_to = parse_date_param(to_param) or today
+        return date_from, date_to
+
+    @action(detail=True, methods=["get"], url_path="summary")
+    def summary(self, request, pk=None):
+        link = self._get_link(request, pk)
+        student = link.student
+        profile = getattr(student, "profile", None)
+        date_from, date_to = self._date_range(request)
+
+        daily_qs = models.LearningSummaryDaily.objects.filter(
+            user=student,
+            activity_date__range=(date_from, date_to),
+        )
+        aggregates = daily_qs.aggregate(
+            correct=Sum("correct_count"),
+            incorrect=Sum("incorrect_count"),
+            timeout=Sum("timeout_count"),
+            time_ms=Sum("total_time_ms"),
+        )
+        daily_chart = [
+            {
+                "date": entry.activity_date.isoformat(),
+                "correct_count": entry.correct_count,
+                "incorrect_count": entry.incorrect_count,
+                "timeout_count": entry.timeout_count,
+                "total_time_ms": entry.total_time_ms,
+            }
+            for entry in daily_qs.order_by("activity_date")
+        ]
+        total_answers = (aggregates["correct"] or 0) + (aggregates["incorrect"] or 0) + (aggregates["timeout"] or 0)
+        accuracy = (aggregates["correct"] or 0) / total_answers * 100 if total_answers else 0.0
+        avg_time = (aggregates["time_ms"] or 0) / total_answers / 1000 if total_answers else 0.0
+
+        last_activity = (
+            models.QuizResult.objects.filter(user=student, completed_at__isnull=False)
+            .order_by("-completed_at")
+            .values_list("completed_at", flat=True)
+            .first()
+        )
+
+        groups = list(
+            models.RosterMembership.objects.select_related("roster_folder")
+            .filter(
+                roster_folder__owner_teacher=link.teacher,
+                student=student,
+                removed_at__isnull=True,
+            )
+            .values("roster_folder_id", "roster_folder__name")
+        )
+
+        data = {
+            "student_teacher_link_id": str(link.id),
+            "display_name": link.custom_display_name or (profile.display_name if profile else ""),
+            "status": link.status,
+            "avatar_url": profile.avatar_url if profile else "",
+            "bio": getattr(profile, "self_intro", "") if profile else "",
+            "last_activity": last_activity.isoformat() if last_activity else None,
+            "groups": [{"roster_folder_id": str(g["roster_folder_id"]), "name": g["roster_folder__name"]} for g in groups],
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "totals": {
+                "answer_count": total_answers,
+                "correct_count": aggregates["correct"] or 0,
+                "incorrect_count": aggregates["incorrect"] or 0,
+                "timeout_count": aggregates["timeout"] or 0,
+                "accuracy": accuracy,
+                "avg_seconds": avg_time,
+            },
+            "daily_chart": daily_chart,
+        }
+        return Response(data)
+
+    @action(detail=True, methods=["get"], url_path="daily-stats")
+    def daily_stats(self, request, pk=None):
+        link = self._get_link(request, pk)
+        student = link.student
+        date_from, date_to = self._date_range(request)
+        daily_qs = (
+            models.LearningSummaryDaily.objects.filter(user=student, activity_date__range=(date_from, date_to))
+            .order_by("activity_date")
+        )
+        data = [
+            {
+                "date": entry.activity_date.isoformat(),
+                "correct_count": entry.correct_count,
+                "incorrect_count": entry.incorrect_count,
+                "timeout_count": entry.timeout_count,
+                "total_time_ms": entry.total_time_ms,
+            }
+            for entry in daily_qs
+        ]
+        return Response({"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "items": data})
+
+    @action(detail=True, methods=["get"], url_path="level-stats")
+    def level_stats(self, request, pk=None):
+        link = self._get_link(request, pk)
+        student = link.student
+        date_from, date_to = self._date_range(request)
+        level_param = request.query_params.get("level")
+        try:
+            qs = (
+                models.QuizResultDetail.objects.select_related("quiz_result__quiz__quiz_collection")
+                .filter(
+                    quiz_result__user=student,
+                    quiz_result__completed_at__date__gte=date_from,
+                    quiz_result__completed_at__date__lte=date_to,
+                )
+                .annotate(
+                    level_code=F("quiz_result__quiz__quiz_collection__level_code"),
+                    level_label=F("quiz_result__quiz__quiz_collection__level_label"),
+                )
+                .exclude(level_code__isnull=True)
+            )
+            if level_param:
+                qs = qs.filter(level_code=level_param)
+
+            level_rows = (
+                qs.values("level_code", "level_label")
+                .annotate(
+                    correct_count=Count("id", filter=Q(is_correct=True, is_timeout=False)),
+                    incorrect_count=Count("id", filter=Q(is_correct=False, is_timeout=False)),
+                    timeout_count=Count("id", filter=Q(is_timeout=True)),
+                )
+                .order_by("level_label")
+            )
+            data = []
+            for row in level_rows:
+                total = (row["correct_count"] or 0) + (row["incorrect_count"] or 0) + (row["timeout_count"] or 0)
+                accuracy = row["correct_count"] / total * 100 if total else 0.0
+                data.append(
+                    {
+                        "level_code": row["level_code"],
+                        "level_label": row["level_label"] or row["level_code"],
+                        "correct_count": row["correct_count"],
+                        "incorrect_count": row["incorrect_count"],
+                        "timeout_count": row["timeout_count"],
+                        "answer_count": total,
+                        "accuracy": accuracy,
+                    }
+                )
+            return Response({"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "items": data})
+        except Exception as exc:  # noqa: BLE001
+            return Response({"detail": f"level-stats 集計でエラーが発生しました: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["get"], url_path="sessions")
+    def sessions(self, request, pk=None):
+        link = self._get_link(request, pk)
+        student = link.student
+        date_from, date_to = self._date_range(request)
+        page_size = int(request.query_params.get("limit", 50))
+        page_size = max(1, min(page_size, 200))
+
+        results = (
+            models.QuizResult.objects.select_related("quiz__quiz_collection")
+            .filter(
+                user=student,
+                completed_at__isnull=False,
+                completed_at__date__gte=date_from,
+                completed_at__date__lte=date_to,
+            )
+            .order_by("-completed_at")[:page_size]
+        )
+        result_ids = [r.id for r in results]
+        detail_agg = (
+            models.QuizResultDetail.objects.filter(quiz_result_id__in=result_ids)
+            .values("quiz_result_id")
+            .annotate(
+                correct_count=Count("id", filter=Q(is_correct=True, is_timeout=False)),
+                incorrect_count=Count("id", filter=Q(is_correct=False, is_timeout=False)),
+                timeout_count=Count("id", filter=Q(is_timeout=True)),
+            )
+        )
+        agg_map = {row["quiz_result_id"]: row for row in detail_agg}
+        items = []
+        for res in results:
+            agg = agg_map.get(res.id, {})
+            total = agg.get("correct_count", 0) + agg.get("incorrect_count", 0) + agg.get("timeout_count", 0)
+            accuracy = agg.get("correct_count", 0) / total * 100 if total else 0.0
+            items.append(
+                {
+                    "quiz_result_id": str(res.id),
+                    "completed_at": res.completed_at.isoformat() if res.completed_at else None,
+                    "started_at": res.started_at.isoformat() if res.started_at else None,
+                    "quiz_title": res.quiz.title or res.quiz.quiz_collection.title,
+                    "level_code": res.quiz.quiz_collection.level_code,
+                    "level_label": res.quiz.quiz_collection.level_label,
+                    "question_count": res.question_count,
+                    "correct_count": agg.get("correct_count", 0),
+                    "incorrect_count": agg.get("incorrect_count", 0),
+                    "timeout_count": agg.get("timeout_count", 0),
+                    "accuracy": accuracy,
+                    "total_time_ms": res.total_time_ms,
+                }
+            )
+        return Response({"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "items": items})
+
+    @action(detail=True, methods=["get"], url_path="weak-words")
+    def weak_words(self, request, pk=None):
+        link = self._get_link(request, pk)
+        student = link.student
+        date_from, date_to = self._date_range(request)
+        limit_param = request.query_params.get("limit") or "20"
+        try:
+            limit = max(1, min(int(limit_param), 200))
+        except Exception:
+            limit = 20
+
+        detail_qs = (
+            models.QuizResultDetail.objects.select_related("vocabulary")
+            .filter(
+                quiz_result__user=student,
+                quiz_result__completed_at__date__gte=date_from,
+                quiz_result__completed_at__date__lte=date_to,
+            )
+        )
+        agg = (
+            detail_qs.values("vocabulary_id", "vocabulary__text_en")
+            .annotate(
+                correct_count=Count("id", filter=Q(is_correct=True, is_timeout=False)),
+                incorrect_count=Count("id", filter=Q(is_correct=False, is_timeout=False)),
+                timeout_count=Count("id", filter=Q(is_timeout=True)),
+                last_incorrect=Max("created_at", filter=Q(is_correct=False, is_timeout=False)),
+            )
+            .order_by("-incorrect_count", "-timeout_count", "-last_incorrect")[:limit]
+        )
+        items = []
+        for row in agg:
+            total = (row["correct_count"] or 0) + (row["incorrect_count"] or 0) + (row["timeout_count"] or 0)
+            accuracy = row["correct_count"] / total * 100 if total else 0.0
+            items.append(
+                {
+                    "vocabulary_id": str(row["vocabulary_id"]),
+                    "text_en": row["vocabulary__text_en"],
+                    "correct_count": row["correct_count"],
+                    "incorrect_count": row["incorrect_count"],
+                    "timeout_count": row["timeout_count"],
+                    "answer_count": total,
+                    "accuracy": accuracy,
+                    "last_incorrect_at": row["last_incorrect"].isoformat() if row.get("last_incorrect") else None,
+                }
+            )
+        return Response({"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "items": items})
+
+
+class TeacherGroupMemberSummaryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_teacher(self, request):
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            teacher = models.Teacher.objects.filter(email__iexact=request.user.email).first()
+        if teacher is None:
+            raise PermissionDenied("講師アカウントが見つかりません。")
+        return teacher
+
+    def get(self, request, folder_id: uuid.UUID):
+        teacher = self._get_teacher(request)
+        days_param = request.query_params.get("days") or "30"
+        try:
+            days = max(1, min(int(days_param), 365))
+        except Exception:
+            days = 30
+        date_from = timezone.localdate() - timedelta(days=days - 1)
+        date_to = timezone.localdate()
+
+        try:
+            folder = models.RosterFolder.objects.get(id=folder_id, owner_teacher=teacher)
+        except models.RosterFolder.DoesNotExist:
+            raise PermissionDenied("フォルダが見つからないか、権限がありません。")
+
+        memberships = (
+            models.RosterMembership.objects.select_related("student__profile")
+            .prefetch_related(
+                Prefetch(
+                    "student__teacher_links",
+                    queryset=models.StudentTeacherLink.objects.filter(
+                        teacher=teacher, status__in=[models.LinkStatus.ACTIVE, models.LinkStatus.PENDING]
+                    ),
+                    to_attr="prefetched_teacher_links",
+                )
+            )
+            .filter(roster_folder=folder, removed_at__isnull=True)
+        )
+
+        student_ids: list[uuid.UUID] = []
+        link_map: dict[uuid.UUID, models.StudentTeacherLink] = {}
+        for m in memberships:
+            links = getattr(m.student, "prefetched_teacher_links", None) or getattr(m.student, "teacher_links", None)
+            link = None
+            if links:
+                for l in links:
+                    if l.teacher_id == teacher.id and l.status != models.LinkStatus.REVOKED:
+                        link = l
+                        break
+            if link:
+                student_ids.append(m.student_id)
+                link_map[m.student_id] = link
+
+        daily_agg = (
+            models.LearningSummaryDaily.objects.filter(user_id__in=student_ids, activity_date__range=(date_from, date_to))
+            .values("user_id")
+            .annotate(
+                correct_count=Sum("correct_count"),
+                incorrect_count=Sum("incorrect_count"),
+                timeout_count=Sum("timeout_count"),
+                total_time_ms=Sum("total_time_ms"),
+            )
+        )
+        daily_map = {row["user_id"]: row for row in daily_agg}
+
+        last_activity_qs = (
+            models.QuizResult.objects.filter(user_id__in=student_ids, completed_at__isnull=False)
+            .values("user_id")
+            .annotate(last_activity=Max("completed_at"))
+        )
+        last_map = {row["user_id"]: row["last_activity"] for row in last_activity_qs}
+
+        results: list[dict[str, Any]] = []
+        for m in memberships:
+            link = link_map.get(m.student_id)
+            if not link:
+                continue
+            profile = getattr(m.student, "profile", None)
+            agg = daily_map.get(m.student_id, {}) or {}
+            total_answers = (agg.get("correct_count") or 0) + (agg.get("incorrect_count") or 0) + (agg.get("timeout_count") or 0)
+            accuracy = (agg.get("correct_count") or 0) / total_answers * 100 if total_answers else 0.0
+            last_at = last_map.get(m.student_id)
+
+            results.append(
+                {
+                    "student_teacher_link_id": str(link.id),
+                    "display_name": link.custom_display_name or (profile.display_name if profile else ""),
+                    "avatar_url": profile.avatar_url if profile else "",
+                    "status": link.status,
+                    "last_activity_at": last_at.isoformat() if last_at else None,
+                    "total_answers": total_answers,
+                    "correct_answers": agg.get("correct_count") or 0,
+                    "correct_rate": accuracy,
+                }
+            )
+
+        return Response({"days": days, "items": results})
+
 
 
 class VocabularyViewSet(BaseModelViewSet):
@@ -560,6 +1256,8 @@ class StudentDashboardSummaryView(APIView):
                 "correct_count": summary.correct_count,
                 "incorrect_count": summary.incorrect_count,
                 "timeout_count": summary.timeout_count,
+                "total_time_ms": summary.total_time_ms,
+                "mastered_count": 0,  # TODO: mastered 遷移数を計測する場合はここで算出
             }
             for summary in recent_daily
         ]
@@ -580,6 +1278,7 @@ class StudentDashboardSummaryView(APIView):
                 correct_count=Sum("correct_count"),
                 incorrect_count=Sum("incorrect_count"),
                 timeout_count=Sum("timeout_count"),
+                total_time_ms=Sum("total_time_ms"),
             )
             .order_by("week")
         )
@@ -594,6 +1293,10 @@ class StudentDashboardSummaryView(APIView):
                     "correct_count": entry.get("correct_count") or 0,
                     "incorrect_count": entry.get("incorrect_count") or 0,
                     "timeout_count": entry.get("timeout_count") or 0,
+                    "total_time_ms": entry.get("total_time_ms") or 0,
+                    "from_date": week.isoformat(),
+                    "to_date": (week + timedelta(days=6)).isoformat(),
+                    "mastered_count": 0,
                 }
             )
         max_weekly_total = max(
@@ -613,6 +1316,7 @@ class StudentDashboardSummaryView(APIView):
                 correct_count=Sum("correct_count"),
                 incorrect_count=Sum("incorrect_count"),
                 timeout_count=Sum("timeout_count"),
+                total_time_ms=Sum("total_time_ms"),
             )
             .order_by("month")
         )
@@ -620,6 +1324,9 @@ class StudentDashboardSummaryView(APIView):
             month = entry.get("month")
             if not month:
                 continue
+            # 当月の末日を算出
+            next_month = month.replace(day=28) + timedelta(days=4)
+            month_end = next_month - timedelta(days=next_month.day)
             monthly_chart.append(
                 {
                     "period": month.isoformat(),
@@ -627,6 +1334,10 @@ class StudentDashboardSummaryView(APIView):
                     "correct_count": entry.get("correct_count") or 0,
                     "incorrect_count": entry.get("incorrect_count") or 0,
                     "timeout_count": entry.get("timeout_count") or 0,
+                    "total_time_ms": entry.get("total_time_ms") or 0,
+                    "from_date": month.isoformat(),
+                    "to_date": month_end.isoformat(),
+                    "mastered_count": 0,
                 }
             )
         max_monthly_total = max(
@@ -1306,4 +2017,6 @@ __all__ = [
     "TestResultViewSet",
     "TestResultDetailViewSet",
     "debug_create_user",
+    "TeacherStudentProgressViewSet",
+    "TeacherGroupMemberSummaryView",
 ]

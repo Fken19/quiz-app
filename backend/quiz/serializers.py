@@ -147,15 +147,56 @@ class StudentTeacherLinkSerializer(serializers.ModelSerializer):
         return obj.teacher.email
 
 
+class TeacherStudentListSerializer(serializers.ModelSerializer):
+    student_teacher_link_id = serializers.UUIDField(source="id", read_only=True)
+    display_name = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
+
+    def _safe_profile(self, user: models.User):
+        try:
+            return user.profile
+        except Exception:
+            return None
+
+    class Meta:
+        model = models.StudentTeacherLink
+        fields = [
+            "student_teacher_link_id",
+            "display_name",
+            "status",
+            "linked_at",
+            "custom_display_name",
+            "local_student_code",
+            "tags",
+            "private_note",
+            "kana_for_sort",
+            "color",
+            "avatar_url",
+        ]
+        read_only_fields = ["status", "linked_at"]
+
+    def get_display_name(self, obj):
+        if obj.custom_display_name:
+            return obj.custom_display_name
+        profile = self._safe_profile(obj.student)
+        return profile.display_name if profile and profile.display_name else ""
+
+    def get_avatar_url(self, obj):
+        profile = self._safe_profile(obj.student)
+        return profile.avatar_url if profile else ""
+
+
 class RosterFolderSerializer(serializers.ModelSerializer):
     roster_folder_id = serializers.UUIDField(source="id", read_only=True)
+    member_count = serializers.SerializerMethodField()
+    parent_folder_id = serializers.UUIDField(source="parent_folder.id", read_only=True)
 
     class Meta:
         model = models.RosterFolder
         fields = [
             "roster_folder_id",
-            "owner_teacher",
             "parent_folder",
+            "parent_folder_id",
             "name",
             "sort_order",
             "is_dynamic",
@@ -163,24 +204,108 @@ class RosterFolderSerializer(serializers.ModelSerializer):
             "notes",
             "archived_at",
             "created_at",
+            "member_count",
         ]
-        read_only_fields = ["created_at"]
+        read_only_fields = ["created_at", "member_count", "is_dynamic", "dynamic_filter", "archived_at"]
+
+    def get_member_count(self, obj):
+        return obj.memberships.filter(removed_at__isnull=True).count()
 
 
 class RosterMembershipSerializer(serializers.ModelSerializer):
     roster_membership_id = serializers.UUIDField(source="id", read_only=True)
+    roster_folder_id = serializers.UUIDField(source="roster_folder.id", read_only=True)
+    student_teacher_link_id = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
+    local_student_code = serializers.SerializerMethodField()
+    _profile_cache: dict[str, models.UserProfile | None] = {}
 
     class Meta:
         model = models.RosterMembership
         fields = [
             "roster_membership_id",
             "roster_folder",
+            "roster_folder_id",
             "student",
+            "student_teacher_link_id",
+            "display_name",
+            "status",
+            "avatar_url",
+            "tags",
+            "local_student_code",
             "added_at",
             "removed_at",
             "note",
         ]
-        read_only_fields = ["added_at"]
+        read_only_fields = [
+            "added_at",
+            "roster_folder_id",
+            "student_teacher_link_id",
+            "display_name",
+            "status",
+            "avatar_url",
+            "tags",
+            "local_student_code",
+        ]
+
+    def _get_teacher_link(self, obj: models.RosterMembership):
+        teacher = self.context.get("teacher")
+        if not teacher:
+            return None
+        links = getattr(obj.student, "prefetched_teacher_links", None) or getattr(obj.student, "teacher_links", None)
+        if links:
+            for link in links:
+                if link.teacher_id == teacher.id and link.status != models.LinkStatus.REVOKED:
+                    return link
+        return (
+            models.StudentTeacherLink.objects.filter(student=obj.student, teacher=teacher).exclude(
+                status=models.LinkStatus.REVOKED
+            )
+            .select_related("student__profile")
+            .first()
+        )
+
+    def get_student_teacher_link_id(self, obj):
+        link = self._get_teacher_link(obj)
+        return str(link.id) if link else None
+
+    def get_display_name(self, obj):
+        link = self._get_teacher_link(obj)
+        if link and link.custom_display_name:
+            return link.custom_display_name
+        profile = self._safe_profile(obj.student)
+        return profile.display_name if profile and profile.display_name else ""
+
+    def get_avatar_url(self, obj):
+        profile = self._safe_profile(obj.student)
+        return profile.avatar_url if profile else ""
+
+    def get_status(self, obj):
+        link = self._get_teacher_link(obj)
+        return link.status if link else ""
+
+    def get_tags(self, obj):
+        link = self._get_teacher_link(obj)
+        return link.tags if link and link.tags is not None else []
+
+    def get_local_student_code(self, obj):
+        link = self._get_teacher_link(obj)
+        return link.local_student_code if link else None
+
+    def _safe_profile(self, user: models.User):
+        cache_key = str(user.pk)
+        if cache_key in self._profile_cache:
+            return self._profile_cache[cache_key]
+        profile = None
+        try:
+            profile = user.profile
+        except Exception:
+            profile = None
+        self._profile_cache[cache_key] = profile
+        return profile
 
 
 class VocabularySerializer(serializers.ModelSerializer):

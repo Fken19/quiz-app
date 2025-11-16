@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from django.utils import timezone
 
 from .models import TeacherWhitelist
@@ -20,4 +21,13 @@ def is_teacher_whitelisted(email: str) -> bool:
     ).exists()
 
 
-__all__ = ["is_teacher_whitelisted"]
+def parse_date_param(value: str | None):
+    if not value:
+        return None
+    try:
+        return datetime.date.fromisoformat(value)
+    except Exception:
+        return None
+
+
+__all__ = ["is_teacher_whitelisted", "parse_date_param"]

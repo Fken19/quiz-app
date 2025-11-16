@@ -3,17 +3,16 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { 
-  HomeIcon, 
-  UserGroupIcon, 
-  FolderIcon, 
+import {
+  HomeIcon,
+  UserGroupIcon,
+  FolderIcon,
   ClipboardDocumentListIcon,
-  AcademicCapIcon,
   BookOpenIcon,
   TicketIcon,
   ShieldCheckIcon,
   UserCircleIcon,
-  ArrowRightOnRectangleIcon
+  ArrowRightOnRectangleIcon,
 } from '@heroicons/react/24/outline';
 
 const NAV_ITEMS = [
@@ -21,7 +20,6 @@ const NAV_ITEMS = [
   { name: '生徒一覧', href: '/teacher/students', icon: UserGroupIcon },
   { name: 'グループ管理', href: '/teacher/groups', icon: FolderIcon },
   { name: 'テスト', href: '/teacher/tests', icon: ClipboardDocumentListIcon },
-  { name: '講師一覧', href: '/teacher/staff', icon: AcademicCapIcon },
   { name: '語彙管理', href: '/teacher/vocab', icon: BookOpenIcon },
   { name: '招待コード', href: '/teacher/invites', icon: TicketIcon },
   // ホワイトリスト管理はDjango管理画面からのみ行う

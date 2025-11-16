@@ -26,6 +26,7 @@ router.register(r"quizzes", views.QuizViewSet, basename="quiz")
 router.register(r"quiz-questions", views.QuizQuestionViewSet, basename="quiz-question")
 router.register(r"quiz-results", views.QuizResultViewSet, basename="quiz-result")
 router.register(r"quiz-result-details", views.QuizResultDetailViewSet, basename="quiz-result-detail")
+router.register(r"teacher/student-progress", views.TeacherStudentProgressViewSet, basename="teacher-student-progress")
 router.register(r"tests", views.TestViewSet, basename="test")
 router.register(r"test-questions", views.TestQuestionViewSet, basename="test-question")
 router.register(r"test-assignments", views.TestAssignmentViewSet, basename="test-assignment")
@@ -37,6 +38,21 @@ urlpatterns = [
     path("", include(router.urls)),
     path("avatar-upload/", views.AvatarUploadView.as_view(), name="avatar-upload"),
     path("student/dashboard-summary/", views.StudentDashboardSummaryView.as_view(), name="student-dashboard-summary"),
+    path(
+        "teacher/groups/<uuid:folder_id>/member-summaries/",
+        views.TeacherGroupMemberSummaryView.as_view(),
+        name="teacher-group-member-summaries",
+    ),
+    path(
+        "teacher/students/<uuid:link_id>/progress/",
+        views.TeacherStudentProgressView.as_view(),
+        name="teacher-student-progress",
+    ),
+    path(
+        "teacher/students/",
+        views.StudentTeacherLinkViewSet.as_view({"get": "list_by_teacher", "patch": "list_by_teacher"}),
+        name="teacher-students",
+    ),
     path("focus-questions/", views.FocusQuestionView.as_view(), name="focus-questions"),
     path("focus-quiz-sessions/", views.FocusQuizSessionStartView.as_view(), name="focus-quiz-session-start"),
     path("quiz-sessions/", views.QuizSessionStartView.as_view(), name="quiz-session-start"),
