@@ -28,7 +28,13 @@ export default function TeacherStudentsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortKey, setSortKey] = useState<SortKey>('linked_at');
   const [showEditId, setShowEditId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ school: '', grade: '', classroom: '', tags: '' });
+  const [editForm, setEditForm] = useState({
+    local_student_code: '',
+    tags: '',
+    private_note: '',
+    kana_for_sort: '',
+    color: '',
+  });
   const [aliasModalId, setAliasModalId] = useState<string | null>(null);
   const [aliasValue, setAliasValue] = useState('');
 
@@ -235,7 +241,16 @@ export default function TeacherStudentsPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setShowEditId(row.student_teacher_link_id)}
+                      onClick={() => {
+                        setShowEditId(row.student_teacher_link_id);
+                        setEditForm({
+                          local_student_code: row.local_student_code || '',
+                          tags: (row.tags || []).join(','),
+                          private_note: row.private_note || '',
+                          kana_for_sort: row.kana_for_sort || '',
+                          color: row.color || '',
+                        });
+                      }}
                       className="px-2 py-1 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
                     >
                       属性編集
@@ -281,26 +296,56 @@ export default function TeacherStudentsPage() {
               </button>
             </div>
             <p className="text-sm text-slate-700">
-              所属学校・学年・クラス・タグは講師専用のメモ情報として保存されます。
+              講師専用のメモ情報です。生徒には表示されません。
             </p>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-slate-600">所属学校</label>
+                <label className="text-sm font-medium text-slate-800">ローカルコード</label>
                 <input
                   type="text"
-                  className="w-full border rounded-md px-3 py-2 text-sm"
-                  value={editForm.school}
-                  onChange={(e) => setEditForm({ ...editForm, school: e.target.value })}
+                  className="w-full border rounded-md px-3 py-2 text-sm text-slate-900"
+                  value={editForm.local_student_code}
+                  onChange={(e) => setEditForm({ ...editForm, local_student_code: e.target.value })}
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-600">タグ（カンマ区切り）</label>
+                <label className="text-sm font-medium text-slate-800">タグ（カンマ区切り）</label>
                 <input
                   type="text"
-                  className="w-full border rounded-md px-3 py-2 text-sm"
+                  className="w-full border rounded-md px-3 py-2 text-sm text-slate-900"
                   value={editForm.tags}
                   onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
                 />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-800">メモ</label>
+                <textarea
+                  className="w-full border rounded-md px-3 py-2 text-sm text-slate-900"
+                  rows={3}
+                  value={editForm.private_note}
+                  onChange={(e) => setEditForm({ ...editForm, private_note: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-slate-800">並び替え用かな</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded-md px-3 py-2 text-sm text-slate-900"
+                    value={editForm.kana_for_sort}
+                    onChange={(e) => setEditForm({ ...editForm, kana_for_sort: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-800">色コード</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded-md px-3 py-2 text-sm text-slate-900"
+                    value={editForm.color}
+                    placeholder="#RRGGBB"
+                    onChange={(e) => setEditForm({ ...editForm, color: e.target.value })}
+                  />
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-2">
@@ -313,11 +358,36 @@ export default function TeacherStudentsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setShowEditId(null)}
-                className="px-4 py-2 text-sm rounded-md bg-slate-200 text-slate-600"
-                title="保存API準備中のため閉じるだけです"
+                onClick={async () => {
+                  if (!showEditId) return;
+                  setActionMessage(null);
+                  try {
+                    await apiPost(
+                      '/api/teacher/students/',
+                      {
+                        student_teacher_link_id: showEditId,
+                        local_student_code: editForm.local_student_code,
+                        tags: editForm.tags
+                          .split(',')
+                          .map((t) => t.trim())
+                          .filter(Boolean),
+                        private_note: editForm.private_note,
+                        kana_for_sort: editForm.kana_for_sort,
+                        color: editForm.color,
+                      },
+                      'PATCH',
+                    );
+                    setActionMessage('属性を更新しました');
+                    setShowEditId(null);
+                    fetchStudents();
+                  } catch (err) {
+                    console.error(err);
+                    setActionMessage('属性の更新に失敗しました');
+                  }
+                }}
+                className="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
               >
-                保存（準備中）
+                保存
               </button>
             </div>
           </div>
