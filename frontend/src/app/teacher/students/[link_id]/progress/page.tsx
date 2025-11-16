@@ -17,6 +17,13 @@ import { Bar } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend, ChartTitle);
 
+const formatDateKey = (d: Date) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 type DailyItem = {
   date: string;
   correct_count: number;
@@ -84,6 +91,7 @@ type ProgressSummary = {
 
 type RangePreset = '7' | '30' | '90' | 'all';
 type GraphTab = 'daily' | 'level' | 'weak';
+type Granularity = 'daily' | 'weekly' | 'monthly';
 
 export default function TeacherStudentProgressPage() {
   const params = useParams();
@@ -101,6 +109,7 @@ export default function TeacherStudentProgressPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [graphTab, setGraphTab] = useState<GraphTab>('daily');
+  const [granularity, setGranularity] = useState<Granularity>('daily');
 
   const buildQuery = () => {
     if (range === 'all') return '';
@@ -142,26 +151,171 @@ export default function TeacherStudentProgressPage() {
     fetchAll();
   }, [linkId, range]);
 
-  const dailyTotals = useMemo(() => {
-    return (daily || []).map((d) => ({
-      date: d.date,
-      total: d.correct_count + d.incorrect_count + d.timeout_count,
-      correct: d.correct_count,
-      incorrect: d.incorrect_count,
-      timeout: d.timeout_count,
-    }));
+  const dailyMap = useMemo(() => {
+    const map = new Map<string, DailyItem>();
+    (daily || []).forEach((d) => map.set(d.date, d));
+    return map;
   }, [daily]);
 
+  const filledDaily = useMemo(() => {
+    const result: { label: string; total: number; correct: number; incorrect: number; timeout: number; key: string }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = formatDateKey(d);
+      const found = dailyMap.get(key);
+      const totals = {
+        correct: found?.correct_count || 0,
+        incorrect: found?.incorrect_count || 0,
+        timeout: found?.timeout_count || 0,
+      };
+      const label = d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+      result.push({
+        key,
+        label,
+        total: totals.correct + totals.incorrect + totals.timeout,
+        correct: totals.correct,
+        incorrect: totals.incorrect,
+        timeout: totals.timeout,
+      });
+    }
+    return result;
+  }, [dailyMap]);
+
+  const weeklyMap = useMemo(() => {
+    const map = new Map<
+      string,
+      { start: Date; correct: number; incorrect: number; timeout: number; label: string }
+    >();
+    (daily || []).forEach((d) => {
+      const dateObj = new Date(d.date);
+      const day = dateObj.getDay();
+      const diff = (day + 6) % 7; // Monday start
+      const monday = new Date(dateObj);
+      monday.setDate(dateObj.getDate() - diff);
+      monday.setHours(0, 0, 0, 0);
+      const key = formatDateKey(monday);
+      if (!map.has(key)) {
+        map.set(key, {
+          start: monday,
+          correct: 0,
+          incorrect: 0,
+          timeout: 0,
+          label: `${monday.getMonth() + 1}/${monday.getDate()}`,
+        });
+      }
+      const ref = map.get(key)!;
+      ref.correct += d.correct_count;
+      ref.incorrect += d.incorrect_count;
+      ref.timeout += d.timeout_count;
+    });
+    return map;
+  }, [daily]);
+
+  const filledWeekly = useMemo(() => {
+    const result: { label: string; total: number; correct: number; incorrect: number; timeout: number; key: string }[] = [];
+    const today = new Date();
+    const currentMonday = new Date(today);
+    const day = currentMonday.getDay();
+    const diff = (day + 6) % 7;
+    currentMonday.setDate(currentMonday.getDate() - diff);
+    currentMonday.setHours(0, 0, 0, 0);
+
+    for (let i = 7; i >= 0; i--) {
+      const start = new Date(currentMonday);
+      start.setDate(currentMonday.getDate() - i * 7);
+      const key = formatDateKey(start);
+      const found = weeklyMap.get(key);
+      const totals = {
+        correct: found?.correct || 0,
+        incorrect: found?.incorrect || 0,
+        timeout: found?.timeout || 0,
+      };
+      const label = `${start.getMonth() + 1}/${start.getDate()}`;
+      result.push({
+        key,
+        label,
+        total: totals.correct + totals.incorrect + totals.timeout,
+        correct: totals.correct,
+        incorrect: totals.incorrect,
+        timeout: totals.timeout,
+      });
+    }
+    return result;
+  }, [weeklyMap]);
+
+  const monthlyMap = useMemo(() => {
+    const map = new Map<
+      string,
+      { start: Date; correct: number; incorrect: number; timeout: number; label: string }
+    >();
+    (daily || []).forEach((d) => {
+      const dateObj = new Date(d.date);
+      const start = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
+      const key = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          start,
+          correct: 0,
+          incorrect: 0,
+          timeout: 0,
+          label: `${start.getFullYear()}/${start.getMonth() + 1}`,
+        });
+      }
+      const ref = map.get(key)!;
+      ref.correct += d.correct_count;
+      ref.incorrect += d.incorrect_count;
+      ref.timeout += d.timeout_count;
+    });
+    return map;
+  }, [daily]);
+
+  const filledMonthly = useMemo(() => {
+    const result: { label: string; total: number; correct: number; incorrect: number; timeout: number; key: string }[] = [];
+    const today = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const start = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const key = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
+      const found = monthlyMap.get(key);
+      const totals = {
+        correct: found?.correct || 0,
+        incorrect: found?.incorrect || 0,
+        timeout: found?.timeout || 0,
+      };
+      const label = `${start.getFullYear()}/${start.getMonth() + 1}`;
+      result.push({
+        key,
+        label,
+        total: totals.correct + totals.incorrect + totals.timeout,
+        correct: totals.correct,
+        incorrect: totals.incorrect,
+        timeout: totals.timeout,
+      });
+    }
+    return result;
+  }, [monthlyMap]);
+
+  const aggregatedDailyForChart = useMemo(() => {
+    if (granularity === 'weekly') return filledWeekly;
+    if (granularity === 'monthly') return filledMonthly;
+    return filledDaily;
+  }, [filledDaily, filledWeekly, filledMonthly, granularity]);
+
   const renderDailyChart = () => {
-    const labels = dailyTotals.map((d) => new Date(d.date).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' }));
+    if (aggregatedDailyForChart.length === 0) {
+      return <p className="text-sm text-slate-500">まだ学習データがありません。</p>;
+    }
+
+    const labels = aggregatedDailyForChart.map((d) => d.label);
     const data = {
       labels,
       datasets: [
-        { label: '正解', data: dailyTotals.map((d) => d.correct), backgroundColor: '#34d399', stack: 'counts' },
-        { label: '不正解', data: dailyTotals.map((d) => d.incorrect), backgroundColor: '#fb923c', stack: 'counts' },
-        { label: 'Timeout', data: dailyTotals.map((d) => d.timeout), backgroundColor: '#cbd5e1', stack: 'counts' },
+        { label: '正解', data: aggregatedDailyForChart.map((d) => d.correct), backgroundColor: '#34d399', stack: 'counts' },
+        { label: '不正解', data: aggregatedDailyForChart.map((d) => d.incorrect), backgroundColor: '#fb923c', stack: 'counts' },
+        { label: 'Timeout', data: aggregatedDailyForChart.map((d) => d.timeout), backgroundColor: '#cbd5e1', stack: 'counts' },
       ],
     };
+    const granularityLabel = granularity === 'weekly' ? '週別' : granularity === 'monthly' ? '月別' : '日別';
     return (
       <div className="w-full overflow-x-auto">
         <div className="min-w-[720px] h-[320px]">
@@ -176,11 +330,19 @@ export default function TeacherStudentProgressPage() {
               },
               plugins: {
                 legend: { display: true, position: 'bottom' },
+                title: {
+                  display: true,
+                  text: `学習量（${granularityLabel}）`,
+                  color: '#475569',
+                  font: { weight: '600', size: 14 },
+                  padding: { bottom: 12 },
+                },
                 tooltip: {
                   callbacks: {
                     footer: (items) => {
                       const idx = items[0].dataIndex;
-                      return `合計: ${dailyTotals[idx]?.total ?? 0}問`;
+                      const row = aggregatedDailyForChart[idx];
+                      return `合計: ${row?.total ?? 0}問`;
                     },
                   },
                 },
@@ -398,6 +560,23 @@ export default function TeacherStudentProgressPage() {
             ))}
           </div>
         </div>
+        {graphTab === 'daily' && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-600">表示単位:</span>
+            {(['daily', 'weekly', 'monthly'] as Granularity[]).map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setGranularity(g)}
+                className={`px-3 py-1 rounded border text-xs ${
+                  granularity === g ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-300 text-slate-700'
+                }`}
+              >
+                {g === 'weekly' ? '週別' : g === 'monthly' ? '月別' : '日別'}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="min-h-[340px]">
           {graphTab === 'daily' && renderDailyChart()}
           {graphTab === 'level' && renderLevelChart()}
