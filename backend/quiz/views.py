@@ -454,6 +454,7 @@ class RosterMembershipViewSet(BaseModelViewSet):
             .filter(
                 roster_folder__owner_teacher=teacher,
                 student__teacher_links__teacher=teacher,
+                student__teacher_links__status__in=[models.LinkStatus.ACTIVE, models.LinkStatus.PENDING],
             )
             .order_by("-added_at")
         )
@@ -465,7 +466,7 @@ class RosterMembershipViewSet(BaseModelViewSet):
             qs = qs.filter(roster_folder_id=roster_folder_id)
         if not include_removed:
             qs = qs.filter(removed_at__isnull=True)
-        qs = qs.exclude(student__teacher_links__status=models.LinkStatus.REVOKED).distinct()
+        qs = qs.distinct()
         return qs
 
     def create(self, request, *args, **kwargs):  # type: ignore[override]
@@ -518,8 +519,35 @@ class RosterMembershipViewSet(BaseModelViewSet):
                 student=link.student,
                 defaults={"note": note},
             )
-        serializer = self.get_serializer(membership)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        try:
+            serializer_obj = (
+                self.get_queryset()
+                .prefetch_related(
+                    Prefetch(
+                        "student__teacher_links",
+                        queryset=models.StudentTeacherLink.objects.filter(teacher=teacher),
+                        to_attr="prefetched_teacher_links",
+                    )
+                )
+                .filter(pk=membership.pk)
+                .first()
+                or membership
+            )
+            serializer = self.get_serializer(serializer_obj)
+            data = serializer.data
+        except Exception:
+            # シリアライズで例外が出ても登録は成功しているため簡易レスポンスを返す
+            data = {
+                "roster_membership_id": str(membership.id),
+                "roster_folder": str(folder.id),
+                "roster_folder_id": str(folder.id),
+                "student": str(link.student.id),
+                "student_teacher_link_id": str(link.id),
+                "note": membership.note,
+                "added_at": membership.added_at,
+                "removed_at": membership.removed_at,
+            }
+        return Response(data, status=status.HTTP_201_CREATED)
 
     def partial_update(self, request, *args, **kwargs):  # type: ignore[override]
         teacher = self._get_teacher(request)
