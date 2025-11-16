@@ -443,7 +443,7 @@ class RosterMembershipViewSet(BaseModelViewSet):
                 Prefetch(
                     "student__teacher_links",
                     queryset=models.StudentTeacherLink.objects.filter(teacher=teacher),
-                    to_attr="teacher_links",
+                    to_attr="prefetched_teacher_links",
                 )
             )
             .filter(roster_folder__owner_teacher=teacher)

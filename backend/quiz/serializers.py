@@ -255,7 +255,7 @@ class RosterMembershipSerializer(serializers.ModelSerializer):
         teacher = self.context.get("teacher")
         if not teacher:
             return None
-        links = getattr(obj.student, "teacher_links", None)
+        links = getattr(obj.student, "prefetched_teacher_links", None) or getattr(obj.student, "teacher_links", None)
         if links:
             for link in links:
                 if link.teacher_id == teacher.id:
