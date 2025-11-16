@@ -941,6 +941,106 @@ class TeacherStudentProgressViewSet(viewsets.ViewSet):
         return Response({"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "items": items})
 
 
+class TeacherGroupMemberSummaryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_teacher(self, request):
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            teacher = models.Teacher.objects.filter(email__iexact=request.user.email).first()
+        if teacher is None:
+            raise PermissionDenied("講師アカウントが見つかりません。")
+        return teacher
+
+    def get(self, request, folder_id: uuid.UUID):
+        teacher = self._get_teacher(request)
+        days_param = request.query_params.get("days") or "30"
+        try:
+            days = max(1, min(int(days_param), 365))
+        except Exception:
+            days = 30
+        date_from = timezone.localdate() - timedelta(days=days - 1)
+        date_to = timezone.localdate()
+
+        try:
+            folder = models.RosterFolder.objects.get(id=folder_id, owner_teacher=teacher)
+        except models.RosterFolder.DoesNotExist:
+            raise PermissionDenied("フォルダが見つからないか、権限がありません。")
+
+        memberships = (
+            models.RosterMembership.objects.select_related("student__profile")
+            .prefetch_related(
+                Prefetch(
+                    "student__teacher_links",
+                    queryset=models.StudentTeacherLink.objects.filter(
+                        teacher=teacher, status__in=[models.LinkStatus.ACTIVE, models.LinkStatus.PENDING]
+                    ),
+                    to_attr="prefetched_teacher_links",
+                )
+            )
+            .filter(roster_folder=folder, removed_at__isnull=True)
+        )
+
+        student_ids: list[uuid.UUID] = []
+        link_map: dict[uuid.UUID, models.StudentTeacherLink] = {}
+        for m in memberships:
+            links = getattr(m.student, "prefetched_teacher_links", None) or getattr(m.student, "teacher_links", None)
+            link = None
+            if links:
+                for l in links:
+                    if l.teacher_id == teacher.id and l.status != models.LinkStatus.REVOKED:
+                        link = l
+                        break
+            if link:
+                student_ids.append(m.student_id)
+                link_map[m.student_id] = link
+
+        daily_agg = (
+            models.LearningSummaryDaily.objects.filter(user_id__in=student_ids, activity_date__range=(date_from, date_to))
+            .values("user_id")
+            .annotate(
+                correct_count=Sum("correct_count"),
+                incorrect_count=Sum("incorrect_count"),
+                timeout_count=Sum("timeout_count"),
+                total_time_ms=Sum("total_time_ms"),
+            )
+        )
+        daily_map = {row["user_id"]: row for row in daily_agg}
+
+        last_activity_qs = (
+            models.QuizResult.objects.filter(user_id__in=student_ids, completed_at__isnull=False)
+            .values("user_id")
+            .annotate(last_activity=Max("completed_at"))
+        )
+        last_map = {row["user_id"]: row["last_activity"] for row in last_activity_qs}
+
+        results: list[dict[str, Any]] = []
+        for m in memberships:
+            link = link_map.get(m.student_id)
+            if not link:
+                continue
+            profile = getattr(m.student, "profile", None)
+            agg = daily_map.get(m.student_id, {}) or {}
+            total_answers = (agg.get("correct_count") or 0) + (agg.get("incorrect_count") or 0) + (agg.get("timeout_count") or 0)
+            accuracy = (agg.get("correct_count") or 0) / total_answers * 100 if total_answers else 0.0
+            last_at = last_map.get(m.student_id)
+
+            results.append(
+                {
+                    "student_teacher_link_id": str(link.id),
+                    "display_name": link.custom_display_name or (profile.display_name if profile else ""),
+                    "avatar_url": profile.avatar_url if profile else "",
+                    "status": link.status,
+                    "last_activity_at": last_at.isoformat() if last_at else None,
+                    "total_answers": total_answers,
+                    "correct_answers": agg.get("correct_count") or 0,
+                    "correct_rate": accuracy,
+                }
+            )
+
+        return Response({"days": days, "items": results})
+
+
 
 class VocabularyViewSet(BaseModelViewSet):
     queryset = models.Vocabulary.objects.all().order_by("sort_key")
@@ -1918,4 +2018,5 @@ __all__ = [
     "TestResultDetailViewSet",
     "debug_create_user",
     "TeacherStudentProgressViewSet",
+    "TeacherGroupMemberSummaryView",
 ]

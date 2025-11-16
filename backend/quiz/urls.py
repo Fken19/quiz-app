@@ -39,6 +39,11 @@ urlpatterns = [
     path("avatar-upload/", views.AvatarUploadView.as_view(), name="avatar-upload"),
     path("student/dashboard-summary/", views.StudentDashboardSummaryView.as_view(), name="student-dashboard-summary"),
     path(
+        "teacher/groups/<uuid:folder_id>/member-summaries/",
+        views.TeacherGroupMemberSummaryView.as_view(),
+        name="teacher-group-member-summaries",
+    ),
+    path(
         "teacher/students/<uuid:link_id>/progress/",
         views.TeacherStudentProgressView.as_view(),
         name="teacher-student-progress",

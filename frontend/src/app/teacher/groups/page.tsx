@@ -67,6 +67,7 @@ export default function TeacherGroupsPage() {
   const [memberSearch, setMemberSearch] = useState('');
   const [memberSelection, setMemberSelection] = useState<Record<string, boolean>>({});
   const [memberNote, setMemberNote] = useState('');
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const fetchFolders = async () => {
     try {
@@ -99,6 +100,29 @@ export default function TeacherGroupsPage() {
       const res = await apiGet(`/api/roster-memberships/?roster_folder_id=${folderId}`);
       const list: GroupMember[] = Array.isArray(res?.results) ? res.results : Array.isArray(res) ? res : [];
       setMembers(list);
+      try {
+        const summary = await apiGet(`/api/teacher/groups/${folderId}/member-summaries/?days=30`);
+        const items: GroupMember[] = Array.isArray(summary?.items) ? summary.items : [];
+        const map = new Map(items.map((s) => [s.student_teacher_link_id, s]));
+        setMembers((prev) =>
+          prev.map((m) => {
+            const hit = map.get(m.student_teacher_link_id || '');
+            return hit
+              ? {
+                  ...m,
+                  last_activity_at: hit.last_activity_at || null,
+                  total_answers: hit.total_answers,
+                  correct_answers: hit.correct_answers,
+                  correct_rate: hit.correct_rate,
+                }
+              : m;
+          }),
+        );
+        setSummaryError(null);
+      } catch (err) {
+        console.error(err);
+        setSummaryError('サマリ取得に失敗しました');
+      }
     } catch (err) {
       console.error(err);
       setActionMessage('メンバー取得に失敗しました');
@@ -431,18 +455,30 @@ export default function TeacherGroupsPage() {
                         </div>
                       </div>
                     )}
-                    <button
-                      type="button"
-                      className="px-3 py-1 rounded border border-slate-300 text-slate-700 text-xs hover:bg-slate-50"
-                      onClick={() => removeMember(m.roster_membership_id)}
-                    >
-                      解除
-                    </button>
+                    <div className="flex items-center gap-3 text-xs text-slate-700">
+                      <div className="text-right">
+                        <div>最終: {m.last_activity_at ? new Date(m.last_activity_at).toLocaleDateString('ja-JP') : '-'}</div>
+                        <div>
+                          {typeof m.total_answers === 'number' ? `${m.total_answers}問` : '-'} /
+                          {m.total_answers && m.total_answers > 0 && typeof m.correct_rate === 'number'
+                            ? ` 正答率 ${m.correct_rate.toFixed(1)}%`
+                            : ''}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="px-3 py-1 rounded border border-slate-300 text-slate-700 text-xs hover:bg-slate-50"
+                        onClick={() => removeMember(m.roster_membership_id)}
+                      >
+                        解除
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {members.length === 0 && (
                   <div className="px-3 py-4 text-sm text-slate-500">まだメンバーがいません。右上の「＋ 生徒を追加」から登録してください。</div>
                 )}
+                {summaryError && <div className="px-3 py-2 text-xs text-red-600">{summaryError}</div>}
               </div>
             </>
           )}
