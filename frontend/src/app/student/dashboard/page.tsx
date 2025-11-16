@@ -4,8 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { apiGet } from '@/lib/api-utils';
-import type { FocusQuestionsResponse, LearningStatusKey, StudentDashboardSummary } from '@/types/quiz';
+import { apiGet, apiPost } from '@/lib/api-utils';
+import type {
+  FocusQuestionsResponse,
+  FocusQuizSessionResponse,
+  LearningStatusKey,
+  StudentDashboardSummary,
+} from '@/types/quiz';
 
 const statusLabels: Record<LearningStatusKey, string> = {
   unlearned: '未学習',
@@ -84,15 +89,33 @@ export default function DashboardPage() {
 
   const dayChart = useMemo(() => summary.recent_daily.chart, [summary]);
 
-  const handleFocusCheck = async (statusKey: LearningStatusKey) => {
+  const handleFocusStart = async (statusKey: LearningStatusKey) => {
     try {
       setFocusLoading(statusKey);
       setFocusMessage(null);
       const res = (await apiGet(`/api/focus-questions/?status=${statusKey}&limit=10`)) as FocusQuestionsResponse;
-      if (res.available_count >= res.requested_limit) {
-        setFocusMessage(`「${statusLabels[statusKey]}」の語は ${res.available_count} 件あります。まもなくフォーカス学習に対応予定です。`);
+      if (res.available_count === 0) {
+        setFocusMessage(`「${statusLabels[statusKey]}」の語が見つかりません。別のステータスを選んでください。`);
+        return;
+      }
+      const limitedIds = res.vocabulary_ids.slice(0, res.requested_limit);
+      const payload = {
+        vocabulary_ids: limitedIds,
+        status: statusKey,
+      };
+      if (res.available_count < res.requested_limit) {
+        const proceed = window.confirm(
+          `「${statusLabels[statusKey]}」は ${res.available_count} 件のみです。このまま始めますか？`,
+        );
+        if (!proceed) {
+          return;
+        }
+      }
+      const session = (await apiPost('/api/focus-quiz-sessions/', payload)) as FocusQuizSessionResponse;
+      if (session && session.quiz_id) {
+        router.push(`/student/quiz/play?quizId=${session.quiz_id}`);
       } else {
-        setFocusMessage(`「${statusLabels[statusKey]}」は ${res.available_count} 件のみです。足りない場合は範囲を広げてください。`);
+        setFocusMessage('フォーカス学習の開始に失敗しました。');
       }
     } catch (err) {
       console.error(err);
@@ -189,11 +212,11 @@ export default function DashboardPage() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => handleFocusCheck(statusKey)}
+                  onClick={() => handleFocusStart(statusKey)}
                   disabled={focusLoading === statusKey}
                   className="mt-auto inline-flex justify-center rounded-md border border-indigo-500 text-indigo-600 text-sm font-semibold px-3 py-2 hover:bg-indigo-50 disabled:opacity-50"
                 >
-                  {focusLoading === statusKey ? '確認中...' : '10問に挑戦'}
+                  {focusLoading === statusKey ? '準備中...' : '10問に挑戦'}
                 </button>
               </div>
             ))}

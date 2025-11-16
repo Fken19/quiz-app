@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiGet } from '@/lib/api-utils';
-import type { QuizResult, QuizResultDetail, Vocabulary } from '@/types/quiz';
+import type { Quiz, QuizResult, QuizResultDetail, Vocabulary } from '@/types/quiz';
 
 interface DetailRow {
   detail: QuizResultDetail;
@@ -18,6 +18,7 @@ export default function QuizResultDetailPage() {
   const [rows, setRows] = useState<DetailRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [quizTitle, setQuizTitle] = useState<string>('クイズ');
 
   useEffect(() => {
     if (!params?.resultId) return;
@@ -43,6 +44,13 @@ export default function QuizResultDetailPage() {
         });
 
         setResult(header);
+        // クイズタイトルを取得
+        if (header && header.quiz) {
+          const quizData = await apiGet(`/api/quizzes/${header.quiz}/`).catch(() => null);
+          if (quizData && 'title' in quizData) {
+            setQuizTitle((quizData as Quiz).title ?? 'クイズ');
+          }
+        }
         setRows(details.map((detail) => ({ detail, vocabulary: vocabMap.get(detail.vocabulary) })));
       } catch (err) {
         console.error(err);
@@ -88,13 +96,12 @@ export default function QuizResultDetailPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">クイズ結果詳細</h1>
-          <p className="text-slate-600">結果ID: {result.quiz_result_id}</p>
+          <p className="text-slate-600 text-sm">{quizTitle}</p>
         </div>
         <Link href="/student/results" className="text-indigo-600 font-semibold">← 一覧へ戻る</Link>
       </div>
 
       <section className="bg-white shadow rounded-lg p-6 space-y-2">
-        <p className="text-slate-600">クイズID: {result.quiz}</p>
         <p className="text-slate-600">開始: {new Date(result.started_at).toLocaleString()}</p>
         <p className="text-slate-600">
           終了: {result.completed_at ? new Date(result.completed_at).toLocaleString() : '---'}

@@ -93,13 +93,31 @@ class TeacherAccessControlMiddleware:
         '/api/roster-folders/',
         '/api/roster-memberships/',
         '/api/invitation-codes/',
+    ]
+    STUDENT_OPEN_PATHS = [
         '/api/student-teacher-links/',
+        '/api/invitation-codes/redeem',
     ]
     
     def __init__(self, get_response):
         self.get_response = get_response
     
     def __call__(self, request):
+        # 生徒が利用するパスは講師ホワイトリストを通さない
+        for prefix in self.STUDENT_OPEN_PATHS:
+            if request.path.startswith(prefix):
+                # 講師であれば teacher を付加する（承認/解除時の権限チェック用）
+                if request.user.is_authenticated and is_teacher_whitelisted(getattr(request.user, "email", "")):
+                    teacher, _ = Teacher.objects.get_or_create(
+                        email=request.user.email.lower(),
+                        defaults={
+                            'oauth_provider': getattr(request.user, 'oauth_provider', 'google'),
+                            'oauth_sub': getattr(request.user, 'oauth_sub', '') + '_teacher',
+                        }
+                    )
+                    request.teacher = teacher
+                return self.get_response(request)
+
         # 講師APIへのアクセスをチェック
         if self._is_teacher_path(request.path):
             if not request.user.is_authenticated:

@@ -7,6 +7,8 @@ import uuid
 from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
+from django.core.files.storage import default_storage
 from django.db.models import Count, Max, Q, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -14,6 +16,7 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -70,6 +73,57 @@ class UserProfileViewSet(BaseModelViewSet):
         serializer.save(user=self.request.user)
 
 
+class AvatarUploadView(APIView):
+    """
+    ユーザー/講師のアバターをアップロードするエンドポイント
+    - target=student（既定）: UserProfile.avatar_url を更新
+    - target=teacher: TeacherProfile.avatar_url を更新（講師ホワイトリスト必須）
+    """
+
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from .utils import is_teacher_whitelisted
+
+        upload_for = request.data.get("target", "student")
+        file = request.FILES.get("file")
+        if not file:
+            return Response({"detail": "ファイルが指定されていません。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        content_type = (file.content_type or "").lower()
+        if content_type not in {"image/png", "image/jpeg", "image/jpg"}:
+            return Response({"detail": "png または jpeg 画像のみアップロードできます。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        suffix = ".png" if "png" in content_type else ".jpg"
+        filename = f"avatars/{request.user.id}/{uuid.uuid4()}{suffix}"
+        saved_path = default_storage.save(filename, file)
+        public_url = default_storage.url(saved_path)
+
+        if upload_for == "teacher":
+            if not is_teacher_whitelisted(request.user.email):
+                return Response({"detail": "講師でないためアップロードできません。"}, status=status.HTTP_403_FORBIDDEN)
+            teacher, _ = models.Teacher.objects.get_or_create(
+                email=request.user.email.lower(),
+                defaults={
+                    "oauth_provider": getattr(request.user, "oauth_provider", "google"),
+                    "oauth_sub": getattr(request.user, "oauth_sub", "") + "_teacher",
+                },
+            )
+            profile, _ = models.TeacherProfile.objects.get_or_create(teacher=teacher)
+            profile.avatar_url = public_url
+            profile.save(update_fields=["avatar_url"])
+            return Response({"avatar_url": public_url})
+
+        profile, _ = models.UserProfile.objects.get_or_create(
+            user=request.user,
+            defaults={"display_name": request.user.email, "avatar_url": public_url},
+        )
+        profile.avatar_url = public_url
+        profile.save(update_fields=["avatar_url"])
+        return Response({"avatar_url": public_url})
+
+
 class TeacherViewSet(BaseModelViewSet):
     queryset = models.Teacher.objects.all().order_by("created_at")
     serializer_class = serializers.TeacherSerializer
@@ -123,6 +177,83 @@ class InvitationCodeViewSet(BaseModelViewSet):
     serializer_class = serializers.InvitationCodeSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @action(detail=False, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="issue")
+    def issue(self, request):
+        """講師が招待コードを発行する"""
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            raise PermissionDenied("講師のみが招待コードを発行できます。")
+
+        # レート制限の簡易チェック: 1分間に5件まで
+        one_minute_ago = timezone.now() - timezone.timedelta(minutes=1)
+        recent = models.InvitationCode.objects.filter(issued_by=teacher, issued_at__gte=one_minute_ago).count()
+        if recent >= 5:
+            return Response({"detail": "発行上限に達しました。少し待って再試行してください。"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        expires_in_minutes = int(request.data.get("expires_in_minutes") or 60)
+        expires_at = timezone.now() + timezone.timedelta(minutes=expires_in_minutes)
+
+        code = models.InvitationCode.objects.create(
+            invitation_code=str(uuid.uuid4())[:8],
+            issued_by=teacher,
+            expires_at=expires_at,
+        )
+        return Response(serializers.InvitationCodeSerializer(code).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="revoke")
+    def revoke(self, request, pk=None):
+        """招待コードを失効させる"""
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            raise PermissionDenied("講師のみが失効操作できます。")
+        invite = self.get_object()
+        if invite.issued_by_id != teacher.id:
+            raise PermissionDenied("自分が発行したコードのみ失効できます。")
+        invite.revoked = True
+        invite.revoked_at = timezone.now()
+        invite.save(update_fields=["revoked", "revoked_at"])
+        return Response({"detail": "招待コードを失効しました。"})
+
+    @action(detail=False, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="redeem")
+    def redeem(self, request):
+        """生徒が招待コードを利用してリンクを作成する"""
+        user = request.user
+        code_str = (request.data.get("invitation_code") or "").strip()
+        if not code_str:
+            return Response({"detail": "招待コードを入力してください。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        now = timezone.now()
+        code = models.InvitationCode.objects.filter(
+            invitation_code=code_str,
+            revoked=False,
+        ).first()
+        if not code:
+            return Response({"detail": "招待コードが無効です。"}, status=status.HTTP_400_BAD_REQUEST)
+        if code.expires_at and code.expires_at < now:
+            return Response({"detail": "招待コードの有効期限が切れています。"}, status=status.HTTP_400_BAD_REQUEST)
+        if code.used_at:
+            return Response({"detail": "この招待コードは使用済みです。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 既に同じ組み合わせがある場合は再利用せず既存を返す
+        existing_link = models.StudentTeacherLink.objects.filter(
+            teacher=code.issued_by,
+            student=user,
+            status__in=[models.LinkStatus.PENDING, models.LinkStatus.ACTIVE],
+        ).first()
+        if existing_link:
+            return Response({"detail": "既に招待済みです。", "link_id": str(existing_link.id)}, status=status.HTTP_200_OK)
+
+        models.StudentTeacherLink.objects.create(
+            teacher=code.issued_by,
+            student=user,
+            status=models.LinkStatus.PENDING,
+            invitation=code,
+        )
+        code.used_by = user
+        code.used_at = now
+        code.save(update_fields=["used_by", "used_at"])
+        return Response({"detail": "承認待ちとして登録しました。"}, status=status.HTTP_201_CREATED)
+
 
 class StudentTeacherLinkViewSet(BaseModelViewSet):
     serializer_class = serializers.StudentTeacherLinkSerializer
@@ -136,11 +267,43 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
         if status_param:
             qs = qs.filter(status=status_param)
 
-        # 講師はホワイトリスト判定、生徒は自分の関連のみ
         from .utils import is_teacher_whitelisted
         if is_teacher_whitelisted(user.email):
-            return qs
+            return qs.filter(teacher__email__iexact=user.email)
         return qs.filter(Q(student=user) | Q(teacher__email=user.email))
+
+    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="approve")
+    def approve(self, request, pk=None):
+        """講師が pending を active にする"""
+        link = self.get_object()
+        if getattr(request, "teacher", None) is None or link.teacher_id != request.teacher.id:
+            raise PermissionDenied("承認権限がありません。")
+        if link.status != models.LinkStatus.PENDING:
+            return Response({"detail": "承認対象ではありません。"}, status=status.HTTP_400_BAD_REQUEST)
+        link.status = models.LinkStatus.ACTIVE
+        link.linked_at = timezone.now()
+        link.save(update_fields=["status", "linked_at"])
+        return Response(serializers.StudentTeacherLinkSerializer(link).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="revoke")
+    def revoke(self, request, pk=None):
+        """講師または生徒がリンク解除する"""
+        link = self.get_object()
+        user = request.user
+        now = timezone.now()
+        if getattr(request, "teacher", None) and link.teacher_id == request.teacher.id:
+            link.status = models.LinkStatus.REVOKED
+            link.revoked_at = now
+            link.revoked_by_teacher = request.teacher
+            link.save(update_fields=["status", "revoked_at", "revoked_by_teacher"])
+            return Response({"detail": "解除しました。"})
+        if link.student_id == user.id:
+            link.status = models.LinkStatus.REVOKED
+            link.revoked_at = now
+            link.revoked_by_student = user
+            link.save(update_fields=["status", "revoked_at", "revoked_by_student"])
+            return Response({"detail": "解除しました。"})
+        raise PermissionDenied("解除権限がありません。")
 
 
 class RosterFolderViewSet(BaseModelViewSet):
@@ -309,10 +472,20 @@ class StudentDashboardSummaryView(APIView):
             )
 
         # Streak
-        latest_entry = (
-            models.LearningSummaryDaily.objects.filter(user=user).order_by("-activity_date").first()
+        # Streak（直近の連続日数を計算し直す）
+        streak_entries = list(
+            models.LearningSummaryDaily.objects.filter(user=user)
+            .order_by("-activity_date")
+            .values_list("activity_date", flat=True)
         )
-        current_streak = latest_entry.streak_count if latest_entry else 0
+        current_streak = 0
+        if streak_entries:
+            current_streak = 1
+            for prev, nxt in zip(streak_entries, streak_entries[1:]):
+                if (prev - nxt).days == 1:
+                    current_streak += 1
+                else:
+                    break
         best_streak = (
             models.LearningSummaryDaily.objects.filter(user=user).aggregate(best=Max("streak_count"))["best"] or 0
         )
@@ -430,10 +603,82 @@ class FocusQuestionView(APIView):
             "status": status_param,
             "requested_limit": limit,
             "available_count": available_count,
-            "vocabulary_ids": vocabulary_ids,
-            "preview": preview,
+            "vocabulary_ids": vocabulary_ids[:limit],
+            "preview": preview[:5],
         }
         return Response(data)
+
+
+class FocusQuizSessionStartView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        vocabulary_ids = request.data.get("vocabulary_ids") or []
+        if not isinstance(vocabulary_ids, list) or not vocabulary_ids:
+            return Response({"detail": "vocabulary_ids は1件以上の配列で指定してください"}, status=status.HTTP_400_BAD_REQUEST)
+
+        vocab_qs = models.Vocabulary.objects.filter(id__in=vocabulary_ids)
+        vocab_map = {str(vocab.id): vocab for vocab in vocab_qs}
+        ordered_vocabs = []
+        for vocab_id in vocabulary_ids:
+            vocab = vocab_map.get(str(vocab_id))
+            if vocab:
+                ordered_vocabs.append(vocab)
+        if not ordered_vocabs:
+            return Response({"detail": "指定された語彙が見つかりません"}, status=status.HTTP_400_BAD_REQUEST)
+
+        focus_collection, _ = models.QuizCollection.objects.get_or_create(
+            scope=models.QuizScope.CUSTOM,
+            owner_user=user,
+            title="フォーカス学習",
+            defaults={
+                "description": "フォーカス学習セッション",
+                "is_published": False,
+                "order_index": 1000,
+            },
+        )
+
+        # reuse or create quiz with same set to avoid clutter
+        existing_quiz = (
+            models.Quiz.objects.filter(
+                quiz_collection=focus_collection,
+                question_count=len(ordered_vocabs),
+                section_label__isnull=True,
+            )
+            .order_by("created_at")
+            .first()
+        )
+
+        if existing_quiz:
+            quiz = existing_quiz
+            quiz.questions.all().delete()
+        else:
+            max_seq = focus_collection.quizzes.aggregate(max_seq=Max("sequence_no"))["max_seq"] or 0
+            quiz = models.Quiz.objects.create(
+                quiz_collection=focus_collection,
+                sequence_no=max_seq + 1,
+                title=f"フォーカス({timezone.localtime().strftime('%m/%d %H:%M')})",
+                timer_seconds=10,
+            )
+
+        quiz_questions = [
+            models.QuizQuestion(
+                quiz=quiz,
+                vocabulary=vocab,
+                question_order=index,
+            )
+            for index, vocab in enumerate(ordered_vocabs, start=1)
+        ]
+        models.QuizQuestion.objects.bulk_create(quiz_questions)
+
+        return Response(
+            {
+                "quiz_id": str(quiz.id),
+                "question_count": len(ordered_vocabs),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class QuizSessionStartView(APIView):
@@ -641,9 +886,89 @@ class QuizSessionCompleteView(APIView):
             quiz_result.total_time_ms = aggregates["total_time"] or 0
             quiz_result.completed_at = timezone.now()
             quiz_result.save(update_fields=["score", "timeout_count", "total_time_ms", "completed_at"])
+            self._record_activity_and_statuses(quiz_result)
 
         serializer = serializers.QuizResultSerializer(quiz_result, context={"request": request})
         return Response(serializer.data)
+
+    def _record_activity_and_statuses(self, quiz_result: models.QuizResult):
+        """学習履歴と語彙ステータスを更新"""
+        user = quiz_result.user
+        today = timezone.localdate()
+
+        correct_count = quiz_result.details.filter(is_correct=True).count()
+        incorrect_count = quiz_result.details.filter(is_correct=False, is_timeout=False).count()
+        timeout_count = quiz_result.details.filter(is_timeout=True).count()
+        total_time_ms = quiz_result.total_time_ms or 0
+
+        models.LearningActivityLog.objects.create(
+            user=user,
+            quiz_result=quiz_result,
+            occurred_at=quiz_result.completed_at or timezone.now(),
+            correct_count=correct_count,
+            incorrect_count=incorrect_count,
+            timeout_count=timeout_count,
+            total_time_ms=total_time_ms,
+        )
+
+        summary, _ = models.LearningSummaryDaily.objects.get_or_create(
+            user=user,
+            activity_date=today,
+            defaults={
+                "correct_count": 0,
+                "incorrect_count": 0,
+                "timeout_count": 0,
+                "total_time_ms": 0,
+                "streak_count": 0,
+            },
+        )
+        summary.correct_count += correct_count
+        summary.incorrect_count += incorrect_count
+        summary.timeout_count += timeout_count
+        summary.total_time_ms += total_time_ms
+
+        yesterday = today - timedelta(days=1)
+        yesterday_entry = models.LearningSummaryDaily.objects.filter(user=user, activity_date=yesterday).first()
+        previous_streak = yesterday_entry.streak_count if yesterday_entry else 0
+        summary.streak_count = previous_streak + 1
+        summary.save()
+
+        detail_rows = quiz_result.details.select_related("vocabulary")
+        status_objects = models.UserVocabStatus.objects.filter(
+            user=user, vocabulary_id__in=[detail.vocabulary_id for detail in detail_rows]
+        )
+        status_map = {status.vocabulary_id: status for status in status_objects}
+
+        for detail in detail_rows:
+            status_obj = status_map.get(detail.vocabulary_id)
+            if not status_obj:
+                status_obj = models.UserVocabStatus.objects.create(
+                    user=user,
+                    vocabulary=detail.vocabulary,
+                    status=models.LearningStatus.UNLEARNED,
+                )
+                status_map[detail.vocabulary_id] = status_obj
+
+            status_obj.last_answered_at = quiz_result.completed_at or timezone.now()
+            status_obj.total_answer_count += 1
+            if detail.is_timeout:
+                status_obj.timeout_count += 1
+                status_obj.last_result = models.LearningResultType.TIMEOUT
+                status_obj.recent_correct_streak = 0
+                status_obj.status = models.LearningStatus.WEAK
+            elif detail.is_correct:
+                status_obj.total_correct_count += 1
+                status_obj.last_result = models.LearningResultType.CORRECT
+                status_obj.recent_correct_streak = min(status_obj.recent_correct_streak + 1, 2)
+                if status_obj.recent_correct_streak >= 2:
+                    status_obj.status = models.LearningStatus.MASTERED
+                else:
+                    status_obj.status = models.LearningStatus.LEARNING
+            else:
+                status_obj.last_result = models.LearningResultType.INCORRECT
+                status_obj.recent_correct_streak = 0
+                status_obj.status = models.LearningStatus.WEAK
+            status_obj.save()
 
     def perform_update(self, serializer):  # type: ignore[override]
         quiz_result: models.QuizResult = serializer.instance.quiz_result
@@ -790,6 +1115,7 @@ __all__ = [
     "TeacherProfileViewSet",
     "TeacherWhitelistViewSet",
     "FocusQuestionView",
+    "FocusQuizSessionStartView",
     "InvitationCodeViewSet",
     "StudentTeacherLinkViewSet",
     "RosterFolderViewSet",
