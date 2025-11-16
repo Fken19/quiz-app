@@ -13,6 +13,7 @@ export default function TeacherInvitesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [qrFor, setQrFor] = useState<{ id: string; code: string } | null>(null);
 
   const fetchInvites = async () => {
     try {
@@ -58,6 +59,9 @@ export default function TeacherInvitesPage() {
       setActionMessage('失効に失敗しました。');
     }
   };
+
+  const qrUrl = (code: string) =>
+    `https://chart.googleapis.com/chart?chs=220x220&cht=qr&chl=${encodeURIComponent(code)}&choe=UTF-8`;
 
   if (loading) {
     return (
@@ -111,8 +115,9 @@ export default function TeacherInvitesPage() {
       {actionMessage && <p className="text-sm text-slate-800">{actionMessage}</p>}
 
       <div className="bg-white shadow rounded-lg divide-y">
-        <div className="grid grid-cols-5 gap-4 px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
+        <div className="grid grid-cols-6 gap-4 px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
           <span>コード</span>
+          <span>QR</span>
           <span>期限</span>
           <span>使用状況</span>
           <span>発行日時</span>
@@ -129,7 +134,7 @@ export default function TeacherInvitesPage() {
           return (
             <div
               key={invite.invitation_code_id}
-              className={`grid grid-cols-5 gap-4 px-6 py-3 text-sm ${disabled ? 'text-slate-400' : 'text-slate-900'}`}
+              className={`grid grid-cols-6 gap-4 px-6 py-3 text-sm ${disabled ? 'text-slate-400' : 'text-slate-900'}`}
             >
               <div className="flex items-center gap-2">
                 <span className="font-semibold select-all">{invite.invitation_code}</span>
@@ -153,6 +158,21 @@ export default function TeacherInvitesPage() {
                   <span className="text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-700">期限切れ</span>
                 )}
               </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setQrFor(
+                      qrFor?.id === invite.invitation_code_id
+                        ? null
+                        : { id: invite.invitation_code_id, code: invite.invitation_code },
+                    )
+                  }
+                  className="text-sm text-indigo-600 hover:text-indigo-800"
+                >
+                  {qrFor?.id === invite.invitation_code_id ? '閉じる' : 'QR表示'}
+                </button>
+              </div>
               <span>{invite.expires_at ? new Date(invite.expires_at).toLocaleString() : '期限なし'}</span>
               <span>{statusText}</span>
               <span>{invite.issued_at ? new Date(invite.issued_at).toLocaleString() : '---'}</span>
@@ -173,6 +193,19 @@ export default function TeacherInvitesPage() {
           <div className="px-6 py-6 text-sm text-slate-500">招待コードが登録されていません。</div>
         )}
       </div>
+
+      {qrFor && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4"
+          onClick={() => setQrFor(null)}
+        >
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full text-center space-y-4">
+            {/* TODO: 将来的に独自のQR生成（ライブラリ or サーバ側生成）に置き換える */}
+            <img src={qrUrl(qrFor.code)} alt="QR" className="mx-auto w-64 h-64 border rounded" />
+            <p className="text-sm text-slate-600">タップで閉じる</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

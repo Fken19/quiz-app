@@ -33,6 +33,8 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -58,6 +60,17 @@ export default function ProfilePage() {
         const links: StudentTeacherLink[] = Array.isArray(linksResponse)
           ? linksResponse
           : linksResponse?.results || [];
+
+        // プロフィールが無い場合は Google 情報で自動作成
+        if (!profile) {
+          const defaultPayload = {
+            display_name: session?.user?.name || user.email,
+            avatar_url: session?.user?.image || '',
+            grade: null,
+            self_intro: null,
+          };
+          profile = (await apiPost('/api/user-profiles/', defaultPayload)) as UserProfile;
+        }
 
         setSummary({ user, profile, teacherLinks: links });
         setFormState({
@@ -182,6 +195,72 @@ export default function ProfilePage() {
     }
   };
 
+  const decodeQrWithBarcodeDetector = async (image: HTMLImageElement) => {
+    // BarcodeDetectorは対応ブラウザのみ利用
+    // @ts-ignore
+    if (typeof window === 'undefined' || !('BarcodeDetector' in window)) {
+      throw new Error('BarcodeDetectorに対応していません');
+    }
+    // @ts-ignore
+    const supported = await window.BarcodeDetector.getSupportedFormats();
+    if (!supported.includes('qr_code')) {
+      throw new Error('QRコードの読み取りに対応していません');
+    }
+    // @ts-ignore
+    const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('QRコードの解析に失敗しました');
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const results = await detector.detect(canvas);
+    if (!results.length) throw new Error('QRコードが見つかりませんでした');
+    return results[0].rawValue;
+  };
+
+  const handleScanFile = async (file: File) => {
+    setScanMessage(null);
+    setScanning(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        try {
+          const dataUrl = ev.target?.result as string;
+          const img = new Image();
+          img.onload = async () => {
+            try {
+              const text = await decodeQrWithBarcodeDetector(img);
+              setInviteCode(text);
+              setScanMessage('QRからコードを取得しました。内容を確認して登録してください。');
+            } catch (e) {
+              console.error(e);
+              setScanMessage(e instanceof Error ? e.message : 'QRコードの解析に失敗しました。');
+            } finally {
+              setScanning(false);
+            }
+          };
+          img.onerror = () => {
+            setScanMessage('画像の読み込みに失敗しました。');
+            setScanning(false);
+          };
+          img.src = dataUrl;
+        } catch (e) {
+          console.error(e);
+          setScanMessage('QRコードの解析に失敗しました。');
+          setScanning(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      setScanMessage('QRコードの読み取りに失敗しました。');
+      setScanning(false);
+    }
+  };
+
+  const hiddenFileInputId = 'qr-file-input';
+
   const handleRevoke = async (linkId: string) => {
     try {
       await apiPost(`/api/student-teacher-links/${linkId}/revoke/`, {});
@@ -289,7 +368,41 @@ export default function ProfilePage() {
             登録
           </button>
         </div>
+        <div className="flex flex-wrap gap-2">
+          <label
+            htmlFor={hiddenFileInputId}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 cursor-pointer"
+          >
+            カメラ/画像から読み取る
+            <input
+              id={hiddenFileInputId}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleScanFile(file);
+              }}
+            />
+          </label>
+          <label
+            className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 cursor-pointer"
+          >
+            画像から読み取る
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleScanFile(file);
+              }}
+            />
+          </label>
+        </div>
         {linkMessage && <p className="text-sm text-slate-600">{linkMessage}</p>}
+        {scanMessage && <p className="text-sm text-slate-600">{scanMessage}</p>}
 
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-slate-700">紐付け状況</h3>

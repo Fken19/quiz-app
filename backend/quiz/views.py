@@ -8,8 +8,10 @@ from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
+from django.core.cache import caches
 from django.core.files.storage import default_storage
 from django.db.models import Count, Max, Q, Sum
+from django.db.models.functions import TruncMonth, TruncWeek
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
@@ -177,6 +179,23 @@ class InvitationCodeViewSet(BaseModelViewSet):
     serializer_class = serializers.InvitationCodeSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def _rate_limit(self, key: str, limit: int, window_seconds: int):
+        cache = caches["default"]
+        current = cache.get(key, 0)
+        if current >= limit:
+            return False
+        cache.set(key, current + 1, timeout=window_seconds)
+        return True
+
+    def _generate_unique_code(self, length: int = 8) -> str:
+        """他ユーザーと衝突しない招待コードを生成"""
+        for _ in range(5):
+            code = uuid.uuid4().hex[:length].upper()
+            if not models.InvitationCode.objects.filter(invitation_code=code).exists():
+                return code
+        # 万一衝突が続いた場合は長めに生成して返す
+        return uuid.uuid4().hex[:12].upper()
+
     @action(detail=False, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="issue")
     def issue(self, request):
         """講師が招待コードを発行する"""
@@ -184,17 +203,15 @@ class InvitationCodeViewSet(BaseModelViewSet):
         if teacher is None:
             raise PermissionDenied("講師のみが招待コードを発行できます。")
 
-        # レート制限の簡易チェック: 1分間に5件まで
-        one_minute_ago = timezone.now() - timezone.timedelta(minutes=1)
-        recent = models.InvitationCode.objects.filter(issued_by=teacher, issued_at__gte=one_minute_ago).count()
-        if recent >= 5:
+        # レート制限の簡易チェック: 1分間に50件まで（キャッシュ）
+        if not self._rate_limit(f"invite_issue:{teacher.id}", limit=50, window_seconds=60):
             return Response({"detail": "発行上限に達しました。少し待って再試行してください。"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         expires_in_minutes = int(request.data.get("expires_in_minutes") or 60)
         expires_at = timezone.now() + timezone.timedelta(minutes=expires_in_minutes)
 
         code = models.InvitationCode.objects.create(
-            invitation_code=str(uuid.uuid4())[:8],
+            invitation_code=self._generate_unique_code(),
             issued_by=teacher,
             expires_at=expires_at,
         )
@@ -218,6 +235,13 @@ class InvitationCodeViewSet(BaseModelViewSet):
     def redeem(self, request):
         """生徒が招待コードを利用してリンクを作成する"""
         user = request.user
+        # IP とユーザー単位で試行回数を制限
+        ip_addr = request.META.get("REMOTE_ADDR", "unknown")
+        if not self._rate_limit(f"invite_redeem_ip:{ip_addr}", limit=10, window_seconds=300):
+            return Response({"detail": "短時間の招待コード試行回数を超えました。しばらくしてから再試行してください。"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        if not self._rate_limit(f"invite_redeem_user:{user.id}", limit=10, window_seconds=600):
+            return Response({"detail": "短時間の招待コード試行回数を超えました。しばらくしてから再試行してください。"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
         code_str = (request.data.get("invitation_code") or "").strip()
         if not code_str:
             return Response({"detail": "招待コードを入力してください。"}, status=status.HTTP_400_BAD_REQUEST)
@@ -525,6 +549,94 @@ class StudentDashboardSummaryView(APIView):
             .count()
         )
 
+        # 日/週/月のチャートデータを構築
+        recent_daily = models.LearningSummaryDaily.objects.filter(
+            user=user,
+            activity_date__gte=today - timedelta(days=370),  # 最大371日分（今日を含む）
+        ).order_by("activity_date")
+        daily_chart = [
+            {
+                "date": summary.activity_date.isoformat(),
+                "correct_count": summary.correct_count,
+                "incorrect_count": summary.incorrect_count,
+                "timeout_count": summary.timeout_count,
+            }
+            for summary in recent_daily
+        ]
+        max_daily_total = max(
+            [
+                data["correct_count"] + data["incorrect_count"] + data["timeout_count"]
+                for data in daily_chart
+            ]
+            or [0]
+        )
+
+        weekly_chart = []
+        weekly_qs = (
+            models.LearningSummaryDaily.objects.filter(user=user, activity_date__gte=today - timedelta(days=180))
+            .annotate(week=TruncWeek("activity_date"))
+            .values("week")
+            .annotate(
+                correct_count=Sum("correct_count"),
+                incorrect_count=Sum("incorrect_count"),
+                timeout_count=Sum("timeout_count"),
+            )
+            .order_by("week")
+        )
+        for entry in weekly_qs:
+            week = entry.get("week")
+            if not week:
+                continue
+            weekly_chart.append(
+                {
+                    "period": week.isoformat(),
+                    "label": week.strftime("%m/%d"),
+                    "correct_count": entry.get("correct_count") or 0,
+                    "incorrect_count": entry.get("incorrect_count") or 0,
+                    "timeout_count": entry.get("timeout_count") or 0,
+                }
+            )
+        max_weekly_total = max(
+            [
+                item["correct_count"] + item["incorrect_count"] + item["timeout_count"]
+                for item in weekly_chart
+            ]
+            or [0]
+        )
+
+        monthly_chart = []
+        monthly_qs = (
+            models.LearningSummaryDaily.objects.filter(user=user, activity_date__gte=today - timedelta(days=365))
+            .annotate(month=TruncMonth("activity_date"))
+            .values("month")
+            .annotate(
+                correct_count=Sum("correct_count"),
+                incorrect_count=Sum("incorrect_count"),
+                timeout_count=Sum("timeout_count"),
+            )
+            .order_by("month")
+        )
+        for entry in monthly_qs:
+            month = entry.get("month")
+            if not month:
+                continue
+            monthly_chart.append(
+                {
+                    "period": month.isoformat(),
+                    "label": month.strftime("%Y/%m"),
+                    "correct_count": entry.get("correct_count") or 0,
+                    "incorrect_count": entry.get("incorrect_count") or 0,
+                    "timeout_count": entry.get("timeout_count") or 0,
+                }
+            )
+        max_monthly_total = max(
+            [
+                item["correct_count"] + item["incorrect_count"] + item["timeout_count"]
+                for item in monthly_chart
+            ]
+            or [0]
+        )
+
         summary = {
             "user": serializers.UserSerializer(user, context={"request": request}).data,
             "streak": {
@@ -534,9 +646,11 @@ class StudentDashboardSummaryView(APIView):
             "today_summary": today_summary,
             "weekly_summary": weekly_summary,
             "recent_daily": {
-                "chart": chart_data,
+                "chart": daily_chart,
                 "max_total": max_daily_total,
             },
+            "weekly_chart": {"chart": weekly_chart, "max_total": max_weekly_total},
+            "monthly_chart": {"chart": monthly_chart, "max_total": max_monthly_total},
             "focus_summary": focus_summary,
             "quiz_result_count": quiz_result_count,
             "test_result_count": test_result_count,
@@ -552,6 +666,7 @@ class FocusQuestionView(APIView):
         user = request.user
         status_param = request.query_params.get("status", models.LearningStatus.WEAK)
         limit_param = request.query_params.get("limit", "10")
+        supplement = str(request.query_params.get("supplement", "false")).lower() in {"1", "true", "yes"}
         try:
             limit = max(1, min(int(limit_param), 100))
         except (TypeError, ValueError):
@@ -563,19 +678,24 @@ class FocusQuestionView(APIView):
         vocabulary_ids: list[str] = []
         preview: list[dict[str, Any]] = []
         available_count = 0
+        primary_count = 0
+        filled_from: list[dict[str, Any]] = []
+
+        # まだ出題していない公開語彙（UNLEARNED候補）
+        unlearned_qs = (
+            models.Vocabulary.objects.filter(
+                visibility=models.VocabVisibility.PUBLIC,
+                status=models.VocabStatus.PUBLISHED,
+            )
+            .exclude(user_statuses__user=user)
+            .order_by("sort_key")
+        )
 
         if status_param == models.LearningStatus.UNLEARNED:
-            vocab_qs = (
-                models.Vocabulary.objects.filter(
-                    visibility=models.VocabVisibility.PUBLIC,
-                    status=models.VocabStatus.PUBLISHED,
-                )
-                .exclude(user_statuses__user=user)
-                .order_by("sort_key")
-            )
-            available_count = vocab_qs.count()
-            selected = list(vocab_qs[:limit])
+            available_count = unlearned_qs.count()
+            selected = list(unlearned_qs[:limit])
             vocabulary_ids = [str(vocab.id) for vocab in selected]
+            primary_count = len(vocabulary_ids)
             preview = [{"vocabulary_id": str(vocab.id), "text_en": vocab.text_en} for vocab in selected]
         else:
             status_qs = (
@@ -585,6 +705,7 @@ class FocusQuestionView(APIView):
             available_count = status_qs.count()
             selected_ids = list(status_qs.values_list("vocabulary_id", flat=True)[:limit])
             vocabulary_ids = [str(v_id) for v_id in selected_ids]
+            primary_count = len(vocabulary_ids)
             vocab_map = {
                 str(vocab.id): vocab
                 for vocab in models.Vocabulary.objects.filter(id__in=selected_ids)
@@ -599,12 +720,58 @@ class FocusQuestionView(APIView):
                     }
                 )
 
+        # 不足があれば補充（別ステータスや未学習語から）
+        if supplement and len(vocabulary_ids) < limit:
+            fallback_order = [
+                models.LearningStatus.WEAK,
+                models.LearningStatus.UNLEARNED,
+                models.LearningStatus.LEARNING,
+                models.LearningStatus.MASTERED,
+            ]
+            fallback_order = [s for s in fallback_order if s != status_param]
+            selected_set = set(vocabulary_ids)
+            needed = limit - len(vocabulary_ids)
+
+            for fb_status in fallback_order:
+                if needed <= 0:
+                    break
+                extra_ids: list[str] = []
+                if fb_status == models.LearningStatus.UNLEARNED:
+                    extra_ids = [
+                        str(v_id)
+                        for v_id in unlearned_qs.exclude(id__in=selected_set).values_list("id", flat=True)[:needed]
+                    ]
+                else:
+                    extra_ids = [
+                        str(v_id)
+                        for v_id in models.UserVocabStatus.objects.filter(user=user, status=fb_status)
+                        .exclude(vocabulary_id__in=selected_set)
+                        .order_by("last_answered_at")
+                        .values_list("vocabulary_id", flat=True)[:needed]
+                    ]
+                if extra_ids:
+                    vocabulary_ids.extend(extra_ids)
+                    selected_set.update(extra_ids)
+                    filled_from.append({"status": fb_status, "count": len(extra_ids)})
+                    needed = limit - len(vocabulary_ids)
+
+        # プレビューは最初の5件を表示用に取得
+        if not preview:
+            preview_vocab = models.Vocabulary.objects.filter(id__in=vocabulary_ids[:5])
+            preview_map = {str(vocab.id): vocab for vocab in preview_vocab}
+            preview = [
+                {"vocabulary_id": vid, "text_en": preview_map.get(vid).text_en if preview_map.get(vid) else None}
+                for vid in vocabulary_ids[:5]
+            ]
+
         data = {
             "status": status_param,
             "requested_limit": limit,
             "available_count": available_count,
+            "primary_count": primary_count,
             "vocabulary_ids": vocabulary_ids[:limit],
             "preview": preview[:5],
+            "filled_from": filled_from,
         }
         return Response(data)
 

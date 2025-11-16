@@ -9,6 +9,7 @@ import type { ApiUser, UserProfile } from '@/types/quiz';
 
 const NAV_ITEMS = [
   { name: 'ダッシュボード', href: '/student/dashboard', icon: '🏠' },
+  { name: '学習状況', href: '/student/learning-status', icon: '📈' },
   { name: 'クイズ', href: '/student/quiz', icon: '🎯' },
   { name: '結果', href: '/student/results', icon: '📝' },
   { name: 'テスト', href: '/student/tests', icon: '📊' },

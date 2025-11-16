@@ -211,7 +211,7 @@ export default function QuizPlayPage() {
   };
 
   const proceedNext = async () => {
-    if (!progress) return;
+    if (!progress || judge === null || submitting || answering) return;
     const nextIndex = progress.currentIndex + 1;
     setJudge(null);
     if (nextIndex >= questions.length) {
@@ -227,11 +227,15 @@ export default function QuizPlayPage() {
 
   const completeSession = async (finalAnswers?: AnswerLog[]) => {
     if (!sessionId) return;
+    const merged = finalAnswers ?? answers;
+    if (merged.length !== questions.length) {
+      setError('送信されていない回答があります。通信状態を確認して再試行してください。');
+      return;
+    }
     try {
       setSubmitting(true);
       const result = (await apiPost(`/api/quiz-sessions/${sessionId}/complete/`, {})) as QuizResult;
       setCompletedResult(result);
-      const merged = finalAnswers ?? answers;
       setProgress(merged ? { currentIndex: merged.length, startedAt: Date.now() } : null);
       setAnswers(merged);
       setJudge(null);

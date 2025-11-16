@@ -98,21 +98,21 @@ export default function TeacherStudentsPage() {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-bold text-slate-900">生徒一覧</h1>
-        <p className="text-slate-600">講師にリンク済みの生徒アカウントを表示します。</p>
+        <p className="text-slate-600">講師にリンク済みの生徒アカウントを表示します（メールなどの個人情報は表示しません）。</p>
       </header>
 
       {actionMessage && <p className="text-sm text-slate-700">{actionMessage}</p>}
 
       <div className="bg-white shadow rounded-lg divide-y">
-        <div className="grid grid-cols-5 gap-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+        <div className="grid grid-cols-4 gap-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
           <span>氏名/表示名</span>
-          <span>メール</span>
           <span>ステータス</span>
           <span>連携/申請日時</span>
           <span>操作</span>
         </div>
         {rows.map(({ link, user, profile }) => {
-          const display = profile?.display_name || user?.email || link.student;
+          const display = profile?.display_name || '未設定';
+          const avatarUrl = profile?.avatar_url || null;
           const statusBadge =
             link.status === 'active'
               ? 'bg-green-100 text-green-700'
@@ -120,9 +120,17 @@ export default function TeacherStudentsPage() {
                 ? 'bg-amber-100 text-amber-700'
                 : 'bg-slate-200 text-slate-600';
           return (
-            <div key={link.student_teacher_link_id} className="grid grid-cols-5 gap-4 px-6 py-3 text-sm text-slate-800">
-              <span className="font-semibold">{display}</span>
-              <span className="text-slate-700">{user?.email ?? link.student}</span>
+            <div key={link.student_teacher_link_id} className="grid grid-cols-4 gap-4 px-6 py-3 text-sm text-slate-800">
+              <div className="flex items-center gap-3">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt={display} className="w-9 h-9 rounded-full object-cover border border-slate-200" />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-semibold">
+                    {(display || '').slice(0, 1).toUpperCase() || 'S'}
+                  </div>
+                )}
+                <span className="font-semibold text-slate-900">{display}</span>
+              </div>
               <span>
                 <span className={`px-2 py-1 rounded text-xs inline-block ${statusBadge}`}>{link.status}</span>
               </span>

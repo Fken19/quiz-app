@@ -269,6 +269,14 @@ export interface DashboardDailyChartItem {
   timeout_count: number;
 }
 
+export interface DashboardPeriodChartItem {
+  period: string;
+  label: string;
+  correct_count: number;
+  incorrect_count: number;
+  timeout_count: number;
+}
+
 export interface StudentDashboardSummary {
   user: ApiUser;
   streak: {
@@ -291,6 +299,14 @@ export interface StudentDashboardSummary {
     chart: DashboardDailyChartItem[];
     max_total: number;
   };
+  weekly_chart?: {
+    chart: DashboardPeriodChartItem[];
+    max_total: number;
+  };
+  monthly_chart?: {
+    chart: DashboardPeriodChartItem[];
+    max_total: number;
+  };
   focus_summary: DashboardFocusSummary;
   quiz_result_count: number;
   test_result_count: number;
@@ -301,6 +317,8 @@ export interface FocusQuestionsResponse {
   status: LearningStatusKey;
   requested_limit: number;
   available_count: number;
+  primary_count?: number;
+  filled_from?: Array<{ status: LearningStatusKey; count: number }>;
   vocabulary_ids: string[];
   preview: Array<{
     vocabulary_id: string;
