@@ -3,18 +3,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { apiGet, apiPost } from '@/lib/api-utils';
-import type { ApiUser, StudentTeacherLink, UserProfile } from '@/types/quiz';
-
-interface StudentRow {
-  link: StudentTeacherLink;
-  user?: ApiUser | null;
-  profile?: UserProfile | null;
+interface TeacherStudent {
+  student_teacher_link_id: string;
+  display_name: string;
+  status: string;
+  linked_at: string;
+  custom_display_name?: string | null;
+  local_student_code?: string | null;
+  tags?: string[] | null;
+  private_note?: string | null;
+  kana_for_sort?: string | null;
+  color?: string | null;
+  avatar_url?: string | null;
 }
 
 type SortKey = 'name' | 'linked_at';
 
 export default function TeacherStudentsPage() {
-  const [rows, setRows] = useState<StudentRow[]>([]);
+  const [rows, setRows] = useState<TeacherStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -29,29 +35,9 @@ export default function TeacherStudentsPage() {
   const fetchStudents = async () => {
     try {
       setLoading(true);
-      const response = await apiGet('/api/student-teacher-links/').catch(() => ({ results: [] }));
-      const links: StudentTeacherLink[] = Array.isArray(response) ? response : response?.results || [];
-
-      const studentIds = Array.from(new Set(links.map((l) => l.student))).filter(Boolean) as string[];
-      const users = await Promise.all(studentIds.map((id) => apiGet(`/api/users/${id}/`).catch(() => null)));
-      const profiles = await Promise.all(
-        studentIds.map((id) => apiGet(`/api/user-profiles/${id}/`).catch(() => null)),
-      );
-      const userMap = new Map<string, ApiUser>();
-      users.forEach((u: any) => {
-        if (u && 'user_id' in u) userMap.set(u.user_id, u as ApiUser);
-      });
-      const profileMap = new Map<string, UserProfile>();
-      profiles.forEach((p: any) => {
-        if (p && 'user' in p) profileMap.set(p.user, p as UserProfile);
-      });
-
-      const rowsData: StudentRow[] = links.map((link) => ({
-        link,
-        user: userMap.get(link.student),
-        profile: profileMap.get(link.student),
-      }));
-      setRows(rowsData);
+      const response = await apiGet('/api/teacher/students/').catch(() => []);
+      const list: TeacherStudent[] = Array.isArray(response) ? response : [];
+      setRows(list);
     } catch (err) {
       console.error(err);
       setError('生徒一覧の取得に失敗しました');
@@ -92,9 +78,14 @@ export default function TeacherStudentsPage() {
     if (!aliasModalId) return;
     try {
       setActionMessage(null);
-      await apiPost(`/api/student-teacher-links/${aliasModalId}/alias/`, {
-        custom_display_name: aliasValue,
-      });
+      await apiPost(
+        `/api/teacher/students/`,
+        {
+          student_teacher_link_id: aliasModalId,
+          custom_display_name: aliasValue,
+        },
+        'PATCH',
+      );
       setAliasModalId(null);
       setActionMessage('表示名を更新しました');
       await fetchStudents();
@@ -108,19 +99,19 @@ export default function TeacherStudentsPage() {
     const keyword = search.trim().toLowerCase();
     return rows
       .filter((row) => {
-        if (statusFilter !== 'all' && row.link.status !== statusFilter) return false;
+        if (statusFilter !== 'all' && row.status !== statusFilter) return false;
         if (!keyword) return true;
-        const display = row.profile?.display_name || '';
+        const display = row.display_name || '';
         return display.toLowerCase().includes(keyword);
       })
       .sort((a, b) => {
         if (sortKey === 'name') {
-          const an = (a.profile?.display_name || '').toLowerCase();
-          const bn = (b.profile?.display_name || '').toLowerCase();
+          const an = (a.display_name || '').toLowerCase();
+          const bn = (b.display_name || '').toLowerCase();
           return an.localeCompare(bn);
         }
-        const at = new Date(a.link.linked_at || a.link.created_at).getTime();
-        const bt = new Date(b.link.linked_at || b.link.created_at).getTime();
+        const at = new Date(a.linked_at || '').getTime();
+        const bt = new Date(b.linked_at || '').getTime();
         return bt - at;
       });
   }, [rows, search, statusFilter, sortKey]);
@@ -189,32 +180,27 @@ export default function TeacherStudentsPage() {
         </div>
 
         <div className="overflow-x-auto">
-            <div className="min-w-[840px]">
-            <div className="grid grid-cols-7 gap-3 px-3 py-2 text-xs font-semibold text-slate-600 uppercase tracking-wide bg-slate-50">
+          <div className="min-w-[720px]">
+            <div className="grid grid-cols-6 gap-3 px-3 py-2 text-xs font-semibold text-slate-600 uppercase tracking-wide bg-slate-50">
               <span>氏名/表示名</span>
               <span>ステータス</span>
-              <span>所属学校</span>
-              <span>学年</span>
-              <span>クラス/タグ</span>
+              <span>タグ</span>
               <span>連携日時</span>
               <span className="text-right">操作</span>
             </div>
-            {filteredRows.map(({ link, user, profile }) => {
-              const display = link.custom_display_name || profile?.display_name || '未設定';
-              const avatarUrl = profile?.avatar_url || null;
+            {filteredRows.map((row) => {
+              const display = row.display_name || '未設定';
+              const avatarUrl = row.avatar_url || null;
               const statusBadge =
-                link.status === 'active'
+                row.status === 'active'
                   ? 'bg-green-100 text-green-700'
-                  : link.status === 'pending'
+                  : row.status === 'pending'
                     ? 'bg-amber-100 text-amber-700'
                     : 'bg-slate-200 text-slate-600';
-              const school = (user as any)?.school || '-';
-              const grade = profile?.grade || '-';
-              const classroom = (user as any)?.classroom || '-';
               return (
                 <div
-                  key={link.student_teacher_link_id}
-                  className="grid grid-cols-7 gap-3 px-3 py-3 text-sm text-slate-800 border-b last:border-0 border-slate-100"
+                  key={row.student_teacher_link_id}
+                  className="grid grid-cols-6 gap-3 px-3 py-3 text-sm text-slate-800 border-b last:border-0 border-slate-100"
                 >
                   <div className="flex items-center gap-3">
                     {avatarUrl ? (
@@ -230,25 +216,17 @@ export default function TeacherStudentsPage() {
                     </div>
                   </div>
                   <span>
-                    <span className={`px-2 py-1 rounded text-xs inline-block ${statusBadge}`}>{link.status}</span>
+                    <span className={`px-2 py-1 rounded text-xs inline-block ${statusBadge}`}>{row.status}</span>
                   </span>
-                  <span>{school}</span>
-                  <span>{grade || '-'}</span>
-                  <span className="text-xs text-slate-600">{classroom}</span>
+                  <span className="text-xs text-slate-800">{(row.tags || []).join(',') || '-'}</span>
                   <span className="text-xs text-slate-600">
-                    {link.linked_at ? new Date(link.linked_at).toLocaleString() : '-'}
+                    {row.linked_at ? new Date(row.linked_at).toLocaleString() : '-'}
                   </span>
                   <div className="flex items-center gap-2 justify-end">
-                    <Link
-                      href={`/teacher/students/${link.student}`}
-                      className="text-xs text-indigo-600 hover:underline"
-                    >
-                      詳細
-                    </Link>
                     <button
                       type="button"
                       onClick={() => {
-                        setAliasModalId(link.student_teacher_link_id);
+                        setAliasModalId(row.student_teacher_link_id);
                         setAliasValue(display);
                       }}
                       className="px-2 py-1 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
@@ -257,15 +235,15 @@ export default function TeacherStudentsPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setShowEditId(link.student_teacher_link_id)}
+                      onClick={() => setShowEditId(row.student_teacher_link_id)}
                       className="px-2 py-1 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
                     >
                       属性編集
                     </button>
-                    {link.status === 'pending' && (
+                    {row.status === 'pending' && (
                       <button
                         type="button"
-                        onClick={() => handleApprove(link.student_teacher_link_id)}
+                        onClick={() => handleApprove(row.student_teacher_link_id)}
                         className="px-3 py-1 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-700"
                       >
                         承認
@@ -273,7 +251,7 @@ export default function TeacherStudentsPage() {
                     )}
                     <button
                       type="button"
-                      onClick={() => handleRevoke(link.student_teacher_link_id)}
+                      onClick={() => handleRevoke(row.student_teacher_link_id)}
                       className="px-3 py-1 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
                     >
                       解除
@@ -302,8 +280,8 @@ export default function TeacherStudentsPage() {
                 閉じる
               </button>
             </div>
-            <p className="text-xs text-slate-500">
-              所属学校・学年・クラス・タグは現在 UI のみ実装です。保存APIは今後追加予定です。
+            <p className="text-sm text-slate-700">
+              所属学校・学年・クラス・タグは講師専用のメモ情報として保存されます。
             </p>
             <div className="space-y-3">
               <div>
@@ -314,26 +292,6 @@ export default function TeacherStudentsPage() {
                   value={editForm.school}
                   onChange={(e) => setEditForm({ ...editForm, school: e.target.value })}
                 />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-slate-600">学年</label>
-                  <input
-                    type="text"
-                    className="w-full border rounded-md px-3 py-2 text-sm"
-                    value={editForm.grade}
-                    onChange={(e) => setEditForm({ ...editForm, grade: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-600">クラス</label>
-                  <input
-                    type="text"
-                    className="w-full border rounded-md px-3 py-2 text-sm"
-                    value={editForm.classroom}
-                    onChange={(e) => setEditForm({ ...editForm, classroom: e.target.value })}
-                  />
-                </div>
               </div>
               <div>
                 <label className="text-xs text-slate-600">タグ（カンマ区切り）</label>

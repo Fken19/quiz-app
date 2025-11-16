@@ -341,6 +341,40 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
         link.save(update_fields=["custom_display_name", "updated_at"])
         return Response(serializers.StudentTeacherLinkSerializer(link).data)
 
+    @action(detail=False, methods=["get", "patch"], permission_classes=[permissions.IsAuthenticated], url_path="by-teacher")
+    def list_by_teacher(self, request):
+        """講師用: 個人情報をマスクした生徒一覧と属性更新"""
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            # teacher ミドルウェアが未設定でもメール一致で講師レコードを探す
+            teacher = models.Teacher.objects.filter(email__iexact=request.user.email).first()
+        if teacher is None:
+            raise PermissionDenied("講師アカウントが見つかりません。")
+
+        if request.method.lower() == "patch":
+            link_id = request.data.get("student_teacher_link_id")
+            if not link_id:
+                return Response({"detail": "student_teacher_link_id は必須です。"}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                link = models.StudentTeacherLink.objects.select_related("student__userprofile").get(
+                    pk=link_id, teacher=teacher
+                )
+            except models.StudentTeacherLink.DoesNotExist:
+                raise PermissionDenied("対象が見つからないか、権限がありません。")
+
+            fields = ["custom_display_name", "local_student_code", "tags", "private_note", "kana_for_sort", "color"]
+            for f in fields:
+                if f in request.data:
+                    setattr(link, f, request.data.get(f) or None)
+            link.save(update_fields=fields + ["updated_at"])
+            return Response(serializers.TeacherStudentListSerializer(link).data)
+
+        qs = models.StudentTeacherLink.objects.select_related("student__profile").filter(teacher=teacher).order_by(
+            "-linked_at"
+        )
+        data = serializers.TeacherStudentListSerializer(qs, many=True).data
+        return Response(data)
+
 
 class RosterFolderViewSet(BaseModelViewSet):
     serializer_class = serializers.RosterFolderSerializer

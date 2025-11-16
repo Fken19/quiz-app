@@ -147,6 +147,39 @@ class StudentTeacherLinkSerializer(serializers.ModelSerializer):
         return obj.teacher.email
 
 
+class TeacherStudentListSerializer(serializers.ModelSerializer):
+    student_teacher_link_id = serializers.UUIDField(source="id", read_only=True)
+    display_name = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.StudentTeacherLink
+        fields = [
+            "student_teacher_link_id",
+            "display_name",
+            "status",
+            "linked_at",
+            "custom_display_name",
+            "local_student_code",
+            "tags",
+            "private_note",
+            "kana_for_sort",
+            "color",
+            "avatar_url",
+        ]
+        read_only_fields = ["status", "linked_at"]
+
+    def get_display_name(self, obj):
+        if obj.custom_display_name:
+            return obj.custom_display_name
+        profile = getattr(obj.student, "profile", None)
+        return profile.display_name if profile and profile.display_name else ""
+
+    def get_avatar_url(self, obj):
+        profile = getattr(obj.student, "profile", None)
+        return profile.avatar_url if profile else ""
+
+
 class RosterFolderSerializer(serializers.ModelSerializer):
     roster_folder_id = serializers.UUIDField(source="id", read_only=True)
 

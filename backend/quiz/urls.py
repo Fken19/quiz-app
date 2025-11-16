@@ -37,6 +37,11 @@ urlpatterns = [
     path("", include(router.urls)),
     path("avatar-upload/", views.AvatarUploadView.as_view(), name="avatar-upload"),
     path("student/dashboard-summary/", views.StudentDashboardSummaryView.as_view(), name="student-dashboard-summary"),
+    path(
+        "teacher/students/",
+        views.StudentTeacherLinkViewSet.as_view({"get": "list_by_teacher", "patch": "list_by_teacher"}),
+        name="teacher-students",
+    ),
     path("focus-questions/", views.FocusQuestionView.as_view(), name="focus-questions"),
     path("focus-quiz-sessions/", views.FocusQuizSessionStartView.as_view(), name="focus-quiz-session-start"),
     path("quiz-sessions/", views.QuizSessionStartView.as_view(), name="quiz-session-start"),
