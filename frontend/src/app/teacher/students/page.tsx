@@ -111,8 +111,7 @@ export default function TeacherStudentsPage() {
         if (statusFilter !== 'all' && row.link.status !== statusFilter) return false;
         if (!keyword) return true;
         const display = row.profile?.display_name || '';
-        const email = row.user?.email || '';
-        return display.toLowerCase().includes(keyword) || email.toLowerCase().includes(keyword);
+        return display.toLowerCase().includes(keyword);
       })
       .sort((a, b) => {
         if (sortKey === 'name') {
@@ -162,7 +161,7 @@ export default function TeacherStudentsPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="氏名/メールで検索"
+              placeholder="氏名で検索"
               className="w-full lg:max-w-md border rounded-md px-3 py-2 text-sm"
             />
             <select
@@ -190,10 +189,9 @@ export default function TeacherStudentsPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <div className="min-w-[900px]">
-            <div className="grid grid-cols-8 gap-3 px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50">
+            <div className="min-w-[840px]">
+            <div className="grid grid-cols-7 gap-3 px-3 py-2 text-xs font-semibold text-slate-600 uppercase tracking-wide bg-slate-50">
               <span>氏名/表示名</span>
-              <span>メール</span>
               <span>ステータス</span>
               <span>所属学校</span>
               <span>学年</span>
@@ -216,7 +214,7 @@ export default function TeacherStudentsPage() {
               return (
                 <div
                   key={link.student_teacher_link_id}
-                  className="grid grid-cols-8 gap-3 px-3 py-3 text-sm text-slate-800 border-b last:border-0 border-slate-100"
+                  className="grid grid-cols-7 gap-3 px-3 py-3 text-sm text-slate-800 border-b last:border-0 border-slate-100"
                 >
                   <div className="flex items-center gap-3">
                     {avatarUrl ? (
@@ -228,10 +226,9 @@ export default function TeacherStudentsPage() {
                     )}
                     <div className="flex flex-col">
                       <span className="font-semibold text-slate-900">{display}</span>
-                      <span className="text-xs text-slate-500">ID: {link.student}</span>
+                      <span className="text-xs text-slate-500">IDは表示されません</span>
                     </div>
                   </div>
-                  <span className="text-xs text-slate-600 break-words">{user?.email || '非公開'}</span>
                   <span>
                     <span className={`px-2 py-1 rounded text-xs inline-block ${statusBadge}`}>{link.status}</span>
                   </span>
@@ -381,16 +378,16 @@ export default function TeacherStudentsPage() {
                 閉じる
               </button>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-sm text-slate-700">
               設定した表示名は、この講師アカウントからのみ閲覧され、ユーザーごとに保存されます。
             </p>
             <div>
-              <label className="text-xs text-slate-600">表示名</label>
+              <label className="text-sm font-medium text-slate-800">表示名</label>
               <input
                 type="text"
                 value={aliasValue}
                 onChange={(e) => setAliasValue(e.target.value)}
-                className="w-full border rounded-md px-3 py-2 text-sm"
+                className="w-full border rounded-md px-3 py-2 text-sm text-slate-900"
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
