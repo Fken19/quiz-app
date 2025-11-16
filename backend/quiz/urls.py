@@ -18,6 +18,9 @@ router.register(r"roster-memberships", views.RosterMembershipViewSet, basename="
 router.register(r"vocabularies", views.VocabularyViewSet, basename="vocabulary")
 router.register(r"vocab-translations", views.VocabTranslationViewSet, basename="vocab-translation")
 router.register(r"vocab-choices", views.VocabChoiceViewSet, basename="vocab-choice")
+router.register(r"user-vocab-statuses", views.UserVocabStatusViewSet, basename="user-vocab-status")
+router.register(r"learning-activity-logs", views.LearningActivityLogViewSet, basename="learning-activity-log")
+router.register(r"learning-summary-daily", views.LearningSummaryDailyViewSet, basename="learning-summary-daily")
 router.register(r"quiz-collections", views.QuizCollectionViewSet, basename="quiz-collection")
 router.register(r"quizzes", views.QuizViewSet, basename="quiz")
 router.register(r"quiz-questions", views.QuizQuestionViewSet, basename="quiz-question")
@@ -32,5 +35,18 @@ router.register(r"test-result-details", views.TestResultDetailViewSet, basename=
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("student/dashboard-summary/", views.StudentDashboardSummaryView.as_view(), name="student-dashboard-summary"),
+    path("focus-questions/", views.FocusQuestionView.as_view(), name="focus-questions"),
+    path("quiz-sessions/", views.QuizSessionStartView.as_view(), name="quiz-session-start"),
+    path(
+        "quiz-sessions/<uuid:quiz_result_id>/answer/",
+        views.QuizSessionAnswerView.as_view(),
+        name="quiz-session-answer",
+    ),
+    path(
+        "quiz-sessions/<uuid:quiz_result_id>/complete/",
+        views.QuizSessionCompleteView.as_view(),
+        name="quiz-session-complete",
+    ),
     path("debug/create-user/", views.debug_create_user, name="debug-create-user"),
 ]

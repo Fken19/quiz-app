@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import random
 import uuid
+from datetime import timedelta
 from typing import Any
 
-from django.db.models import Q
+from django.db.models import Count, Max, Q, Sum
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from . import models, serializers
 
@@ -251,11 +255,449 @@ class QuizResultDetailViewSet(BaseModelViewSet):
             raise PermissionDenied("Quiz result does not belong to the current user.")
         serializer.save()
 
+
+class StudentDashboardSummaryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        today = timezone.localdate()
+        seven_days_ago = today - timedelta(days=6)
+
+        daily_qs = models.LearningSummaryDaily.objects.filter(
+            user=user,
+            activity_date__range=(seven_days_ago, today),
+        )
+        daily_map = {entry.activity_date: entry for entry in daily_qs}
+
+        # Today summary and weekly aggregate
+        today_entry = daily_map.get(today)
+        today_summary = {
+            "correct_count": today_entry.correct_count if today_entry else 0,
+            "incorrect_count": today_entry.incorrect_count if today_entry else 0,
+            "timeout_count": today_entry.timeout_count if today_entry else 0,
+            "total_time_ms": today_entry.total_time_ms if today_entry else 0,
+        }
+        weekly_totals = daily_qs.aggregate(
+            correct=Sum("correct_count"),
+            incorrect=Sum("incorrect_count"),
+            timeout=Sum("timeout_count"),
+            time_ms=Sum("total_time_ms"),
+        )
+        weekly_summary = {
+            "correct_count": weekly_totals["correct"] or 0,
+            "incorrect_count": weekly_totals["incorrect"] or 0,
+            "timeout_count": weekly_totals["timeout"] or 0,
+            "total_time_ms": weekly_totals["time_ms"] or 0,
+        }
+
+        chart_data = []
+        max_daily_total = 0
+        for offset in range(7):
+            day = seven_days_ago + timedelta(days=offset)
+            entry = daily_map.get(day)
+            chart_item = {
+                "date": day.isoformat(),
+                "correct_count": entry.correct_count if entry else 0,
+                "incorrect_count": entry.incorrect_count if entry else 0,
+                "timeout_count": entry.timeout_count if entry else 0,
+            }
+            chart_data.append(chart_item)
+            max_daily_total = max(
+                max_daily_total,
+                chart_item["correct_count"] + chart_item["incorrect_count"] + chart_item["timeout_count"],
+            )
+
+        # Streak
+        latest_entry = (
+            models.LearningSummaryDaily.objects.filter(user=user).order_by("-activity_date").first()
+        )
+        current_streak = latest_entry.streak_count if latest_entry else 0
+        best_streak = (
+            models.LearningSummaryDaily.objects.filter(user=user).aggregate(best=Max("streak_count"))["best"] or 0
+        )
+
+        # Focus summary counts
+        status_rows = (
+            models.UserVocabStatus.objects.filter(user=user)
+            .values("status")
+            .annotate(count=Count("id"))
+        )
+        status_count_map = {row["status"]: row["count"] for row in status_rows}
+
+        total_vocab_candidates = models.Vocabulary.objects.filter(
+            visibility=models.VocabVisibility.PUBLIC,
+            status=models.VocabStatus.PUBLISHED,
+        )
+        total_vocab = total_vocab_candidates.count()
+        studied_total = sum(status_count_map.values())
+        unlearned_count = max(total_vocab - studied_total, 0)
+
+        focus_summary = {
+            "unlearned": {"count": unlearned_count},
+            "weak": {"count": status_count_map.get(models.LearningStatus.WEAK, 0)},
+            "learning": {"count": status_count_map.get(models.LearningStatus.LEARNING, 0)},
+            "mastered": {"count": status_count_map.get(models.LearningStatus.MASTERED, 0)},
+        }
+
+        quiz_result_count = models.QuizResult.objects.filter(user=user).count()
+        test_result_count = models.TestResult.objects.filter(student=user).count()
+        pending_tests = (
+            models.TestAssignee.objects.filter(student=user)
+            .exclude(
+                test__results__student=user,
+                test__results__completed_at__isnull=False,
+            )
+            .distinct()
+            .count()
+        )
+
+        summary = {
+            "user": serializers.UserSerializer(user, context={"request": request}).data,
+            "streak": {
+                "current": current_streak,
+                "best": best_streak,
+            },
+            "today_summary": today_summary,
+            "weekly_summary": weekly_summary,
+            "recent_daily": {
+                "chart": chart_data,
+                "max_total": max_daily_total,
+            },
+            "focus_summary": focus_summary,
+            "quiz_result_count": quiz_result_count,
+            "test_result_count": test_result_count,
+            "pending_tests": pending_tests,
+        }
+        return Response(summary)
+
+
+class FocusQuestionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        status_param = request.query_params.get("status", models.LearningStatus.WEAK)
+        limit_param = request.query_params.get("limit", "10")
+        try:
+            limit = max(1, min(int(limit_param), 100))
+        except (TypeError, ValueError):
+            return Response({"detail": "limit は整数で指定してください"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if status_param not in models.LearningStatus.values:
+            return Response({"detail": "status が不正です"}, status=status.HTTP_400_BAD_REQUEST)
+
+        vocabulary_ids: list[str] = []
+        preview: list[dict[str, Any]] = []
+        available_count = 0
+
+        if status_param == models.LearningStatus.UNLEARNED:
+            vocab_qs = (
+                models.Vocabulary.objects.filter(
+                    visibility=models.VocabVisibility.PUBLIC,
+                    status=models.VocabStatus.PUBLISHED,
+                )
+                .exclude(user_statuses__user=user)
+                .order_by("sort_key")
+            )
+            available_count = vocab_qs.count()
+            selected = list(vocab_qs[:limit])
+            vocabulary_ids = [str(vocab.id) for vocab in selected]
+            preview = [{"vocabulary_id": str(vocab.id), "text_en": vocab.text_en} for vocab in selected]
+        else:
+            status_qs = (
+                models.UserVocabStatus.objects.filter(user=user, status=status_param)
+                .order_by("last_answered_at")
+            )
+            available_count = status_qs.count()
+            selected_ids = list(status_qs.values_list("vocabulary_id", flat=True)[:limit])
+            vocabulary_ids = [str(v_id) for v_id in selected_ids]
+            vocab_map = {
+                str(vocab.id): vocab
+                for vocab in models.Vocabulary.objects.filter(id__in=selected_ids)
+            }
+            preview = []
+            for vocab_id in vocabulary_ids:
+                vocab_obj = vocab_map.get(vocab_id)
+                preview.append(
+                    {
+                        "vocabulary_id": vocab_id,
+                        "text_en": vocab_obj.text_en if vocab_obj else None,
+                    }
+                )
+
+        data = {
+            "status": status_param,
+            "requested_limit": limit,
+            "available_count": available_count,
+            "vocabulary_ids": vocabulary_ids,
+            "preview": preview,
+        }
+        return Response(data)
+
+
+class QuizSessionStartView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        quiz_id = request.data.get("quiz") or request.data.get("quiz_id")
+        if not quiz_id:
+            return Response({"detail": "quizは必須です"}, status=status.HTTP_400_BAD_REQUEST)
+
+        quiz = get_object_or_404(
+            models.Quiz.objects.select_related("quiz_collection"),
+            pk=quiz_id,
+            archived_at__isnull=True,
+        )
+        questions = list(
+            models.QuizQuestion.objects.select_related("vocabulary")
+            .filter(quiz=quiz, archived_at__isnull=True)
+            .order_by("question_order")
+        )
+        if not questions:
+            return Response({"detail": "このクイズには問題が登録されていません"}, status=status.HTTP_400_BAD_REQUEST)
+
+        vocab_ids = list({question.vocabulary_id for question in questions})
+        choices_qs = models.VocabChoice.objects.filter(vocabulary_id__in=vocab_ids)
+        choices_map: dict[str, list[models.VocabChoice]] = {}
+        for choice in choices_qs:
+            key = str(choice.vocabulary_id)
+            choices_map.setdefault(key, []).append(choice)
+
+        question_payloads: list[dict[str, Any]] = []
+        for question in questions:
+            vocab = question.vocabulary
+            vocab_key = str(vocab.id)
+            vocab_choices = choices_map.get(vocab_key, [])
+            if not vocab_choices:
+                return Response(
+                    {"detail": f"{vocab.text_en} の選択肢が不足しています"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            shuffled_choices = [
+                {
+                    "vocab_choice_id": str(choice.id),
+                    "text_ja": choice.text_ja,
+                }
+                for choice in vocab_choices
+            ]
+            random.shuffle(shuffled_choices)
+            question_payloads.append(
+                {
+                    "quiz_question_id": str(question.id),
+                    "question_order": question.question_order,
+                    "vocabulary": {
+                        "vocabulary_id": str(vocab.id),
+                        "text_en": vocab.text_en,
+                        "part_of_speech": vocab.part_of_speech,
+                        "explanation": vocab.explanation,
+                    },
+                    "choices": shuffled_choices,
+                }
+            )
+
+        timer_seconds = quiz.timer_seconds or 10
+        quiz_result = models.QuizResult.objects.create(
+            user=request.user,
+            quiz=quiz,
+            question_count=len(question_payloads),
+            timeout_count=0,
+            total_time_ms=0,
+            score=0,
+        )
+
+        quiz_payload = {
+            "quiz_id": str(quiz.id),
+            "title": quiz.title,
+            "sequence_no": quiz.sequence_no,
+            "timer_seconds": timer_seconds,
+        }
+
+        data = {
+            "quiz_result_id": str(quiz_result.id),
+            "quiz": quiz_payload,
+            "questions": question_payloads,
+            "question_count": len(question_payloads),
+            "timer_seconds": timer_seconds,
+        }
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class QuizSessionAnswerView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, quiz_result_id: uuid.UUID):
+        quiz_result = get_object_or_404(
+            models.QuizResult.objects.select_related("quiz"),
+            pk=quiz_result_id,
+            user=request.user,
+        )
+        if quiz_result.completed_at:
+            return Response({"detail": "このセッションは既に完了しています"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            question_order = int(request.data.get("question_order"))
+        except (TypeError, ValueError):
+            return Response({"detail": "question_order が不正です"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if models.QuizResultDetail.objects.filter(quiz_result=quiz_result, question_order=question_order).exists():
+            return Response({"detail": "この設問はすでに回答済みです"}, status=status.HTTP_409_CONFLICT)
+
+        question = get_object_or_404(
+            models.QuizQuestion.objects.select_related("vocabulary"),
+            quiz=quiz_result.quiz,
+            question_order=question_order,
+            archived_at__isnull=True,
+        )
+
+        choice_id = request.data.get("choice_id")
+        choice = None
+        if choice_id:
+            choice = get_object_or_404(
+                models.VocabChoice,
+                pk=choice_id,
+                vocabulary=question.vocabulary,
+            )
+
+        elapsed_ms_raw = request.data.get("elapsed_ms")
+        elapsed_ms = None
+        if elapsed_ms_raw is not None:
+            try:
+                elapsed_ms = max(0, int(elapsed_ms_raw))
+            except (TypeError, ValueError):
+                return Response({"detail": "elapsed_ms が不正です"}, status=status.HTTP_400_BAD_REQUEST)
+
+        timer_seconds = quiz_result.quiz.timer_seconds or 10
+        timer_ms = timer_seconds * 1000
+        is_timeout = elapsed_ms is None or elapsed_ms >= timer_ms
+        selected_text = choice.text_ja if choice else None
+        is_correct = bool(choice and choice.is_correct and not is_timeout)
+        reaction_time_ms = timer_ms if elapsed_ms is None else min(elapsed_ms, timer_ms)
+
+        detail = models.QuizResultDetail.objects.create(
+            quiz_result=quiz_result,
+            question_order=question_order,
+            vocabulary=question.vocabulary,
+            selected_text=selected_text,
+            is_correct=is_correct,
+            is_timeout=is_timeout,
+            reaction_time_ms=reaction_time_ms,
+        )
+
+        update_fields = ["total_time_ms"]
+        quiz_result.total_time_ms = (quiz_result.total_time_ms or 0) + (detail.reaction_time_ms or 0)
+        if is_timeout:
+            quiz_result.timeout_count = (quiz_result.timeout_count or 0) + 1
+            update_fields.append("timeout_count")
+        if is_correct:
+            quiz_result.score = (quiz_result.score or 0) + 1
+            update_fields.append("score")
+        quiz_result.save(update_fields=update_fields)
+
+        correct_choice = (
+            models.VocabChoice.objects.filter(vocabulary=question.vocabulary, is_correct=True).first()
+        )
+        correct_choice_payload = None
+        if correct_choice:
+            correct_choice_payload = {
+                "vocab_choice_id": str(correct_choice.id),
+                "text_ja": correct_choice.text_ja,
+            }
+
+        response_payload = {
+            "quiz_result_id": str(quiz_result.id),
+            "question_order": question_order,
+            "is_correct": is_correct,
+            "is_timeout": is_timeout,
+            "reaction_time_ms": detail.reaction_time_ms,
+            "selected_text": detail.selected_text,
+            "correct_choice": correct_choice_payload,
+        }
+        return Response(response_payload, status=status.HTTP_201_CREATED)
+
+
+class QuizSessionCompleteView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, quiz_result_id: uuid.UUID):
+        quiz_result = get_object_or_404(
+            models.QuizResult.objects.select_related("quiz"),
+            pk=quiz_result_id,
+            user=request.user,
+        )
+        total_questions = quiz_result.question_count or 0
+        answered_count = quiz_result.details.count()
+        if total_questions == 0 or answered_count != total_questions:
+            return Response({"detail": "未回答の設問があります"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not quiz_result.completed_at:
+            aggregates = quiz_result.details.aggregate(
+                correct_count=Count("id", filter=Q(is_correct=True)),
+                timeout_count=Count("id", filter=Q(is_timeout=True)),
+                total_time=Sum("reaction_time_ms"),
+            )
+            quiz_result.score = aggregates["correct_count"] or 0
+            quiz_result.timeout_count = aggregates["timeout_count"] or 0
+            quiz_result.total_time_ms = aggregates["total_time"] or 0
+            quiz_result.completed_at = timezone.now()
+            quiz_result.save(update_fields=["score", "timeout_count", "total_time_ms", "completed_at"])
+
+        serializer = serializers.QuizResultSerializer(quiz_result, context={"request": request})
+        return Response(serializer.data)
+
     def perform_update(self, serializer):  # type: ignore[override]
         quiz_result: models.QuizResult = serializer.instance.quiz_result
         if quiz_result.user_id != self.request.user.id:
             raise PermissionDenied("Quiz result does not belong to the current user.")
         serializer.save()
+
+
+class UserVocabStatusViewSet(BaseModelViewSet):
+    serializer_class = serializers.UserVocabStatusSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        return models.UserVocabStatus.objects.select_related("vocabulary").filter(user=self.request.user).order_by("-updated_at")
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        if serializer.instance.user_id != self.request.user.id:
+            raise PermissionDenied("Status does not belong to the current user.")
+        serializer.save(user=self.request.user)
+
+
+class LearningActivityLogViewSet(BaseModelViewSet):
+    serializer_class = serializers.LearningActivityLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        return models.LearningActivityLog.objects.select_related("quiz_result").filter(user=self.request.user).order_by("-occurred_at")
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        if serializer.instance.user_id != self.request.user.id:
+            raise PermissionDenied("Activity log does not belong to the current user.")
+        serializer.save(user=self.request.user)
+
+
+class LearningSummaryDailyViewSet(BaseModelViewSet):
+    serializer_class = serializers.LearningSummaryDailySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        return models.LearningSummaryDaily.objects.filter(user=self.request.user).order_by("-activity_date")
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        if serializer.instance.user_id != self.request.user.id:
+            raise PermissionDenied("Summary does not belong to the current user.")
+        serializer.save(user=self.request.user)
 
 
 class TestViewSet(BaseModelViewSet):
@@ -347,6 +789,7 @@ __all__ = [
     "TeacherViewSet",
     "TeacherProfileViewSet",
     "TeacherWhitelistViewSet",
+    "FocusQuestionView",
     "InvitationCodeViewSet",
     "StudentTeacherLinkViewSet",
     "RosterFolderViewSet",
@@ -354,11 +797,15 @@ __all__ = [
     "VocabularyViewSet",
     "VocabTranslationViewSet",
     "VocabChoiceViewSet",
+    "LearningActivityLogViewSet",
+    "LearningSummaryDailyViewSet",
     "QuizCollectionViewSet",
     "QuizViewSet",
     "QuizQuestionViewSet",
     "QuizResultViewSet",
     "QuizResultDetailViewSet",
+    "StudentDashboardSummaryView",
+    "UserVocabStatusViewSet",
     "TestViewSet",
     "TestQuestionViewSet",
     "TestAssignmentViewSet",

@@ -673,6 +673,9 @@ class QuizCollection(CreatedUpdatedModel):
     owner_user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name="quiz_collections")
     title = models.CharField(max_length=120)
     description = models.TextField(null=True, blank=True)
+    level_code = models.CharField(max_length=32, null=True, blank=True)
+    level_label = models.CharField(max_length=120, null=True, blank=True)
+    level_order = models.IntegerField(default=0)
     order_index = models.IntegerField(default=0)
     is_published = models.BooleanField(default=False)
     published_at = models.DateTimeField(null=True, blank=True)
@@ -694,8 +697,15 @@ class QuizCollection(CreatedUpdatedModel):
                 condition=Q(archived_at__isnull=True),
                 name="quiz_collection_title_unique",
             ),
+            models.UniqueConstraint(
+                fields=["scope", "level_code"],
+                condition=Q(level_code__isnull=False) & Q(archived_at__isnull=True),
+                name="quiz_collection_level_unique",
+            ),
         ]
         indexes = [
+            models.Index(fields=["level_code"], name="qc_level_code_idx"),
+            models.Index(fields=["level_order"], name="qc_level_order_idx"),
             models.Index(fields=["scope", "owner_user"], name="qc_scope_idx"),
             models.Index(fields=["archived_at"], name="qc_archived_idx"),
         ]
@@ -709,6 +719,8 @@ class Quiz(CreatedUpdatedModel):
     quiz_collection = models.ForeignKey(QuizCollection, on_delete=models.CASCADE, related_name="quizzes")
     sequence_no = models.IntegerField(default=1)
     title = models.CharField(max_length=120, null=True, blank=True)
+    section_no = models.IntegerField(null=True, blank=True)
+    section_label = models.CharField(max_length=120, null=True, blank=True)
     timer_seconds = models.IntegerField(null=True, blank=True, default=10)
     origin_quiz = models.ForeignKey(
         "self",
@@ -731,11 +743,55 @@ class Quiz(CreatedUpdatedModel):
         ]
         indexes = [
             models.Index(fields=["quiz_collection"], name="quiz_collection_idx"),
+            models.Index(fields=["section_no"], name="quiz_section_idx"),
             models.Index(fields=["archived_at"], name="quiz_archived_idx"),
         ]
 
     def __str__(self) -> str:
         return f"{self.quiz_collection.title}#{self.sequence_no}"
+
+
+class LearningStatus(models.TextChoices):
+    UNLEARNED = "unlearned", "unlearned"
+    WEAK = "weak", "weak"
+    LEARNING = "learning", "learning"
+    MASTERED = "mastered", "mastered"
+
+
+class LearningResultType(models.TextChoices):
+    CORRECT = "correct", "correct"
+    INCORRECT = "incorrect", "incorrect"
+    TIMEOUT = "timeout", "timeout"
+
+
+class UserVocabStatus(CreatedUpdatedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_column="user_vocab_status_id")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="vocab_statuses")
+    vocabulary = models.ForeignKey(Vocabulary, on_delete=models.CASCADE, related_name="user_statuses")
+    status = models.CharField(max_length=16, choices=LearningStatus.choices, default=LearningStatus.UNLEARNED)
+    last_result = models.CharField(max_length=16, choices=LearningResultType.choices, null=True, blank=True)
+    last_answered_at = models.DateTimeField(null=True, blank=True)
+    recent_correct_streak = models.IntegerField(default=0)
+    total_answer_count = models.IntegerField(default=0)
+    total_correct_count = models.IntegerField(default=0)
+    timeout_count = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = "user_vocab_statuses"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "vocabulary"],
+                name="user_vocab_status_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "status"], name="uvs_user_status_idx"),
+            models.Index(fields=["vocabulary"], name="uvs_vocab_idx"),
+            models.Index(fields=["last_answered_at"], name="uvs_last_answered_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user.email} - {self.vocabulary.text_en} ({self.status})"
 
 
 class QuizQuestion(CreatedUpdatedModel):
@@ -778,6 +834,8 @@ class QuizResult(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     total_time_ms = models.IntegerField(null=True, blank=True)
     score = models.IntegerField(null=True, blank=True, default=0)
+    question_count = models.IntegerField(default=0)
+    timeout_count = models.IntegerField(default=0)
 
     class Meta:
         db_table = "quiz_results"
@@ -797,6 +855,7 @@ class QuizResultDetail(models.Model):
     vocabulary = models.ForeignKey(Vocabulary, on_delete=models.RESTRICT, related_name="quiz_result_details")
     selected_text = models.CharField(max_length=120, null=True, blank=True)
     is_correct = models.BooleanField(default=False)
+    is_timeout = models.BooleanField(default=False)
     reaction_time_ms = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -816,6 +875,54 @@ class QuizResultDetail(models.Model):
 
     def __str__(self) -> str:
         return f"QuizResultDetail<{self.quiz_result_id} #{self.question_order}>"
+
+
+class LearningActivityLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_column="learning_activity_log_id")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="learning_activity_logs")
+    quiz_result = models.ForeignKey(QuizResult, on_delete=models.CASCADE, related_name="activity_logs")
+    occurred_at = models.DateTimeField(default=timezone.now)
+    correct_count = models.IntegerField(default=0)
+    incorrect_count = models.IntegerField(default=0)
+    timeout_count = models.IntegerField(default=0)
+    total_time_ms = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = "learning_activity_logs"
+        indexes = [
+            models.Index(fields=["user", "occurred_at"], name="lal_user_occurred_idx"),
+            models.Index(fields=["quiz_result"], name="lal_quiz_result_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"LearningActivityLog<{self.user.email} {self.occurred_at.isoformat()}>"
+
+
+class LearningSummaryDaily(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_column="learning_summary_daily_id")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="learning_summary_daily")
+    activity_date = models.DateField()
+    correct_count = models.IntegerField(default=0)
+    incorrect_count = models.IntegerField(default=0)
+    timeout_count = models.IntegerField(default=0)
+    total_time_ms = models.IntegerField(default=0)
+    streak_count = models.IntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "learning_summary_daily"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "activity_date"],
+                name="learning_summary_daily_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "activity_date"], name="lsd_user_date_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"LearningSummaryDaily<{self.user.email} {self.activity_date}>"
 
 
 # ---------------------------------------------------------------------------
@@ -1013,6 +1120,10 @@ class TestResultDetail(models.Model):
 
 
 __all__ = [
+    "LearningActivityLog",
+    "LearningResultType",
+    "LearningStatus",
+    "LearningSummaryDaily",
     "InvitationCode",
     "LinkStatus",
     "Quiz",
@@ -1035,6 +1146,7 @@ __all__ = [
     "TestResultDetail",
     "User",
     "UserProfile",
+    "UserVocabStatus",
     "VocabChoice",
     "VocabStatus",
     "VocabTranslation",
