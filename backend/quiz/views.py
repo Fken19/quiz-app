@@ -11,6 +11,7 @@ from django.conf import settings
 from django.core.cache import caches
 from django.core.files.storage import default_storage
 from django.db.models import Count, Max, Q, Sum
+from django.db.models.functions import TruncMonth, TruncWeek
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
@@ -569,6 +570,7 @@ class StudentDashboardSummaryView(APIView):
             or [0]
         )
 
+        weekly_chart = []
         weekly_qs = (
             models.LearningSummaryDaily.objects.filter(user=user, activity_date__gte=today - timedelta(days=180))
             .annotate(week=TruncWeek("activity_date"))
@@ -580,16 +582,19 @@ class StudentDashboardSummaryView(APIView):
             )
             .order_by("week")
         )
-        weekly_chart = [
-            {
-                "period": entry["week"].date().isoformat(),
-                "label": entry["week"].date().strftime("%m/%d"),
-                "correct_count": entry["correct_count"] or 0,
-                "incorrect_count": entry["incorrect_count"] or 0,
-                "timeout_count": entry["timeout_count"] or 0,
-            }
-            for entry in weekly_qs
-        ]
+        for entry in weekly_qs:
+            week = entry.get("week")
+            if not week:
+                continue
+            weekly_chart.append(
+                {
+                    "period": week.date().isoformat(),
+                    "label": week.date().strftime("%m/%d"),
+                    "correct_count": entry.get("correct_count") or 0,
+                    "incorrect_count": entry.get("incorrect_count") or 0,
+                    "timeout_count": entry.get("timeout_count") or 0,
+                }
+            )
         max_weekly_total = max(
             [
                 item["correct_count"] + item["incorrect_count"] + item["timeout_count"]
@@ -598,6 +603,7 @@ class StudentDashboardSummaryView(APIView):
             or [0]
         )
 
+        monthly_chart = []
         monthly_qs = (
             models.LearningSummaryDaily.objects.filter(user=user, activity_date__gte=today - timedelta(days=365))
             .annotate(month=TruncMonth("activity_date"))
@@ -609,16 +615,19 @@ class StudentDashboardSummaryView(APIView):
             )
             .order_by("month")
         )
-        monthly_chart = [
-            {
-                "period": entry["month"].date().isoformat(),
-                "label": entry["month"].date().strftime("%Y/%m"),
-                "correct_count": entry["correct_count"] or 0,
-                "incorrect_count": entry["incorrect_count"] or 0,
-                "timeout_count": entry["timeout_count"] or 0,
-            }
-            for entry in monthly_qs
-        ]
+        for entry in monthly_qs:
+            month = entry.get("month")
+            if not month:
+                continue
+            monthly_chart.append(
+                {
+                    "period": month.date().isoformat(),
+                    "label": month.date().strftime("%Y/%m"),
+                    "correct_count": entry.get("correct_count") or 0,
+                    "incorrect_count": entry.get("incorrect_count") or 0,
+                    "timeout_count": entry.get("timeout_count") or 0,
+                }
+            )
         max_monthly_total = max(
             [
                 item["correct_count"] + item["incorrect_count"] + item["timeout_count"]
