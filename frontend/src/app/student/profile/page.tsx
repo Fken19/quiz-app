@@ -31,6 +31,8 @@ export default function ProfilePage() {
     avatarUrl: '',
   });
   const [saving, setSaving] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
+  const [linkMessage, setLinkMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -52,7 +54,7 @@ export default function ProfilePage() {
           profile = null;
         }
 
-        const linksResponse = await apiGet('/api/student-teacher-links/?status=active');
+        const linksResponse = await apiGet('/api/student-teacher-links/');
         const links: StudentTeacherLink[] = Array.isArray(linksResponse)
           ? linksResponse
           : linksResponse?.results || [];
@@ -132,6 +134,41 @@ export default function ProfilePage() {
       setError('プロフィールの更新に失敗しました');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRedeem = async () => {
+    if (!inviteCode.trim()) {
+      setLinkMessage('招待コードを入力してください。');
+      return;
+    }
+    try {
+      setLinkMessage(null);
+      await apiPost('/api/invitation-codes/redeem/', { invitation_code: inviteCode.trim() });
+      setInviteCode('');
+      const linksResponse = await apiGet('/api/student-teacher-links/');
+      const links: StudentTeacherLink[] = Array.isArray(linksResponse)
+        ? linksResponse
+        : linksResponse?.results || [];
+      setSummary((prev) => ({ ...prev, teacherLinks: links }));
+      setLinkMessage('承認待ちとして送信しました。');
+    } catch (err) {
+      console.error(err);
+      setLinkMessage('招待コードの登録に失敗しました。');
+    }
+  };
+
+  const handleRevoke = async (linkId: string) => {
+    try {
+      await apiPost(`/api/student-teacher-links/${linkId}/revoke/`, {});
+      const linksResponse = await apiGet('/api/student-teacher-links/');
+      const links: StudentTeacherLink[] = Array.isArray(linksResponse)
+        ? linksResponse
+        : linksResponse?.results || [];
+      setSummary((prev) => ({ ...prev, teacherLinks: links }));
+    } catch (err) {
+      console.error(err);
+      setLinkMessage('リンク解除に失敗しました。');
     }
   };
 
