@@ -70,7 +70,6 @@ export default function QuizPlayPage() {
   const [questions, setQuestions] = useState<QuizSessionQuestion[]>([]);
   const [progress, setProgress] = useState<QuizProgress | null>(null);
   const [answers, setAnswers] = useState<AnswerLog[]>([]);
-  const [answers, setAnswers] = useState<AnswerLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [answering, setAnswering] = useState(false);
