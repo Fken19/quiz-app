@@ -8,7 +8,7 @@ export default function TeacherInvitesPage() {
   const [invites, setInvites] = useState<InvitationCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expiresMinutes, setExpiresMinutes] = useState<number>(60);
+  const [expiresHours, setExpiresHours] = useState<number>(1); // 1時間単位
   const [issuing, setIssuing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -35,7 +35,7 @@ export default function TeacherInvitesPage() {
     try {
       setIssuing(true);
       setMessage(null);
-      await apiPost('/api/invitation-codes/issue/', { expires_in_minutes: expiresMinutes });
+      await apiPost('/api/invitation-codes/issue/', { expires_in_minutes: expiresHours * 60 });
       setMessage('招待コードを発行しました。');
       await fetchInvites();
     } catch (err) {
@@ -73,14 +73,15 @@ export default function TeacherInvitesPage() {
 
       <div className="bg-white shadow rounded-lg p-6 space-y-4">
         <div className="flex flex-col sm:flex-row items-center gap-3">
-          <label className="text-sm text-slate-700">有効期限（分）</label>
+          <label className="text-sm text-slate-800 font-semibold">有効期限（時間単位）</label>
           <input
             type="number"
-            min={5}
-            max={1440}
-            value={expiresMinutes}
-            onChange={(e) => setExpiresMinutes(Number(e.target.value))}
-            className="w-28 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+            min={1}
+            max={24}
+            step={1}
+            value={expiresHours}
+            onChange={(e) => setExpiresHours(Number(e.target.value))}
+            className="w-28 rounded-md border border-slate-500 px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-indigo-500"
           />
           <button
             type="button"
@@ -95,21 +96,22 @@ export default function TeacherInvitesPage() {
       </div>
 
       <div className="bg-white shadow rounded-lg divide-y">
-        <div className="grid grid-cols-5 gap-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+        <div className="grid grid-cols-4 gap-4 px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
           <span>コード</span>
           <span>期限</span>
           <span>使用状況</span>
           <span>発行日時</span>
-          <span>発行者</span>
         </div>
-        {invites.map((invite) => {
+        {[...invites]
+          .sort((a, b) => new Date(b.issued_at).getTime() - new Date(a.issued_at).getTime())
+          .map((invite) => {
           const isExpired = invite.expires_at ? new Date(invite.expires_at) < new Date() : false;
           const isUsed = Boolean(invite.used_at);
           const disabled = isExpired || isUsed;
           return (
             <div
               key={invite.invitation_code_id}
-              className={`grid grid-cols-5 gap-4 px-6 py-3 text-sm ${disabled ? 'text-slate-400' : 'text-slate-800'}`}
+              className={`grid grid-cols-4 gap-4 px-6 py-3 text-sm ${disabled ? 'text-slate-400' : 'text-slate-900'}`}
             >
               <div className="flex items-center gap-2">
                 <span className="font-semibold select-all">{invite.invitation_code}</span>
