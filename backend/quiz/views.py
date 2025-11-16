@@ -329,6 +329,18 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
             return Response({"detail": "解除しました。"})
         raise PermissionDenied("解除権限がありません。")
 
+    @action(detail=True, methods=["post", "patch"], permission_classes=[permissions.IsAuthenticated], url_path="alias")
+    def set_alias(self, request, pk=None):
+        """講師が表示名（custom_display_name）を設定/更新する"""
+        link = self.get_object()
+        if getattr(request, "teacher", None) is None or link.teacher_id != request.teacher.id:
+            raise PermissionDenied("表示名を変更する権限がありません。")
+        alias = request.data.get("custom_display_name", "")
+        alias_str = str(alias or "").strip()
+        link.custom_display_name = alias_str or None
+        link.save(update_fields=["custom_display_name", "updated_at"])
+        return Response(serializers.StudentTeacherLinkSerializer(link).data)
+
 
 class RosterFolderViewSet(BaseModelViewSet):
     serializer_class = serializers.RosterFolderSerializer
@@ -560,6 +572,8 @@ class StudentDashboardSummaryView(APIView):
                 "correct_count": summary.correct_count,
                 "incorrect_count": summary.incorrect_count,
                 "timeout_count": summary.timeout_count,
+                "total_time_ms": summary.total_time_ms,
+                "mastered_count": 0,  # TODO: mastered 遷移数を計測する場合はここで算出
             }
             for summary in recent_daily
         ]
@@ -580,6 +594,7 @@ class StudentDashboardSummaryView(APIView):
                 correct_count=Sum("correct_count"),
                 incorrect_count=Sum("incorrect_count"),
                 timeout_count=Sum("timeout_count"),
+                total_time_ms=Sum("total_time_ms"),
             )
             .order_by("week")
         )
@@ -594,6 +609,10 @@ class StudentDashboardSummaryView(APIView):
                     "correct_count": entry.get("correct_count") or 0,
                     "incorrect_count": entry.get("incorrect_count") or 0,
                     "timeout_count": entry.get("timeout_count") or 0,
+                    "total_time_ms": entry.get("total_time_ms") or 0,
+                    "from_date": week.isoformat(),
+                    "to_date": (week + timedelta(days=6)).isoformat(),
+                    "mastered_count": 0,
                 }
             )
         max_weekly_total = max(
@@ -613,6 +632,7 @@ class StudentDashboardSummaryView(APIView):
                 correct_count=Sum("correct_count"),
                 incorrect_count=Sum("incorrect_count"),
                 timeout_count=Sum("timeout_count"),
+                total_time_ms=Sum("total_time_ms"),
             )
             .order_by("month")
         )
@@ -620,6 +640,9 @@ class StudentDashboardSummaryView(APIView):
             month = entry.get("month")
             if not month:
                 continue
+            # 当月の末日を算出
+            next_month = month.replace(day=28) + timedelta(days=4)
+            month_end = next_month - timedelta(days=next_month.day)
             monthly_chart.append(
                 {
                     "period": month.isoformat(),
@@ -627,6 +650,10 @@ class StudentDashboardSummaryView(APIView):
                     "correct_count": entry.get("correct_count") or 0,
                     "incorrect_count": entry.get("incorrect_count") or 0,
                     "timeout_count": entry.get("timeout_count") or 0,
+                    "total_time_ms": entry.get("total_time_ms") or 0,
+                    "from_date": month.isoformat(),
+                    "to_date": month_end.isoformat(),
+                    "mastered_count": 0,
                 }
             )
         max_monthly_total = max(

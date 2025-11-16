@@ -267,6 +267,8 @@ export interface DashboardDailyChartItem {
   correct_count: number;
   incorrect_count: number;
   timeout_count: number;
+  total_time_ms?: number;
+  mastered_count?: number;
 }
 
 export interface DashboardPeriodChartItem {
@@ -275,6 +277,10 @@ export interface DashboardPeriodChartItem {
   correct_count: number;
   incorrect_count: number;
   timeout_count: number;
+  total_time_ms?: number;
+  mastered_count?: number;
+  from_date?: string;
+  to_date?: string;
 }
 
 export interface StudentDashboardSummary {
