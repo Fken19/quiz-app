@@ -200,6 +200,7 @@ export default function TeacherInvitesPage() {
           onClick={() => setQrFor(null)}
         >
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full text-center space-y-4">
+            {/* TODO: 将来的に独自のQR生成（ライブラリ or サーバ側生成）に置き換える */}
             <img src={qrUrl(qrFor.code)} alt="QR" className="mx-auto w-64 h-64 border rounded" />
             <p className="text-sm text-slate-600">タップで閉じる</p>
           </div>

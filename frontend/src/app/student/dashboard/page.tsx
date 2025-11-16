@@ -91,6 +91,13 @@ export default function DashboardPage() {
   }, [status, data, router]);
 
   const dayChart = useMemo(() => summary.recent_daily.chart, [summary]);
+  const maxDailyTotal = useMemo(() => summary.recent_daily.max_total || 1, [summary]);
+
+  const heatColor = (total: number) => {
+    const intensity = Math.min(1, total / (maxDailyTotal || 1));
+    const base = 240 - Math.floor(intensity * 140); // slate→indigo寄り
+    return `rgb(${base}, ${base + 10}, ${240})`;
+  };
 
   const requestFocusQuestions = async (statusKey: LearningStatusKey, opts?: { supplement?: boolean }) => {
     const query = `/api/focus-questions/?status=${statusKey}&limit=10${
@@ -270,43 +277,63 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="bg-white shadow rounded-lg p-6">
+      <section className="bg-white shadow rounded-lg p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">直近7日の推移</h2>
-            <p className="text-sm text-slate-500">棒グラフをタップすると日別の内訳を確認できます。</p>
+            <p className="text-sm text-slate-500">棒グラフとヒートマップで日別の内訳を確認できます。</p>
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-7 gap-3">
-          {dayChart.map((day) => {
-            const dayTotal = day.correct_count + day.incorrect_count + day.timeout_count;
-            const totalForScale = summary.recent_daily.max_total || 1;
-            const scale = Math.max(dayTotal / totalForScale, 0.05);
-            return (
-              <div key={day.date} className="flex flex-col items-center gap-2">
-                <div className="h-36 w-8 bg-slate-100 rounded-lg flex flex-col justify-end overflow-hidden">
-                  <div className="flex flex-col justify-end" style={{ height: `${scale * 100}%` }}>
-                    <div
-                      className="bg-green-400"
-                      style={{ height: dayTotal ? `${(day.correct_count / dayTotal) * 100}%` : '0%' }}
-                    />
-                    <div
-                      className="bg-red-300"
-                      style={{ height: dayTotal ? `${(day.incorrect_count / dayTotal) * 100}%` : '0%' }}
-                    />
-                    <div
-                      className="bg-yellow-300"
-                      style={{ height: dayTotal ? `${(day.timeout_count / dayTotal) * 100}%` : '0%' }}
-                    />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-7 gap-3">
+            {dayChart.map((day) => {
+              const dayTotal = day.correct_count + day.incorrect_count + day.timeout_count;
+              const totalForScale = maxDailyTotal || 1;
+              const scale = Math.max(dayTotal / totalForScale, 0.05);
+              return (
+                <div key={day.date} className="flex flex-col items-center gap-2">
+                  <div className="h-36 w-8 bg-slate-100 rounded-lg flex flex-col justify-end overflow-hidden">
+                    <div className="flex flex-col justify-end" style={{ height: `${scale * 100}%` }}>
+                      <div
+                        className="bg-green-400"
+                        style={{ height: dayTotal ? `${(day.correct_count / dayTotal) * 100}%` : '0%' }}
+                      />
+                      <div
+                        className="bg-red-300"
+                        style={{ height: dayTotal ? `${(day.incorrect_count / dayTotal) * 100}%` : '0%' }}
+                      />
+                      <div
+                        className="bg-yellow-300"
+                        style={{ height: dayTotal ? `${(day.timeout_count / dayTotal) * 100}%` : '0%' }}
+                      />
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-500 text-center">
+                    {new Date(day.date).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
                   </div>
                 </div>
-                <div className="text-xs text-slate-500 text-center">
-                  {new Date(day.date).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
+              );
+            })}
+          </div>
+
+          <div className="grid grid-cols-7 gap-2">
+            {dayChart.map((day) => {
+              const dayTotal = day.correct_count + day.incorrect_count + day.timeout_count;
+              return (
+                <div key={`heat-${day.date}`} className="flex flex-col items-center gap-1">
+                  <div
+                    className="w-10 h-10 rounded-md border border-slate-200"
+                    style={{ backgroundColor: heatColor(dayTotal) }}
+                    title={`${dayTotal}問 (${day.correct_count}◯/${day.incorrect_count}×/${day.timeout_count}⏱)`}
+                  />
+                  <div className="text-[10px] text-slate-500">
+                    {new Date(day.date).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </section>
 
