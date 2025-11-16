@@ -1,20 +1,34 @@
-FROM node:18-alpine
+# ===== Build stage =====
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# package.jsonとpackage-lock.jsonをコピー
+# 依存インストール
 COPY package*.json ./
-
-# 依存関係をインストール
 RUN npm ci
 
-# アプリケーションコードをコピー
+# ソースコードコピー
 COPY . .
 
-# ポート3000を公開
-EXPOSE 3000
+# Next.js をビルド
+RUN npm run build
 
-# 開発サーバーを起動（ファイル監視を安定化）
-ENV CHOKIDAR_USEPOLLING=true
-ENV WATCHPACK_POLLING=true
-CMD ["npm", "run", "dev"]
+# ===== Runtime stage =====
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# 実行に必要なファイルだけコピー
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+
+# Cloud Run が使うポート
+EXPOSE 8080
+ENV PORT=8080
+
+# 本番起動コマンド
+CMD ["npm", "run", "start"]
