@@ -4,7 +4,7 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { apiGet, apiPatch, apiPost } from '@/lib/api-utils';
-import type { ApiUser, UserProfile, StudentTeacherLink } from '@/types/quiz';
+import type { ApiUser, UserProfile, StudentTeacherLink, Teacher, TeacherProfile } from '@/types/quiz';
 
 interface ProfileSummary {
   user: ApiUser | null;
@@ -181,9 +181,7 @@ export default function ProfilePage() {
 
       <section className="bg-white shadow rounded-lg p-6 space-y-2">
         <h2 className="text-lg font-semibold text-slate-900">ユーザー情報</h2>
-        <p className="text-slate-600">メールアドレス: {summary.user?.email ?? '---'}</p>
-        <p className="text-slate-600">ユーザーID: {summary.user?.user_id ?? '---'}</p>
-        <p className="text-slate-600">OAuthプロバイダ: {summary.user?.oauth_provider ?? '---'}</p>
+        <p className="text-slate-800 font-semibold text-base">{summary.user?.email ?? '---'}</p>
       </section>
 
       <section className="bg-white shadow rounded-lg p-6 space-y-4">
@@ -198,7 +196,7 @@ export default function ProfilePage() {
               type="text"
               value={formState.displayName}
               onChange={handleChange('displayName')}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+              className="mt-1 w-full rounded-md border border-slate-400 px-3 py-2 text-base text-slate-900 focus:border-indigo-500 focus:ring-indigo-500"
               required
             />
           </div>
@@ -208,7 +206,7 @@ export default function ProfilePage() {
               type="text"
               value={formState.grade}
               onChange={handleChange('grade')}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+              className="mt-1 w-full rounded-md border border-slate-400 px-3 py-2 text-base text-slate-900 focus:border-indigo-500 focus:ring-indigo-500"
               placeholder="例: 中学1年A組"
             />
           </div>
@@ -217,19 +215,9 @@ export default function ProfilePage() {
             <textarea
               value={formState.selfIntro}
               onChange={handleChange('selfIntro')}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+              className="mt-1 w-full rounded-md border border-slate-400 px-3 py-2 text-base text-slate-900 focus:border-indigo-500 focus:ring-indigo-500"
               rows={4}
               placeholder="簡単な自己紹介を入力してください"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">アバターURL</label>
-            <input
-              type="url"
-              value={formState.avatarUrl}
-              onChange={handleChange('avatarUrl')}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-indigo-500"
-              placeholder="https://example.com/avatar.png"
             />
           </div>
           <div className="flex items-center gap-3">
@@ -257,7 +245,7 @@ export default function ProfilePage() {
             type="text"
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value)}
-            className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+            className="flex-1 rounded-md border border-slate-400 px-3 py-2 text-base text-slate-900 focus:border-indigo-500 focus:ring-indigo-500"
             placeholder="招待コードを入力"
           />
           <button
@@ -277,19 +265,7 @@ export default function ProfilePage() {
           ) : (
             <div className="divide-y">
               {summary.teacherLinks.map((link) => (
-                <div key={link.student_teacher_link_id} className="py-2 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">{link.teacher}</p>
-                    <p className="text-xs text-slate-500">状態: {link.status}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRevoke(link.student_teacher_link_id)}
-                    className="text-xs text-red-600 hover:underline"
-                  >
-                    解除
-                  </button>
-                </div>
+                <TeacherLinkRow key={link.student_teacher_link_id} link={link} onRevoke={handleRevoke} />
               ))}
             </div>
           )}
@@ -312,6 +288,44 @@ export default function ProfilePage() {
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+function TeacherLinkRow({ link, onRevoke }: { link: StudentTeacherLink; onRevoke: (id: string) => void }) {
+  const [displayName, setDisplayName] = useState<string>(link.custom_display_name || '');
+
+  useEffect(() => {
+    const loadTeacher = async () => {
+      try {
+        const teacher = (await apiGet(`/api/teachers/${link.teacher}/`)) as Teacher;
+        let profile: TeacherProfile | null = null;
+        try {
+          profile = (await apiGet(`/api/teacher-profiles/${link.teacher}/`)) as TeacherProfile;
+        } catch {
+          profile = null;
+        }
+        setDisplayName(profile?.display_name || teacher.email);
+      } catch {
+        setDisplayName(link.teacher);
+      }
+    };
+    loadTeacher();
+  }, [link.teacher, link.custom_display_name]);
+
+  return (
+    <div className="py-2 flex items-center justify-between">
+      <div>
+        <p className="text-sm font-semibold text-slate-800">{displayName}</p>
+        <p className="text-xs text-slate-500">状態: {link.status}</p>
+      </div>
+      <button
+        type="button"
+        onClick={() => onRevoke(link.student_teacher_link_id)}
+        className="text-xs text-red-600 hover:underline"
+      >
+        解除
+      </button>
     </div>
   );
 }

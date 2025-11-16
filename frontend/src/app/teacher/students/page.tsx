@@ -2,10 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { apiGet } from '@/lib/api-utils';
-import type { StudentTeacherLink } from '@/types/quiz';
+import type { ApiUser, StudentTeacherLink, UserProfile } from '@/types/quiz';
+
+interface StudentRow {
+  link: StudentTeacherLink;
+  user?: ApiUser | null;
+  profile?: UserProfile | null;
+}
 
 export default function TeacherStudentsPage() {
-  const [rows, setRows] = useState<StudentTeacherLink[]>([]);
+  const [rows, setRows] = useState<StudentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,7 +21,27 @@ export default function TeacherStudentsPage() {
         setLoading(true);
         const response = await apiGet('/api/student-teacher-links/?status=active').catch(() => ({ results: [] }));
         const links: StudentTeacherLink[] = Array.isArray(response) ? response : response?.results || [];
-        setRows(links);
+
+        const studentIds = Array.from(new Set(links.map((l) => l.student))).filter(Boolean) as string[];
+        const users = await Promise.all(studentIds.map((id) => apiGet(`/api/users/${id}/`).catch(() => null)));
+        const profiles = await Promise.all(
+          studentIds.map((id) => apiGet(`/api/user-profiles/${id}/`).catch(() => null)),
+        );
+        const userMap = new Map<string, ApiUser>();
+        users.forEach((u: any) => {
+          if (u && 'user_id' in u) userMap.set(u.user_id, u as ApiUser);
+        });
+        const profileMap = new Map<string, UserProfile>();
+        profiles.forEach((p: any) => {
+          if (p && 'user' in p) profileMap.set(p.user, p as UserProfile);
+        });
+
+        const rowsData: StudentRow[] = links.map((link) => ({
+          link,
+          user: userMap.get(link.student),
+          profile: profileMap.get(link.student),
+        }));
+        setRows(rowsData);
       } catch (err) {
         console.error(err);
         setError('生徒一覧の取得に失敗しました');
@@ -52,17 +78,17 @@ export default function TeacherStudentsPage() {
 
       <div className="bg-white shadow rounded-lg divide-y">
         <div className="grid grid-cols-4 gap-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-          <span>リンクID</span>
-          <span>生徒ID</span>
+          <span>氏名/表示名</span>
+          <span>メール</span>
           <span>ステータス</span>
           <span>連携日時</span>
         </div>
-        {rows.map((row) => (
-          <div key={row.student_teacher_link_id} className="grid grid-cols-4 gap-4 px-6 py-3 text-sm text-slate-700">
-            <span>{row.student_teacher_link_id}</span>
-            <span>{row.student}</span>
-            <span>{row.status}</span>
-            <span>{new Date(row.linked_at).toLocaleString()}</span>
+        {rows.map(({ link, user, profile }) => (
+          <div key={link.student_teacher_link_id} className="grid grid-cols-4 gap-4 px-6 py-3 text-sm text-slate-700">
+            <span className="font-semibold">{profile?.display_name || user?.email || '---'}</span>
+            <span className="text-slate-600">{user?.email ?? link.student}</span>
+            <span className="text-slate-600">{link.status}</span>
+            <span className="text-slate-600">{new Date(link.linked_at).toLocaleString()}</span>
           </div>
         ))}
         {rows.length === 0 && (
