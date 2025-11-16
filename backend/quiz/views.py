@@ -551,7 +551,8 @@ class StudentDashboardSummaryView(APIView):
 
         # 日/週/月のチャートデータを構築
         recent_daily = models.LearningSummaryDaily.objects.filter(
-            user=user, activity_date__gte=today - timedelta(days=30)
+            user=user,
+            activity_date__gte=today - timedelta(days=370),  # 最大371日分（今日を含む）
         ).order_by("activity_date")
         daily_chart = [
             {

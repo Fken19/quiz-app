@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -9,8 +9,12 @@ import type {
   FocusQuestionsResponse,
   FocusQuizSessionResponse,
   LearningStatusKey,
+  DashboardDailyChartItem,
   StudentDashboardSummary,
 } from '@/types/quiz';
+
+const MAX_HEATMAP_DAYS = 371; // 53週分（今日含む）
+const VISIBLE_DAYS = 30; // 1画面に収める目安
 
 const statusLabels: Record<LearningStatusKey, string> = {
   unlearned: '未学習',
@@ -58,7 +62,6 @@ export default function DashboardPage() {
   const router = useRouter();
 
   const [summary, setSummary] = useState<StudentDashboardSummary>(initialSummary);
-  const [viewMode, setViewMode] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [focusMessage, setFocusMessage] = useState<string | null>(null);
@@ -66,6 +69,104 @@ export default function DashboardPage() {
   const [focusModal, setFocusModal] = useState<{ statusKey: LearningStatusKey; response: FocusQuestionsResponse } | null>(
     null,
   );
+  const [heatmapColumnSize, setHeatmapColumnSize] = useState(24);
+  const HEATMAP_GAP_PX = 4; // gap-1 相当
+  const heatmapViewportRef = useRef<HTMLDivElement | null>(null);
+  const heatmapScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // 直近 MAX_HEATMAP_DAYS 分のヒートマップデータを埋める（不足分は0で補完）
+  const recentDaily = summary?.recent_daily?.chart ?? [];
+  const heatmapDays = useMemo(() => {
+    const map = new Map<string, DashboardDailyChartItem>();
+    recentDaily.forEach((d) => map.set(d.date, d));
+    const today = new Date();
+    const days: DashboardDailyChartItem[] = [];
+    for (let i = MAX_HEATMAP_DAYS - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const src = map.get(key);
+      days.push(
+        src || {
+          date: key,
+          correct_count: 0,
+          incorrect_count: 0,
+          timeout_count: 0,
+        },
+      );
+    }
+    return days;
+  }, [recentDaily]);
+  const maxHeatTotal = useMemo(
+    () => Math.max(...heatmapDays.map((d) => d.correct_count + d.incorrect_count + d.timeout_count), 1),
+    [heatmapDays],
+  );
+  const heatmapWeeks = useMemo(() => {
+    const chunks: DashboardDailyChartItem[][] = [];
+    for (let i = 0; i < heatmapDays.length; i += 7) {
+      chunks.push(heatmapDays.slice(i, i + 7));
+    }
+    return chunks;
+  }, [heatmapDays]);
+
+  // 左側の曜日ラベル（7行ぶん）
+  const weekdayLabels = useMemo(() => {
+    if (!heatmapWeeks.length || !heatmapWeeks[0].length) return [] as string[];
+    const firstDate = new Date(heatmapWeeks[0][0].date);
+    const firstDow = firstDate.getDay(); // 0:日〜6:土
+    const names = ['日', '月', '火', '水', '木', '金', '土'];
+    const labels: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      labels.push(names[(firstDow + i) % 7]);
+    }
+    return labels;
+  }, [heatmapWeeks]);
+
+  // 上側の月ラベル（週ごとに表示。同じ月が続く場合は省略）
+  const monthLabels = useMemo(() => {
+    return heatmapWeeks.map((week) => {
+      if (!week.length) return '';
+      const d = new Date(week[0].date);
+      return `${d.getMonth() + 1}月`;
+    });
+  }, [heatmapWeeks]);
+
+  // 最新が見えるようにスクロール位置を右端に
+  useEffect(() => {
+    const scroller = heatmapScrollRef.current;
+    if (!scroller) return;
+    if (scroller.scrollWidth <= scroller.clientWidth) return;
+
+    requestAnimationFrame(() => {
+      const el = heatmapScrollRef.current;
+      if (!el) return;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      el.scrollLeft = maxScroll > 0 ? maxScroll : 0;
+    });
+  }, [heatmapWeeks, recentDaily.length, heatmapColumnSize]);
+
+  // 一画面で30日前後が見えるようにサイズを調整しつつ、横スクロールにも対応
+  useEffect(() => {
+    const container = heatmapViewportRef.current;
+    if (!container) return;
+
+    const MIN_VISIBLE_WEEKS = Math.ceil(VISIBLE_DAYS / 7); // 約30日分=5週間
+    const MIN_COL_SIZE = 14;
+    const MAX_COL_SIZE = 140;
+
+    const updateSize = () => {
+      const width = container.clientWidth || 0;
+      if (!width) return;
+      const desired = width / MIN_VISIBLE_WEEKS - HEATMAP_GAP_PX;
+      const next = Math.min(Math.max(desired, MIN_COL_SIZE), MAX_COL_SIZE);
+      setHeatmapColumnSize(next);
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -90,19 +191,6 @@ export default function DashboardPage() {
 
     fetchSummary();
   }, [status, data, router]);
-
-  const dayChart = useMemo(() => summary.recent_daily.chart, [summary]);
-  const maxDailyTotal = useMemo(() => summary.recent_daily.max_total || 1, [summary]);
-  const weeklyChart = useMemo(() => summary.weekly_chart?.chart || [], [summary]);
-  const maxWeeklyTotal = useMemo(() => summary.weekly_chart?.max_total || 1, [summary]);
-  const monthlyChart = useMemo(() => summary.monthly_chart?.chart || [], [summary]);
-  const maxMonthlyTotal = useMemo(() => summary.monthly_chart?.max_total || 1, [summary]);
-
-  const heatColor = (total: number) => {
-    const intensity = Math.min(1, total / (maxDailyTotal || 1));
-    const base = 240 - Math.floor(intensity * 140); // slate→indigo寄り
-    return `rgb(${base}, ${base + 10}, ${240})`;
-  };
 
   const requestFocusQuestions = async (statusKey: LearningStatusKey, opts?: { supplement?: boolean }) => {
     const query = `/api/focus-questions/?status=${statusKey}&limit=10${
@@ -282,87 +370,97 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="bg-white shadow rounded-lg p-6 space-y-6">
+      <section className="bg-white shadow rounded-lg p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">学習量の推移</h2>
-            <p className="text-sm text-slate-500">棒グラフ内の色分けで正解/不正/Timeoutを確認できます。</p>
+            <h2 className="text-lg font-semibold text-slate-900">直近の学習ヒートマップ（最大371日分）</h2>
+            <p className="text-sm text-slate-500">画面には約30日分を表示し、それより古い分は横スクロールで確認できます。</p>
           </div>
-          <div className="flex items-center gap-2">
-            {(['daily', 'weekly', 'monthly'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setViewMode(mode)}
-                className={`px-3 py-1 rounded-md text-sm font-semibold ${
-                  viewMode === mode ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'
-                }`}
-              >
-                {mode === 'daily' ? '日別' : mode === 'weekly' ? '週別' : '月別'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="grid grid-cols-7 gap-3">
-            {(viewMode === 'daily' ? dayChart : viewMode === 'weekly' ? weeklyChart : monthlyChart).map((item) => {
-              const total = item.correct_count + item.incorrect_count + item.timeout_count;
-              const maxTotal =
-                viewMode === 'daily'
-                  ? maxDailyTotal
-                  : viewMode === 'weekly'
-                    ? maxWeeklyTotal
-                    : maxMonthlyTotal || 1;
-              const scale = Math.max(total / (maxTotal || 1), 0.05);
-              const label =
-                'date' in item
-                  ? new Date(item.date).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })
-                  : item.label;
-              return (
-                <div key={('date' in item ? item.date : item.period) + viewMode} className="flex flex-col items-center gap-2">
-                  <div className="h-36 w-8 bg-slate-100 rounded-lg flex flex-col justify-end overflow-hidden">
-                    <div className="flex flex-col justify-end" style={{ height: `${scale * 100}%` }}>
-                      <div
-                        className="bg-green-400"
-                        style={{ height: total ? `${(item.correct_count / total) * 100}%` : '0%' }}
-                      />
-                      <div
-                        className="bg-red-300"
-                        style={{ height: total ? `${(item.incorrect_count / total) * 100}%` : '0%' }}
-                      />
-                      <div
-                        className="bg-yellow-300"
-                        style={{ height: total ? `${(item.timeout_count / total) * 100}%` : '0%' }}
-                      />
-                    </div>
-                  </div>
-                  <div className="text-xs text-slate-500 text-center">{label}</div>
-                </div>
-              );
-            })}
-          </div>
-
-          {viewMode === 'daily' && (
-            <div className="grid grid-cols-7 gap-2">
-              {dayChart.map((day) => {
-                const dayTotal = day.correct_count + day.incorrect_count + day.timeout_count;
-                return (
-                  <div key={`heat-${day.date}`} className="flex flex-col items-center gap-1">
-                    <div
-                      className="w-10 h-10 rounded-md border border-slate-200"
-                      style={{ backgroundColor: heatColor(dayTotal) }}
-                      title={`${dayTotal}問 (${day.correct_count}◯/${day.incorrect_count}×/${day.timeout_count}⏱)`}
-                    />
-                    <div className="text-[10px] text-slate-500">
-                      {new Date(day.date).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="flex items-center gap-2 text-[10px] text-slate-500">
+            <span>少ない</span>
+            <div className="flex gap-[3px]">
+              {[0.25, 0.5, 0.75, 1].map((v) => (
+                <span
+                  key={v}
+                  className="w-3 h-3 rounded-[3px]"
+                  style={{ backgroundColor: `rgba(34,197,94,${v})` }}
+                />
+              ))}
             </div>
-          )}
+            <span>多い</span>
+          </div>
         </div>
+
+        {heatmapWeeks.length === 0 ? (
+          <p className="text-xs text-slate-500">まだ学習データがありません。</p>
+        ) : (
+          <div ref={heatmapViewportRef} className="w-full">
+            <div className="flex">
+              {/* 曜日ラベル */}
+              <div className="mr-2 flex flex-col gap-1 text-[10px] text-slate-400 flex-none">
+                {weekdayLabels.map((label, rowIdx) => (
+                  <div
+                    key={rowIdx}
+                    style={{ height: heatmapColumnSize }}
+                    className="flex items-center"
+                  >
+                    {rowIdx % 2 === 0 ? label : ''}
+                  </div>
+                ))}
+              </div>
+
+              {/* ヒートマップ本体 + 月ラベル（横スクロール） */}
+              <div ref={heatmapScrollRef} className="overflow-x-auto flex-1 min-w-0">
+                <div
+                  style={{
+                    width: `${heatmapWeeks.length * (heatmapColumnSize + HEATMAP_GAP_PX)}px`,
+                  }}
+                >
+                  {/* 月ラベル */}
+                  <div className="flex gap-1 mb-1 text-[10px] text-slate-400">
+                    {monthLabels.map((label, wIdx) => {
+                      const show = wIdx === 0 || label !== monthLabels[wIdx - 1];
+                      return (
+                        <div
+                          key={wIdx}
+                          style={{ width: heatmapColumnSize }}
+                          className="truncate"
+                        >
+                          {show ? label : ''}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* 本体 */}
+                  <div className="flex gap-1">
+                    {heatmapWeeks.map((week, wIdx) => (
+                      <div key={wIdx} className="flex flex-col gap-1" style={{ width: heatmapColumnSize }}>
+                        {week.map((day) => {
+                          const total = day.correct_count + day.incorrect_count + day.timeout_count;
+                          const ratio = maxHeatTotal ? total / maxHeatTotal : 0;
+                          const bg = total === 0 ? '#e5e7eb' : `rgba(34,197,94,${0.25 + 0.75 * ratio})`;
+                          return (
+                            <div
+                              key={day.date}
+                              className="rounded-[4px] border border-slate-200"
+                              title={`${new Date(day.date).toLocaleDateString('ja-JP')} : ${total}問`}
+                              style={{
+                                backgroundColor: bg,
+                                width: heatmapColumnSize,
+                                height: heatmapColumnSize,
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       {focusModal && (
