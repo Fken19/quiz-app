@@ -167,7 +167,13 @@ export default function TeacherInvitesPage() {
                   {qrFor === invite.invitation_code_id ? '閉じる' : 'QR表示'}
                 </button>
                 {qrFor === invite.invitation_code_id && (
-                  <img src={qrUrl(invite.invitation_code)} alt="QR" className="w-16 h-16 border rounded" />
+                  <button
+                    type="button"
+                    onClick={() => setQrFor(null)}
+                    className="text-xs text-slate-500 hover:text-slate-700"
+                  >
+                    オーバーレイ表示中
+                  </button>
                 )}
               </div>
               <span>{invite.expires_at ? new Date(invite.expires_at).toLocaleString() : '期限なし'}</span>
@@ -190,6 +196,18 @@ export default function TeacherInvitesPage() {
           <div className="px-6 py-6 text-sm text-slate-500">招待コードが登録されていません。</div>
         )}
       </div>
+
+      {qrFor && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4"
+          onClick={() => setQrFor(null)}
+        >
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full text-center space-y-4">
+            <img src={qrUrl(invites.find((i) => i.invitation_code_id === qrFor)?.invitation_code || '')} alt="QR" className="mx-auto w-64 h-64 border rounded" />
+            <p className="text-sm text-slate-600">タップで閉じる</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

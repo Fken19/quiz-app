@@ -4,6 +4,7 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { apiGet, apiPatch, apiPost } from '@/lib/api-utils';
+import { BrowserQRCodeReader } from '@zxing/browser';
 import type { ApiUser, UserProfile, StudentTeacherLink } from '@/types/quiz';
 
 interface ProfileSummary {
@@ -33,6 +34,8 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -193,6 +196,35 @@ export default function ProfilePage() {
     }
   };
 
+  const handleScanFile = async (file: File) => {
+    setScanMessage(null);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        try {
+          const dataUrl = ev.target?.result as string;
+          const codeReader = new BrowserQRCodeReader();
+          const result = await codeReader.decodeFromImage(undefined as any, dataUrl);
+          if (result?.getText()) {
+            setInviteCode(result.getText());
+            setScanMessage('QRからコードを取得しました。内容を確認して登録してください。');
+          } else {
+            setScanMessage('QRコードが読み取れませんでした。');
+          }
+        } catch (e) {
+          console.error(e);
+          setScanMessage('QRコードの解析に失敗しました。');
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      setScanMessage('QRコードの読み取りに失敗しました。');
+    }
+  };
+
+  const hiddenFileInputId = 'qr-file-input';
+
   const handleRevoke = async (linkId: string) => {
     try {
       await apiPost(`/api/student-teacher-links/${linkId}/revoke/`, {});
@@ -300,7 +332,41 @@ export default function ProfilePage() {
             登録
           </button>
         </div>
+        <div className="flex flex-wrap gap-2">
+          <label
+            htmlFor={hiddenFileInputId}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 cursor-pointer"
+          >
+            カメラ/画像から読み取る
+            <input
+              id={hiddenFileInputId}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleScanFile(file);
+              }}
+            />
+          </label>
+          <label
+            className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 cursor-pointer"
+          >
+            画像から読み取る
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleScanFile(file);
+              }}
+            />
+          </label>
+        </div>
         {linkMessage && <p className="text-sm text-slate-600">{linkMessage}</p>}
+        {scanMessage && <p className="text-sm text-slate-600">{scanMessage}</p>}
 
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-slate-700">紐付け状況</h3>
