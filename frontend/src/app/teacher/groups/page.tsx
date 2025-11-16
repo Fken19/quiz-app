@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api-utils';
 
 type RosterFolder = {
@@ -402,13 +403,21 @@ export default function TeacherGroupsPage() {
                         </div>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      className="px-3 py-1 rounded border border-slate-300 text-slate-700 text-xs hover:bg-slate-50"
-                      onClick={() => removeMember(m.roster_membership_id)}
-                    >
-                      解除
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/teacher/students/${m.student_teacher_link_id}/progress?from=group&group=${selectedFolder.roster_folder_id}`}
+                        className="px-3 py-1 rounded border border-slate-300 text-slate-700 text-xs hover:bg-slate-50"
+                      >
+                        学習状況
+                      </Link>
+                      <button
+                        type="button"
+                        className="px-3 py-1 rounded border border-slate-300 text-slate-700 text-xs hover:bg-slate-50"
+                        onClick={() => removeMember(m.roster_membership_id)}
+                      >
+                        解除
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {members.length === 0 && (

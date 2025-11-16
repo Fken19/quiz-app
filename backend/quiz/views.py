@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import models, serializers
+from .utils import parse_date_param
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -571,6 +572,101 @@ class RosterMembershipViewSet(BaseModelViewSet):
             membership.save(update_fields=["removed_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+
+class TeacherStudentProgressView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_teacher(self, request):
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            teacher = models.Teacher.objects.filter(email__iexact=request.user.email).first()
+        if teacher is None:
+            raise PermissionDenied("講師アカウントが見つかりません。")
+        return teacher
+
+    def get(self, request, link_id: uuid.UUID):
+        teacher = self._get_teacher(request)
+        try:
+            link = (
+                models.StudentTeacherLink.objects.select_related("student__profile")
+                .get(id=link_id, teacher=teacher)
+            )
+        except models.StudentTeacherLink.DoesNotExist:
+            raise PermissionDenied("対象の生徒リンクが見つからないか、権限がありません。")
+        if link.status == models.LinkStatus.REVOKED:
+            raise PermissionDenied("解除済みの生徒リンクです。")
+
+        student = link.student
+        profile = getattr(student, "profile", None)
+        today = timezone.localdate()
+        from_param = request.query_params.get("from")
+        to_param = request.query_params.get("to")
+        date_from = parse_date_param(from_param) or (today - timedelta(days=30))
+        date_to = parse_date_param(to_param) or today
+
+        daily_qs = models.LearningSummaryDaily.objects.filter(
+            user=student,
+            activity_date__range=(date_from, date_to),
+        )
+        aggregates = daily_qs.aggregate(
+            correct=Sum("correct_count"),
+            incorrect=Sum("incorrect_count"),
+            timeout=Sum("timeout_count"),
+            time_ms=Sum("total_time_ms"),
+        )
+        daily_chart = [
+            {
+                "date": entry.activity_date.isoformat(),
+                "correct_count": entry.correct_count,
+                "incorrect_count": entry.incorrect_count,
+                "timeout_count": entry.timeout_count,
+                "total_time_ms": entry.total_time_ms,
+            }
+            for entry in daily_qs.order_by("activity_date")
+        ]
+        total_answers = (aggregates["correct"] or 0) + (aggregates["incorrect"] or 0) + (aggregates["timeout"] or 0)
+        accuracy = (aggregates["correct"] or 0) / total_answers * 100 if total_answers else 0.0
+        avg_time = (aggregates["time_ms"] or 0) / total_answers / 1000 if total_answers else 0.0
+
+        last_activity = (
+            models.QuizResult.objects.filter(user=student, completed_at__isnull=False)
+            .order_by("-completed_at")
+            .values_list("completed_at", flat=True)
+            .first()
+        )
+
+        # 所属グループ（講師所有のみ）
+        groups = list(
+            models.RosterMembership.objects.select_related("roster_folder")
+            .filter(
+                roster_folder__owner_teacher=teacher,
+                student=student,
+                removed_at__isnull=True,
+            )
+            .values("roster_folder_id", "roster_folder__name")
+        )
+
+        summary = {
+            "student_teacher_link_id": str(link.id),
+            "display_name": link.custom_display_name or (profile.display_name if profile else ""),
+            "status": link.status,
+            "avatar_url": profile.avatar_url if profile else "",
+            "bio": getattr(profile, "self_intro", "") if profile else "",
+            "last_activity": last_activity.isoformat() if last_activity else None,
+            "groups": [{"roster_folder_id": str(g["roster_folder_id"]), "name": g["roster_folder__name"]} for g in groups],
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "totals": {
+                "answer_count": total_answers,
+                "correct_count": aggregates["correct"] or 0,
+                "incorrect_count": aggregates["incorrect"] or 0,
+                "timeout_count": aggregates["timeout"] or 0,
+                "accuracy": accuracy,
+                "avg_seconds": avg_time,
+            },
+            "daily_chart": daily_chart,
+        }
+        return Response(summary)
 
 
 class VocabularyViewSet(BaseModelViewSet):

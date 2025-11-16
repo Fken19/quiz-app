@@ -225,6 +225,12 @@ export default function TeacherStudentsPage() {
                     {row.linked_at ? new Date(row.linked_at).toLocaleString() : '-'}
                   </span>
                   <div className="flex items-center gap-2 justify-end">
+                    <Link
+                      href={`/teacher/students/${row.student_teacher_link_id}/progress?from=list`}
+                      className="px-2 py-1 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                    >
+                      学習状況
+                    </Link>
                     <button
                       type="button"
                       onClick={() => {

@@ -38,6 +38,11 @@ urlpatterns = [
     path("avatar-upload/", views.AvatarUploadView.as_view(), name="avatar-upload"),
     path("student/dashboard-summary/", views.StudentDashboardSummaryView.as_view(), name="student-dashboard-summary"),
     path(
+        "teacher/students/<uuid:link_id>/progress/",
+        views.TeacherStudentProgressView.as_view(),
+        name="teacher-student-progress",
+    ),
+    path(
         "teacher/students/",
         views.StudentTeacherLinkViewSet.as_view({"get": "list_by_teacher", "patch": "list_by_teacher"}),
         name="teacher-students",
