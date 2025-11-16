@@ -172,7 +172,11 @@ REST_FRAMEWORK = {
 
 # CORS settings
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000', cast=lambda v: [s.strip() for s in v.split(',')])
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default='http://localhost:3000,https://quiz-frontend-974259457412.asia-northeast1.run.app',
+    cast=lambda v: [s.strip() for s in v.split(',')],
+)
 # 明示的にヘッダ/メソッドを許可（プリフライトの相性問題回避）
 CORS_ALLOW_HEADERS = [
     'authorization',
@@ -189,7 +193,11 @@ CORS_ALLOW_METHODS = [
 ]
 
 # CSRF settings
-CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='http://localhost:3000', cast=lambda v: [s.strip() for s in v.split(',')])
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='http://localhost:3000,https://quiz-frontend-974259457412.asia-northeast1.run.app',
+    cast=lambda v: [s.strip() for s in v.split(',')],
+)
 CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
