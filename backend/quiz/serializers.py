@@ -213,6 +213,8 @@ class RosterMembershipSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
+    local_student_code = serializers.SerializerMethodField()
 
     class Meta:
         model = models.RosterMembership
@@ -225,11 +227,22 @@ class RosterMembershipSerializer(serializers.ModelSerializer):
             "display_name",
             "status",
             "avatar_url",
+            "tags",
+            "local_student_code",
             "added_at",
             "removed_at",
             "note",
         ]
-        read_only_fields = ["added_at", "roster_folder_id", "student_teacher_link_id", "display_name", "status", "avatar_url"]
+        read_only_fields = [
+            "added_at",
+            "roster_folder_id",
+            "student_teacher_link_id",
+            "display_name",
+            "status",
+            "avatar_url",
+            "tags",
+            "local_student_code",
+        ]
 
     def _get_teacher_link(self, obj: models.RosterMembership):
         teacher = self.context.get("teacher")
@@ -264,6 +277,14 @@ class RosterMembershipSerializer(serializers.ModelSerializer):
     def get_status(self, obj):
         link = self._get_teacher_link(obj)
         return link.status if link else ""
+
+    def get_tags(self, obj):
+        link = self._get_teacher_link(obj)
+        return link.tags if link and link.tags is not None else []
+
+    def get_local_student_code(self, obj):
+        link = self._get_teacher_link(obj)
+        return link.local_student_code if link else None
 
 
 class VocabularySerializer(serializers.ModelSerializer):
