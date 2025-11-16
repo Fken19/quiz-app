@@ -66,6 +66,8 @@ export interface InvitationCode {
 export interface StudentTeacherLink {
   student_teacher_link_id: string;
   teacher: string;
+  teacher_email?: string;
+  teacher_display_name?: string;
   student: string;
   status: 'pending' | 'active' | 'revoked';
   linked_at: string;

@@ -113,12 +113,16 @@ class InvitationCodeSerializer(serializers.ModelSerializer):
 
 class StudentTeacherLinkSerializer(serializers.ModelSerializer):
     student_teacher_link_id = serializers.UUIDField(source="id", read_only=True)
+    teacher_email = serializers.EmailField(source="teacher.email", read_only=True)
+    teacher_display_name = serializers.SerializerMethodField()
 
     class Meta:
         model = models.StudentTeacherLink
         fields = [
             "student_teacher_link_id",
             "teacher",
+            "teacher_email",
+            "teacher_display_name",
             "student",
             "status",
             "linked_at",
@@ -135,6 +139,12 @@ class StudentTeacherLinkSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["linked_at", "updated_at"]
+
+    def get_teacher_display_name(self, obj):
+        profile = getattr(obj.teacher, "profile", None)
+        if profile and profile.display_name:
+            return profile.display_name
+        return obj.teacher.email
 
 
 class RosterFolderSerializer(serializers.ModelSerializer):

@@ -4,7 +4,7 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { apiGet, apiPatch, apiPost } from '@/lib/api-utils';
-import type { ApiUser, UserProfile, StudentTeacherLink, Teacher, TeacherProfile } from '@/types/quiz';
+import type { ApiUser, UserProfile, StudentTeacherLink } from '@/types/quiz';
 
 interface ProfileSummary {
   user: ApiUser | null;
@@ -293,25 +293,7 @@ export default function ProfilePage() {
 }
 
 function TeacherLinkRow({ link, onRevoke }: { link: StudentTeacherLink; onRevoke: (id: string) => void }) {
-  const [displayName, setDisplayName] = useState<string>(link.custom_display_name || '');
-
-  useEffect(() => {
-    const loadTeacher = async () => {
-      try {
-        const teacher = (await apiGet(`/api/teachers/${link.teacher}/`)) as Teacher;
-        let profile: TeacherProfile | null = null;
-        try {
-          profile = (await apiGet(`/api/teacher-profiles/${link.teacher}/`)) as TeacherProfile;
-        } catch {
-          profile = null;
-        }
-        setDisplayName(profile?.display_name || teacher.email);
-      } catch {
-        setDisplayName(link.teacher);
-      }
-    };
-    loadTeacher();
-  }, [link.teacher, link.custom_display_name]);
+  const displayName = link.teacher_display_name || link.custom_display_name || link.teacher_email || link.teacher;
 
   return (
     <div className="py-2 flex items-center justify-between">
