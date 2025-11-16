@@ -123,7 +123,9 @@ export default function TeacherInvitesPage() {
           .map((invite) => {
           const isExpired = invite.expires_at ? new Date(invite.expires_at) < new Date() : false;
           const isUsed = Boolean(invite.used_at);
-          const disabled = isExpired || isUsed;
+          const isRevoked = Boolean(invite.revoked);
+          const disabled = isExpired || isUsed || isRevoked;
+          const statusText = isRevoked ? '無効(失効)' : isUsed ? '無効(使用済)' : isExpired ? '無効(期限切れ)' : '有効';
           return (
             <div
               key={invite.invitation_code_id}
@@ -145,11 +147,14 @@ export default function TeacherInvitesPage() {
                   📋
                 </button>
                 {copiedId === invite.invitation_code_id && <span className="text-xs text-slate-500">コピーしました</span>}
-                {isUsed && <span className="text-xs px-2 py-0.5 rounded bg-slate-200">使用済</span>}
-                {isExpired && !isUsed && <span className="text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-700">期限切れ</span>}
+                {isRevoked && <span className="text-xs px-2 py-0.5 rounded bg-slate-200">失効</span>}
+                {!isRevoked && isUsed && <span className="text-xs px-2 py-0.5 rounded bg-slate-200">使用済</span>}
+                {!isRevoked && !isUsed && isExpired && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-700">期限切れ</span>
+                )}
               </div>
               <span>{invite.expires_at ? new Date(invite.expires_at).toLocaleString() : '期限なし'}</span>
-              <span>{invite.used_at ? `使用: ${new Date(invite.used_at).toLocaleDateString()}` : '未使用'}</span>
+              <span>{statusText}</span>
               <span>{invite.issued_at ? new Date(invite.issued_at).toLocaleString() : '---'}</span>
               <div className="flex items-center gap-2">
                 <button
