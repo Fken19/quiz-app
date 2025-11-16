@@ -10,7 +10,7 @@ from typing import Any
 from django.conf import settings
 from django.core.cache import caches
 from django.core.files.storage import default_storage
-from django.db.models import Count, Max, Q, Sum
+from django.db.models import Count, Max, Prefetch, Q, Sum
 from django.db.models.functions import TruncMonth, TruncWeek
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -356,9 +356,7 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
             if not link_id:
                 return Response({"detail": "student_teacher_link_id は必須です。"}, status=status.HTTP_400_BAD_REQUEST)
             try:
-                link = models.StudentTeacherLink.objects.select_related("student__userprofile").get(
-                    pk=link_id, teacher=teacher
-                )
+                link = models.StudentTeacherLink.objects.select_related("student__profile").get(pk=link_id, teacher=teacher)
             except models.StudentTeacherLink.DoesNotExist:
                 raise PermissionDenied("対象が見つからないか、権限がありません。")
 
@@ -380,16 +378,161 @@ class RosterFolderViewSet(BaseModelViewSet):
     serializer_class = serializers.RosterFolderSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def _get_teacher(self, request):
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            teacher = models.Teacher.objects.filter(email__iexact=request.user.email).first()
+        if teacher is None:
+            raise PermissionDenied("講師アカウントが見つかりません。")
+        return teacher
+
     def get_queryset(self):  # type: ignore[override]
-        return models.RosterFolder.objects.select_related("owner_teacher", "parent_folder").order_by("name")
+        teacher = self._get_teacher(self.request)
+        qs = (
+            models.RosterFolder.objects.select_related("owner_teacher", "parent_folder")
+            .filter(owner_teacher=teacher)
+            .order_by("name")
+        )
+        include_archived = str(self.request.query_params.get("include_archived", "false")).lower() in {"1", "true"}
+        if not include_archived:
+            qs = qs.filter(archived_at__isnull=True)
+        return qs
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        teacher = self._get_teacher(self.request)
+        serializer.save(owner_teacher=teacher)
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        teacher = self._get_teacher(self.request)
+        if serializer.instance.owner_teacher_id != teacher.id:
+            raise PermissionDenied("他の講師のグループは更新できません。")
+        serializer.save(owner_teacher=teacher)
+
+    def perform_destroy(self, instance):  # type: ignore[override]
+        teacher = self._get_teacher(self.request)
+        if instance.owner_teacher_id != teacher.id:
+            raise PermissionDenied("他の講師のグループは削除できません。")
+        instance.delete()
 
 
 class RosterMembershipViewSet(BaseModelViewSet):
     serializer_class = serializers.RosterMembershipSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_serializer_context(self):  # type: ignore[override]
+        ctx = super().get_serializer_context()
+        teacher = getattr(self.request, "teacher", None)
+        if teacher is None:
+            teacher = models.Teacher.objects.filter(email__iexact=self.request.user.email).first()
+        ctx["teacher"] = teacher
+        return ctx
+
+    def _get_teacher(self, request):
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            teacher = models.Teacher.objects.filter(email__iexact=request.user.email).first()
+        if teacher is None:
+            raise PermissionDenied("講師アカウントが見つかりません。")
+        return teacher
+
     def get_queryset(self):  # type: ignore[override]
-        return models.RosterMembership.objects.select_related("roster_folder", "student").order_by("-added_at")
+        teacher = self._get_teacher(self.request)
+        qs = (
+            models.RosterMembership.objects.select_related("roster_folder", "student__profile")
+            .prefetch_related(
+                Prefetch(
+                    "student__student_teacher_links",
+                    queryset=models.StudentTeacherLink.objects.filter(teacher=teacher),
+                    to_attr="teacher_links",
+                )
+            )
+            .filter(roster_folder__owner_teacher=teacher)
+            .order_by("-added_at")
+        )
+        roster_folder_id = self.request.query_params.get("roster_folder") or self.request.query_params.get(
+            "roster_folder_id"
+        )
+        include_removed = str(self.request.query_params.get("include_removed", "false")).lower() in {"1", "true"}
+        if roster_folder_id:
+            qs = qs.filter(roster_folder_id=roster_folder_id)
+        if not include_removed:
+            qs = qs.filter(removed_at__isnull=True)
+        return qs
+
+    def create(self, request, *args, **kwargs):  # type: ignore[override]
+        teacher = self._get_teacher(request)
+        folder_id = request.data.get("roster_folder_id") or request.data.get("roster_folder")
+        student_link_id = request.data.get("student_teacher_link_id")
+        note = request.data.get("note")
+        if not folder_id or not student_link_id:
+            return Response({"detail": "roster_folder_id と student_teacher_link_id は必須です。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            folder = models.RosterFolder.objects.get(id=folder_id, owner_teacher=teacher)
+        except models.RosterFolder.DoesNotExist:
+            raise PermissionDenied("フォルダが見つからないか、権限がありません。")
+
+        try:
+            link = (
+                models.StudentTeacherLink.objects.select_related("student", "student__profile")
+                .get(id=student_link_id, teacher=teacher)
+            )
+        except models.StudentTeacherLink.DoesNotExist:
+            raise PermissionDenied("生徒リンクが見つからないか、権限がありません。")
+
+        if link.status == models.LinkStatus.REVOKED:
+            return Response({"detail": "解除済みの生徒は追加できません。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        active = models.RosterMembership.objects.filter(
+            roster_folder=folder, student=link.student, removed_at__isnull=True
+        ).select_related("student__profile", "roster_folder")
+        if active.exists():
+            membership = active.first()
+            serializer = self.get_serializer(membership)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        membership = (
+            models.RosterMembership.objects.filter(roster_folder=folder, student=link.student)
+            .select_related("student__profile", "roster_folder")
+            .order_by("-added_at")
+            .first()
+        )
+        if membership and membership.removed_at:
+            membership.removed_at = None
+            membership.note = note
+            membership.added_at = timezone.now()
+            membership.save(update_fields=["removed_at", "note", "added_at"])
+        else:
+            membership = models.RosterMembership.objects.create(
+                roster_folder=folder,
+                student=link.student,
+                note=note,
+            )
+        serializer = self.get_serializer(membership)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):  # type: ignore[override]
+        teacher = self._get_teacher(request)
+        membership: models.RosterMembership = self.get_object()
+        if membership.roster_folder.owner_teacher_id != teacher.id:
+            raise PermissionDenied("他の講師のグループは更新できません。")
+        note = request.data.get("note")
+        if note is not None:
+            membership.note = note
+            membership.save(update_fields=["note"])
+        serializer = self.get_serializer(membership)
+        return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):  # type: ignore[override]
+        teacher = self._get_teacher(request)
+        membership: models.RosterMembership = self.get_object()
+        if membership.roster_folder.owner_teacher_id != teacher.id:
+            raise PermissionDenied("他の講師のグループは削除できません。")
+        if membership.removed_at is None:
+            membership.removed_at = timezone.now()
+            membership.save(update_fields=["removed_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 
 class VocabularyViewSet(BaseModelViewSet):
