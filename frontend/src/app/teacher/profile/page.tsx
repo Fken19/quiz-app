@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { apiGet, apiPost, apiPatch } from '@/lib/api-utils';
 import type { TeacherProfile, ApiUser, Teacher } from '@/types/quiz';
 import { UserCircleIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 
 export default function TeacherProfilePage() {
+  const { data: session } = useSession();
   const [profile, setProfile] = useState<TeacherProfile | null>(null);
   const [user, setUser] = useState<ApiUser | null>(null);
   const [teacher, setTeacher] = useState<Teacher | null>(null);
@@ -46,14 +48,31 @@ export default function TeacherProfilePage() {
         setAvatarPreview(teacherProfile.avatar_url || null);
       } catch (err: any) {
         // Profile doesn't exist yet
-        setProfile(null);
-        setFormData({
-          display_name: '',
+        const defaults = {
+          display_name: session?.user?.name || '',
           affiliation: '',
           bio: '',
-        });
-        if (err?.status && err.status !== 404) {
-          throw err;
+          avatar_url: session?.user?.image || '',
+        };
+        try {
+          const created = (await apiPost('/api/teacher-profiles/', defaults)) as TeacherProfile;
+          setProfile(created);
+          setFormData({
+            display_name: created.display_name || '',
+            affiliation: created.affiliation || '',
+            bio: created.bio || '',
+          });
+          setAvatarPreview(created.avatar_url || null);
+        } catch (e: any) {
+          setProfile(null);
+          setFormData({
+            display_name: defaults.display_name,
+            affiliation: '',
+            bio: '',
+          });
+          if (err?.status && err.status !== 404) {
+            throw err;
+          }
         }
       }
     } catch (err) {

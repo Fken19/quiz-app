@@ -59,6 +59,17 @@ export default function ProfilePage() {
           ? linksResponse
           : linksResponse?.results || [];
 
+        // プロフィールが無い場合は Google 情報で自動作成
+        if (!profile) {
+          const defaultPayload = {
+            display_name: session?.user?.name || user.email,
+            avatar_url: session?.user?.image || '',
+            grade: null,
+            self_intro: null,
+          };
+          profile = (await apiPost('/api/user-profiles/', defaultPayload)) as UserProfile;
+        }
+
         setSummary({ user, profile, teacherLinks: links });
         setFormState({
           displayName: profile?.display_name || session?.user?.name || user.email,
