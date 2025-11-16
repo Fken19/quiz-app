@@ -24,7 +24,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import models, serializers
-from .utils import parse_date_param
+from .utils import is_teacher_whitelisted, parse_date_param
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -667,6 +667,277 @@ class TeacherStudentProgressView(APIView):
             "daily_chart": daily_chart,
         }
         return Response(summary)
+
+
+class TeacherStudentProgressViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_teacher(self, request):
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            teacher = models.Teacher.objects.filter(email__iexact=request.user.email).first()
+        if teacher is None:
+            raise PermissionDenied("講師アカウントが見つかりません。")
+        return teacher
+
+    def _get_link(self, request, link_id: uuid.UUID) -> models.StudentTeacherLink:
+        teacher = self._get_teacher(request)
+        try:
+            link = (
+                models.StudentTeacherLink.objects.select_related("student__profile")
+                .get(id=link_id, teacher=teacher, status__in=[models.LinkStatus.ACTIVE, models.LinkStatus.PENDING])
+            )
+        except models.StudentTeacherLink.DoesNotExist:
+            raise PermissionDenied("対象の生徒リンクが見つからないか、権限がありません。")
+        return link
+
+    def _date_range(self, request):
+        today = timezone.localdate()
+        from_param = request.query_params.get("from")
+        to_param = request.query_params.get("to")
+        date_from = parse_date_param(from_param) or (today - timedelta(days=30))
+        date_to = parse_date_param(to_param) or today
+        return date_from, date_to
+
+    @action(detail=True, methods=["get"], url_path="summary")
+    def summary(self, request, pk=None):
+        link = self._get_link(request, pk)
+        student = link.student
+        profile = getattr(student, "profile", None)
+        date_from, date_to = self._date_range(request)
+
+        daily_qs = models.LearningSummaryDaily.objects.filter(
+            user=student,
+            activity_date__range=(date_from, date_to),
+        )
+        aggregates = daily_qs.aggregate(
+            correct=Sum("correct_count"),
+            incorrect=Sum("incorrect_count"),
+            timeout=Sum("timeout_count"),
+            time_ms=Sum("total_time_ms"),
+        )
+        daily_chart = [
+            {
+                "date": entry.activity_date.isoformat(),
+                "correct_count": entry.correct_count,
+                "incorrect_count": entry.incorrect_count,
+                "timeout_count": entry.timeout_count,
+                "total_time_ms": entry.total_time_ms,
+            }
+            for entry in daily_qs.order_by("activity_date")
+        ]
+        total_answers = (aggregates["correct"] or 0) + (aggregates["incorrect"] or 0) + (aggregates["timeout"] or 0)
+        accuracy = (aggregates["correct"] or 0) / total_answers * 100 if total_answers else 0.0
+        avg_time = (aggregates["time_ms"] or 0) / total_answers / 1000 if total_answers else 0.0
+
+        last_activity = (
+            models.QuizResult.objects.filter(user=student, completed_at__isnull=False)
+            .order_by("-completed_at")
+            .values_list("completed_at", flat=True)
+            .first()
+        )
+
+        groups = list(
+            models.RosterMembership.objects.select_related("roster_folder")
+            .filter(
+                roster_folder__owner_teacher=link.teacher,
+                student=student,
+                removed_at__isnull=True,
+            )
+            .values("roster_folder_id", "roster_folder__name")
+        )
+
+        data = {
+            "student_teacher_link_id": str(link.id),
+            "display_name": link.custom_display_name or (profile.display_name if profile else ""),
+            "status": link.status,
+            "avatar_url": profile.avatar_url if profile else "",
+            "bio": getattr(profile, "self_intro", "") if profile else "",
+            "last_activity": last_activity.isoformat() if last_activity else None,
+            "groups": [{"roster_folder_id": str(g["roster_folder_id"]), "name": g["roster_folder__name"]} for g in groups],
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "totals": {
+                "answer_count": total_answers,
+                "correct_count": aggregates["correct"] or 0,
+                "incorrect_count": aggregates["incorrect"] or 0,
+                "timeout_count": aggregates["timeout"] or 0,
+                "accuracy": accuracy,
+                "avg_seconds": avg_time,
+            },
+            "daily_chart": daily_chart,
+        }
+        return Response(data)
+
+    @action(detail=True, methods=["get"], url_path="daily-stats")
+    def daily_stats(self, request, pk=None):
+        link = self._get_link(request, pk)
+        student = link.student
+        date_from, date_to = self._date_range(request)
+        daily_qs = (
+            models.LearningSummaryDaily.objects.filter(user=student, activity_date__range=(date_from, date_to))
+            .order_by("activity_date")
+        )
+        data = [
+            {
+                "date": entry.activity_date.isoformat(),
+                "correct_count": entry.correct_count,
+                "incorrect_count": entry.incorrect_count,
+                "timeout_count": entry.timeout_count,
+                "total_time_ms": entry.total_time_ms,
+            }
+            for entry in daily_qs
+        ]
+        return Response({"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "items": data})
+
+    @action(detail=True, methods=["get"], url_path="level-stats")
+    def level_stats(self, request, pk=None):
+        link = self._get_link(request, pk)
+        student = link.student
+        date_from, date_to = self._date_range(request)
+        level_param = request.query_params.get("level")
+
+        qs = (
+            models.QuizResultDetail.objects.select_related("quiz_result__quiz__quiz_collection")
+            .filter(
+                quiz_result__user=student,
+                quiz_result__completed_at__date__gte=date_from,
+                quiz_result__completed_at__date__lte=date_to,
+            )
+            .annotate(
+                level_code=F("quiz_result__quiz__quiz_collection__level_code"),
+                level_label=F("quiz_result__quiz__quiz_collection__level_label"),
+            )
+            .exclude(level_code__isnull=True)
+        )
+        if level_param:
+            qs = qs.filter(level_code=level_param)
+
+        level_rows = (
+            qs.values("level_code", "level_label")
+            .annotate(
+                correct_count=Count("id", filter=Q(is_correct=True, is_timeout=False)),
+                incorrect_count=Count("id", filter=Q(is_correct=False, is_timeout=False)),
+                timeout_count=Count("id", filter=Q(is_timeout=True)),
+            )
+            .order_by("level_label")
+        )
+        data = []
+        for row in level_rows:
+            total = (row["correct_count"] or 0) + (row["incorrect_count"] or 0) + (row["timeout_count"] or 0)
+            accuracy = row["correct_count"] / total * 100 if total else 0.0
+            data.append(
+                {
+                    "level_code": row["level_code"],
+                    "level_label": row["level_label"] or row["level_code"],
+                    "correct_count": row["correct_count"],
+                    "incorrect_count": row["incorrect_count"],
+                    "timeout_count": row["timeout_count"],
+                    "answer_count": total,
+                    "accuracy": accuracy,
+                }
+            )
+        return Response({"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "items": data})
+
+    @action(detail=True, methods=["get"], url_path="sessions")
+    def sessions(self, request, pk=None):
+        link = self._get_link(request, pk)
+        student = link.student
+        date_from, date_to = self._date_range(request)
+        page_size = int(request.query_params.get("limit", 50))
+        page_size = max(1, min(page_size, 200))
+
+        results = (
+            models.QuizResult.objects.select_related("quiz__quiz_collection")
+            .filter(
+                user=student,
+                completed_at__isnull=False,
+                completed_at__date__gte=date_from,
+                completed_at__date__lte=date_to,
+            )
+            .order_by("-completed_at")[:page_size]
+        )
+        result_ids = [r.id for r in results]
+        detail_agg = (
+            models.QuizResultDetail.objects.filter(quiz_result_id__in=result_ids)
+            .values("quiz_result_id")
+            .annotate(
+                correct_count=Count("id", filter=Q(is_correct=True, is_timeout=False)),
+                incorrect_count=Count("id", filter=Q(is_correct=False, is_timeout=False)),
+                timeout_count=Count("id", filter=Q(is_timeout=True)),
+            )
+        )
+        agg_map = {row["quiz_result_id"]: row for row in detail_agg}
+        items = []
+        for res in results:
+            agg = agg_map.get(res.id, {})
+            total = agg.get("correct_count", 0) + agg.get("incorrect_count", 0) + agg.get("timeout_count", 0)
+            accuracy = agg.get("correct_count", 0) / total * 100 if total else 0.0
+            items.append(
+                {
+                    "quiz_result_id": str(res.id),
+                    "completed_at": res.completed_at.isoformat() if res.completed_at else None,
+                    "started_at": res.started_at.isoformat() if res.started_at else None,
+                    "quiz_title": res.quiz.title or res.quiz.quiz_collection.title,
+                    "level_code": res.quiz.quiz_collection.level_code,
+                    "level_label": res.quiz.quiz_collection.level_label,
+                    "question_count": res.question_count,
+                    "correct_count": agg.get("correct_count", 0),
+                    "incorrect_count": agg.get("incorrect_count", 0),
+                    "timeout_count": agg.get("timeout_count", 0),
+                    "accuracy": accuracy,
+                    "total_time_ms": res.total_time_ms,
+                }
+            )
+        return Response({"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "items": items})
+
+    @action(detail=True, methods=["get"], url_path="weak-words")
+    def weak_words(self, request, pk=None):
+        link = self._get_link(request, pk)
+        student = link.student
+        date_from, date_to = self._date_range(request)
+        limit_param = request.query_params.get("limit") or "20"
+        try:
+            limit = max(1, min(int(limit_param), 200))
+        except Exception:
+            limit = 20
+
+        detail_qs = (
+            models.QuizResultDetail.objects.select_related("vocabulary")
+            .filter(
+                quiz_result__user=student,
+                quiz_result__completed_at__date__gte=date_from,
+                quiz_result__completed_at__date__lte=date_to,
+            )
+        )
+        agg = (
+            detail_qs.values("vocabulary_id", "vocabulary__text_en")
+            .annotate(
+                correct_count=Count("id", filter=Q(is_correct=True, is_timeout=False)),
+                incorrect_count=Count("id", filter=Q(is_correct=False, is_timeout=False)),
+                timeout_count=Count("id", filter=Q(is_timeout=True)),
+                last_incorrect=Max("created_at", filter=Q(is_correct=False, is_timeout=False)),
+            )
+            .order_by("-incorrect_count", "-timeout_count", "-last_incorrect")[:limit]
+        )
+        items = []
+        for row in agg:
+            total = (row["correct_count"] or 0) + (row["incorrect_count"] or 0) + (row["timeout_count"] or 0)
+            accuracy = row["correct_count"] / total * 100 if total else 0.0
+            items.append(
+                {
+                    "vocabulary_id": str(row["vocabulary_id"]),
+                    "text_en": row["vocabulary__text_en"],
+                    "correct_count": row["correct_count"],
+                    "incorrect_count": row["incorrect_count"],
+                    "timeout_count": row["timeout_count"],
+                    "answer_count": total,
+                    "accuracy": accuracy,
+                    "last_incorrect_at": row["last_incorrect"].isoformat() if row.get("last_incorrect") else None,
+                }
+            )
+        return Response({"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "items": items})
+
 
 
 class VocabularyViewSet(BaseModelViewSet):
@@ -1644,4 +1915,5 @@ __all__ = [
     "TestResultViewSet",
     "TestResultDetailViewSet",
     "debug_create_user",
+    "TeacherStudentProgressViewSet",
 ]
