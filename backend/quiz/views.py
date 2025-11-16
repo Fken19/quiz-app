@@ -436,6 +436,62 @@ class FocusQuestionView(APIView):
         return Response(data)
 
 
+class FocusQuizSessionStartView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        vocabulary_ids = request.data.get("vocabulary_ids") or []
+        if not isinstance(vocabulary_ids, list) or not vocabulary_ids:
+            return Response({"detail": "vocabulary_ids は1件以上の配列で指定してください"}, status=status.HTTP_400_BAD_REQUEST)
+
+        vocab_qs = models.Vocabulary.objects.filter(id__in=vocabulary_ids)
+        vocab_map = {str(vocab.id): vocab for vocab in vocab_qs}
+        ordered_vocabs = []
+        for vocab_id in vocabulary_ids:
+            vocab = vocab_map.get(str(vocab_id))
+            if vocab:
+                ordered_vocabs.append(vocab)
+        if not ordered_vocabs:
+            return Response({"detail": "指定された語彙が見つかりません"}, status=status.HTTP_400_BAD_REQUEST)
+
+        collection, _ = models.QuizCollection.objects.get_or_create(
+            scope=models.QuizScope.CUSTOM,
+            owner_user=user,
+            title="フォーカス学習",
+            defaults={
+                "description": "フォーカス学習セッション",
+                "is_published": False,
+                "order_index": 1000,
+            },
+        )
+        max_seq = collection.quizzes.aggregate(max_seq=Max("sequence_no"))["max_seq"] or 0
+        quiz = models.Quiz.objects.create(
+            quiz_collection=collection,
+            sequence_no=max_seq + 1,
+            title=f"フォーカス({timezone.localtime().strftime('%m/%d %H:%M')})",
+            timer_seconds=10,
+        )
+
+        quiz_questions = [
+            models.QuizQuestion(
+                quiz=quiz,
+                vocabulary=vocab,
+                question_order=index,
+            )
+            for index, vocab in enumerate(ordered_vocabs, start=1)
+        ]
+        models.QuizQuestion.objects.bulk_create(quiz_questions)
+
+        return Response(
+            {
+                "quiz_id": str(quiz.id),
+                "question_count": len(ordered_vocabs),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
 class QuizSessionStartView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -641,9 +697,89 @@ class QuizSessionCompleteView(APIView):
             quiz_result.total_time_ms = aggregates["total_time"] or 0
             quiz_result.completed_at = timezone.now()
             quiz_result.save(update_fields=["score", "timeout_count", "total_time_ms", "completed_at"])
+            self._record_activity_and_statuses(quiz_result)
 
         serializer = serializers.QuizResultSerializer(quiz_result, context={"request": request})
         return Response(serializer.data)
+
+    def _record_activity_and_statuses(self, quiz_result: models.QuizResult):
+        """学習履歴と語彙ステータスを更新"""
+        user = quiz_result.user
+        today = timezone.localdate()
+
+        correct_count = quiz_result.details.filter(is_correct=True).count()
+        incorrect_count = quiz_result.details.filter(is_correct=False, is_timeout=False).count()
+        timeout_count = quiz_result.details.filter(is_timeout=True).count()
+        total_time_ms = quiz_result.total_time_ms or 0
+
+        models.LearningActivityLog.objects.create(
+            user=user,
+            quiz_result=quiz_result,
+            occurred_at=quiz_result.completed_at or timezone.now(),
+            correct_count=correct_count,
+            incorrect_count=incorrect_count,
+            timeout_count=timeout_count,
+            total_time_ms=total_time_ms,
+        )
+
+        summary, _ = models.LearningSummaryDaily.objects.get_or_create(
+            user=user,
+            activity_date=today,
+            defaults={
+                "correct_count": 0,
+                "incorrect_count": 0,
+                "timeout_count": 0,
+                "total_time_ms": 0,
+                "streak_count": 0,
+            },
+        )
+        summary.correct_count += correct_count
+        summary.incorrect_count += incorrect_count
+        summary.timeout_count += timeout_count
+        summary.total_time_ms += total_time_ms
+
+        yesterday = today - timedelta(days=1)
+        yesterday_entry = models.LearningSummaryDaily.objects.filter(user=user, activity_date=yesterday).first()
+        previous_streak = yesterday_entry.streak_count if yesterday_entry else 0
+        summary.streak_count = previous_streak + 1
+        summary.save()
+
+        detail_rows = quiz_result.details.select_related("vocabulary")
+        status_objects = models.UserVocabStatus.objects.filter(
+            user=user, vocabulary_id__in=[detail.vocabulary_id for detail in detail_rows]
+        )
+        status_map = {status.vocabulary_id: status for status in status_objects}
+
+        for detail in detail_rows:
+            status_obj = status_map.get(detail.vocabulary_id)
+            if not status_obj:
+                status_obj = models.UserVocabStatus.objects.create(
+                    user=user,
+                    vocabulary=detail.vocabulary,
+                    status=models.LearningStatus.UNLEARNED,
+                )
+                status_map[detail.vocabulary_id] = status_obj
+
+            status_obj.last_answered_at = quiz_result.completed_at or timezone.now()
+            status_obj.total_answer_count += 1
+            if detail.is_timeout:
+                status_obj.timeout_count += 1
+                status_obj.last_result = models.LearningResultType.TIMEOUT
+                status_obj.recent_correct_streak = 0
+                status_obj.status = models.LearningStatus.WEAK
+            elif detail.is_correct:
+                status_obj.total_correct_count += 1
+                status_obj.last_result = models.LearningResultType.CORRECT
+                status_obj.recent_correct_streak = min(status_obj.recent_correct_streak + 1, 2)
+                if status_obj.recent_correct_streak >= 2:
+                    status_obj.status = models.LearningStatus.MASTERED
+                else:
+                    status_obj.status = models.LearningStatus.LEARNING
+            else:
+                status_obj.last_result = models.LearningResultType.INCORRECT
+                status_obj.recent_correct_streak = 0
+                status_obj.status = models.LearningStatus.WEAK
+            status_obj.save()
 
     def perform_update(self, serializer):  # type: ignore[override]
         quiz_result: models.QuizResult = serializer.instance.quiz_result
@@ -790,6 +926,7 @@ __all__ = [
     "TeacherProfileViewSet",
     "TeacherWhitelistViewSet",
     "FocusQuestionView",
+    "FocusQuizSessionStartView",
     "InvitationCodeViewSet",
     "StudentTeacherLinkViewSet",
     "RosterFolderViewSet",

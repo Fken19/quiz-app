@@ -72,8 +72,7 @@ export default function QuizResultsPage() {
       </div>
 
       <div className="bg-white shadow rounded-lg divide-y">
-        <div className="grid grid-cols-6 gap-4 px-6 py-3 text-sm font-semibold text-slate-500">
-          <div>ID</div>
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 px-6 py-3 text-sm font-semibold text-slate-500">
           <div>クイズ</div>
           <div>開始時刻</div>
           <div>終了時刻</div>
@@ -81,15 +80,14 @@ export default function QuizResultsPage() {
           <div>詳細</div>
         </div>
         {rows.map(({ result, quiz }) => (
-          <div key={result.quiz_result_id} className="grid grid-cols-6 gap-4 px-6 py-4 text-sm">
-            <div className="text-slate-600 truncate">{result.quiz_result_id}</div>
-            <div className="text-slate-600">{quiz?.title || quiz?.quiz_id || '---'}</div>
+          <div key={result.quiz_result_id} className="grid grid-cols-1 sm:grid-cols-5 gap-4 px-6 py-4 text-sm">
+            <div className="text-slate-700 font-semibold">{quiz?.title || 'クイズ'}</div>
             <div className="text-slate-600">{new Date(result.started_at).toLocaleString()}</div>
             <div className="text-slate-600">{result.completed_at ? new Date(result.completed_at).toLocaleString() : '---'}</div>
             <div className="text-slate-600">{result.score ?? '---'}</div>
             <div>
-              <Link href={`/student/results/${result.quiz_result_id}`} className="text-indigo-600 hover:underline">
-                詳細
+              <Link href={`/student/results/${result.quiz_result_id}`} className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-white text-sm font-semibold hover:bg-indigo-700">
+                詳細を見る
               </Link>
             </div>
           </div>

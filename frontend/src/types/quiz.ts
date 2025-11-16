@@ -306,6 +306,11 @@ export interface FocusQuestionsResponse {
   }>;
 }
 
+export interface FocusQuizSessionResponse {
+  quiz_id: string;
+  question_count: number;
+}
+
 export interface Test {
   test_id: string;
   teacher: string;

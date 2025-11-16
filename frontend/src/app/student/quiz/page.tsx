@@ -92,12 +92,12 @@ export default function QuizzesPage() {
 
   return (
     <div className="max-w-6xl mx-auto py-10 space-y-6 px-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">クイズコレクション</h1>
-          <p className="text-slate-600">全{rows.length}コレクション / {totalQuizzes}クイズを表示しています。</p>
+          <p className="text-slate-600 text-sm sm:text-base">全{rows.length}コレクション / {totalQuizzes}クイズ</p>
         </div>
-        <Link href="/student/dashboard" className="text-indigo-600 font-semibold">← ダッシュボードへ戻る</Link>
+        <Link href="/student/dashboard" className="text-indigo-600 font-semibold text-sm sm:text-base">← ダッシュボードへ戻る</Link>
       </div>
 
       {rows.map((row) => (
@@ -118,23 +118,21 @@ export default function QuizzesPage() {
             </div>
           </header>
           <div className="divide-y">
-            <div className="grid grid-cols-5 gap-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              <span>ID</span>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
               <span>タイトル</span>
               <span>順番</span>
               <span>制限時間</span>
               <span>開始</span>
             </div>
             {row.quizzes.map(({ quiz, questionCount }) => (
-              <div key={quiz.quiz_id} className="grid grid-cols-5 gap-4 px-6 py-3 text-sm text-slate-700">
-                <span className="truncate">{quiz.quiz_id}</span>
-                <span>{quiz.title ?? `Quiz #${quiz.sequence_no}`}</span>
-                <span>{quiz.sequence_no}</span>
+              <div key={quiz.quiz_id} className="grid grid-cols-1 sm:grid-cols-4 gap-4 px-6 py-3 text-sm text-slate-700">
+                <span className="font-semibold">{quiz.title ?? `Quiz #${quiz.sequence_no}`}</span>
+                <span>#{quiz.sequence_no}</span>
                 <span>{quiz.timer_seconds ?? '---'} 秒・{questionCount}問</span>
                 <span>
                   <Link
                     href={`/student/quiz/play?quizId=${quiz.quiz_id}`}
-                    className="text-indigo-600 hover:underline"
+                    className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-white text-sm font-semibold hover:bg-indigo-700"
                   >
                     プレイ
                   </Link>

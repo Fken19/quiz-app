@@ -37,6 +37,7 @@ urlpatterns = [
     path("", include(router.urls)),
     path("student/dashboard-summary/", views.StudentDashboardSummaryView.as_view(), name="student-dashboard-summary"),
     path("focus-questions/", views.FocusQuestionView.as_view(), name="focus-questions"),
+    path("focus-quiz-sessions/", views.FocusQuizSessionStartView.as_view(), name="focus-quiz-session-start"),
     path("quiz-sessions/", views.QuizSessionStartView.as_view(), name="quiz-session-start"),
     path(
         "quiz-sessions/<uuid:quiz_result_id>/answer/",
