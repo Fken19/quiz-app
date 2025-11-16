@@ -4,6 +4,18 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useParams } from 'next/navigation';
 import { apiGet } from '@/lib/api-utils';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Tooltip,
+  Legend,
+  Title as ChartTitle,
+} from 'chart.js';
+import { Bar } from 'react-chartjs-2';
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend, ChartTitle);
 
 type DailyItem = {
   date: string;
@@ -71,6 +83,7 @@ type ProgressSummary = {
 };
 
 type RangePreset = '7' | '30' | '90' | 'all';
+type GraphTab = 'daily' | 'level' | 'weak';
 
 export default function TeacherStudentProgressPage() {
   const params = useParams();
@@ -87,6 +100,7 @@ export default function TeacherStudentProgressPage() {
   const [weakWords, setWeakWords] = useState<WeakWordItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [graphTab, setGraphTab] = useState<GraphTab>('daily');
 
   const buildQuery = () => {
     if (range === 'all') return '';
@@ -137,6 +151,134 @@ export default function TeacherStudentProgressPage() {
       timeout: d.timeout_count,
     }));
   }, [daily]);
+
+  const renderDailyChart = () => {
+    const labels = dailyTotals.map((d) => new Date(d.date).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' }));
+    const data = {
+      labels,
+      datasets: [
+        { label: '正解', data: dailyTotals.map((d) => d.correct), backgroundColor: '#34d399', stack: 'counts' },
+        { label: '不正解', data: dailyTotals.map((d) => d.incorrect), backgroundColor: '#fb923c', stack: 'counts' },
+        { label: 'Timeout', data: dailyTotals.map((d) => d.timeout), backgroundColor: '#cbd5e1', stack: 'counts' },
+      ],
+    };
+    return (
+      <div className="w-full overflow-x-auto">
+        <div className="min-w-[720px] h-[320px]">
+          <Bar
+            data={data}
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: { stacked: true, grid: { display: false }, ticks: { color: '#475569' } },
+                y: { stacked: true, grid: { color: '#e2e8f0' }, ticks: { color: '#475569', precision: 0 } },
+              },
+              plugins: {
+                legend: { display: true, position: 'bottom' },
+                tooltip: {
+                  callbacks: {
+                    footer: (items) => {
+                      const idx = items[0].dataIndex;
+                      return `合計: ${dailyTotals[idx]?.total ?? 0}問`;
+                    },
+                  },
+                },
+              },
+            }}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const renderLevelChart = () => {
+    const labels = levels.map((l) => l.level_label || l.level_code || '未設定');
+    const data = {
+      labels,
+      datasets: [
+        {
+          label: '正解率',
+          data: levels.map((l) => l.accuracy),
+          backgroundColor: '#6366f1',
+        },
+      ],
+    };
+    return (
+      <div className="w-full overflow-x-auto">
+        <div className="min-w-[720px] h-[320px]">
+          <Bar
+            data={data}
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: { grid: { display: false }, ticks: { color: '#475569' } },
+                y: { min: 0, max: 100, grid: { color: '#e2e8f0' }, ticks: { color: '#475569', callback: (v) => `${v}%` } },
+              },
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => {
+                      const idx = ctx.dataIndex;
+                      const lv = levels[idx];
+                      return `正答率: ${ctx.parsed.y.toFixed(1)}% / 回答数: ${lv.answer_count} (正解${lv.correct_count}, 不正解${lv.incorrect_count}, Timeout${lv.timeout_count})`;
+                    },
+                  },
+                },
+              },
+            }}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const renderWeakChart = () => {
+    const top = weakWords.slice(0, 10);
+    const labels = top.map((w) => w.text_en || '');
+    const data = {
+      labels,
+      datasets: [
+        {
+          label: '不正解数',
+          data: top.map((w) => w.incorrect_count),
+          backgroundColor: '#f87171',
+        },
+      ],
+    };
+    return (
+      <div className="w-full overflow-x-auto">
+        <div className="min-w-[720px] h-[320px]">
+          <Bar
+            data={data}
+            options={{
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: { grid: { color: '#e2e8f0' }, ticks: { color: '#475569', precision: 0 } },
+                y: { grid: { display: false }, ticks: { color: '#475569' } },
+              },
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => {
+                      const idx = ctx.dataIndex;
+                      const w = top[idx];
+                      return `不正解 ${w.incorrect_count} / 回答 ${w.answer_count} / 正答率 ${w.answer_count ? w.accuracy.toFixed(1) + '%' : '-'}`;
+                    },
+                  },
+                },
+              },
+            }}
+          />
+        </div>
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -238,41 +380,28 @@ export default function TeacherStudentProgressPage() {
         </div>
       </section>
 
-      <section className="bg-white shadow rounded-lg p-4 space-y-3">
+      <section className="bg-white shadow rounded-lg p-4 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">日別学習量</h2>
-          <p className="text-xs text-slate-500">正解 / 不正解 / Timeout</p>
+          <h2 className="text-lg font-semibold text-slate-900">グラフ</h2>
+          <div className="flex gap-2">
+            {(['daily', 'level', 'weak'] as GraphTab[]).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setGraphTab(tab)}
+                className={`px-3 py-1 rounded border text-sm ${
+                  graphTab === tab ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-300 text-slate-700'
+                }`}
+              >
+                {tab === 'daily' ? '日別' : tab === 'level' ? 'レベル別' : '弱点単語'}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-[640px] w-full text-sm text-slate-800">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600">
-                <th className="px-3 py-2 text-left">日付</th>
-                <th className="px-3 py-2 text-right">合計</th>
-                <th className="px-3 py-2 text-right text-green-600">正解</th>
-                <th className="px-3 py-2 text-right text-red-500">不正解</th>
-                <th className="px-3 py-2 text-right text-amber-600">Timeout</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dailyTotals.map((d) => (
-                <tr key={d.date} className="border-b last:border-0 border-slate-100">
-                  <td className="px-3 py-2">{new Date(d.date).toLocaleDateString('ja-JP')}</td>
-                  <td className="px-3 py-2 text-right font-semibold">{d.total}</td>
-                  <td className="px-3 py-2 text-right text-green-600">{d.correct}</td>
-                  <td className="px-3 py-2 text-right text-red-500">{d.incorrect}</td>
-                  <td className="px-3 py-2 text-right text-amber-600">{d.timeout}</td>
-                </tr>
-              ))}
-              {dailyTotals.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-3 py-3 text-sm text-slate-500">
-                    期間内の学習データがありません。
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="min-h-[340px]">
+          {graphTab === 'daily' && renderDailyChart()}
+          {graphTab === 'level' && renderLevelChart()}
+          {graphTab === 'weak' && renderWeakChart()}
         </div>
       </section>
 
