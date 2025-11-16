@@ -500,6 +500,7 @@ class RosterMembershipViewSet(BaseModelViewSet):
             serializer = self.get_serializer(membership)
             return Response(serializer.data, status=status.HTTP_200_OK)
 
+        # 直近削除済みのものがあれば復活、それ以外は作成（ユニーク制約で落ちないよう get_or_create）
         membership = (
             models.RosterMembership.objects.filter(roster_folder=folder, student=link.student)
             .select_related("student__profile", "roster_folder")
@@ -512,10 +513,10 @@ class RosterMembershipViewSet(BaseModelViewSet):
             membership.added_at = timezone.now()
             membership.save(update_fields=["removed_at", "note", "added_at"])
         else:
-            membership = models.RosterMembership.objects.create(
+            membership, _ = models.RosterMembership.objects.get_or_create(
                 roster_folder=folder,
                 student=link.student,
-                note=note,
+                defaults={"note": note},
             )
         serializer = self.get_serializer(membership)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
