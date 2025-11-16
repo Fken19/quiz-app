@@ -102,6 +102,14 @@ export default function ProfilePage() {
       setFormState((prev) => ({ ...prev, [field]: event.target.value }));
     };
 
+  const refreshLinks = async () => {
+    const linksResponse = await apiGet('/api/student-teacher-links/');
+    const links: StudentTeacherLink[] = Array.isArray(linksResponse)
+      ? linksResponse
+      : linksResponse?.results || [];
+    setSummary((prev) => ({ ...prev, teacherLinks: links }));
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!summary.user) return;
@@ -146,11 +154,7 @@ export default function ProfilePage() {
       setLinkMessage(null);
       await apiPost('/api/invitation-codes/redeem/', { invitation_code: inviteCode.trim() });
       setInviteCode('');
-      const linksResponse = await apiGet('/api/student-teacher-links/');
-      const links: StudentTeacherLink[] = Array.isArray(linksResponse)
-        ? linksResponse
-        : linksResponse?.results || [];
-      setSummary((prev) => ({ ...prev, teacherLinks: links }));
+      await refreshLinks();
       setLinkMessage('承認待ちとして送信しました。');
     } catch (err) {
       console.error(err);
@@ -161,11 +165,7 @@ export default function ProfilePage() {
   const handleRevoke = async (linkId: string) => {
     try {
       await apiPost(`/api/student-teacher-links/${linkId}/revoke/`, {});
-      const linksResponse = await apiGet('/api/student-teacher-links/');
-      const links: StudentTeacherLink[] = Array.isArray(linksResponse)
-        ? linksResponse
-        : linksResponse?.results || [];
-      setSummary((prev) => ({ ...prev, teacherLinks: links }));
+      await refreshLinks();
     } catch (err) {
       console.error(err);
       setLinkMessage('リンク解除に失敗しました。');
@@ -245,6 +245,55 @@ export default function ProfilePage() {
             )}
           </div>
         </form>
+      </section>
+
+      <section className="bg-white shadow rounded-lg p-6 space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">講師との紐付け</h2>
+          <p className="text-slate-600 text-sm">招待コードを入力して講師に承認してもらってください。</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <input
+            type="text"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
+            className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+            placeholder="招待コードを入力"
+          />
+          <button
+            type="button"
+            onClick={handleRedeem}
+            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
+            登録
+          </button>
+        </div>
+        {linkMessage && <p className="text-sm text-slate-600">{linkMessage}</p>}
+
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-slate-700">紐付け状況</h3>
+          {summary.teacherLinks.length === 0 ? (
+            <p className="text-sm text-slate-500">まだ講師との紐付けがありません。</p>
+          ) : (
+            <div className="divide-y">
+              {summary.teacherLinks.map((link) => (
+                <div key={link.student_teacher_link_id} className="py-2 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">{link.teacher}</p>
+                    <p className="text-xs text-slate-500">状態: {link.status}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRevoke(link.student_teacher_link_id)}
+                    className="text-xs text-red-600 hover:underline"
+                  >
+                    解除
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="bg-white shadow rounded-lg p-6">
