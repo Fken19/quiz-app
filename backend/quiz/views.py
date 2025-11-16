@@ -75,15 +75,37 @@ class TeacherViewSet(BaseModelViewSet):
             return [permissions.IsAdminUser()]
         return [permissions.IsAuthenticated()]
 
+    @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="me")
+    def me(self, request):
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            teacher = get_object_or_404(models.Teacher, email__iexact=request.user.email)
+        serializer = self.get_serializer(teacher)
+        return Response(serializer.data)
+
 
 class TeacherProfileViewSet(BaseModelViewSet):
     serializer_class = serializers.TeacherProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):  # type: ignore[override]
-        # アクセス制御はTeacherAccessControlMiddlewareで実施済み
-        # このエンドポイントに到達した時点でホワイトリスト登録済み
-        return models.TeacherProfile.objects.select_related("teacher")
+        teacher = getattr(self.request, "teacher", None)
+        qs = models.TeacherProfile.objects.select_related("teacher")
+        if teacher is None:
+            return qs.none()
+        return qs.filter(teacher=teacher)
+
+    def perform_create(self, serializer):
+        serializer.save(teacher=self._require_teacher())
+
+    def perform_update(self, serializer):  # type: ignore[override]
+        serializer.save(teacher=self._require_teacher())
+
+    def _require_teacher(self):
+        teacher = getattr(self.request, "teacher", None)
+        if teacher is None:
+            raise PermissionDenied("講師情報が解決できません。")
+        return teacher
 
 
 class TeacherWhitelistViewSet(BaseModelViewSet):

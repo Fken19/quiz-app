@@ -70,7 +70,7 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
             "bio",
             "updated_at",
         ]
-        read_only_fields = ["updated_at"]
+        read_only_fields = ["teacher", "updated_at"]
 
 
 class TeacherWhitelistSerializer(serializers.ModelSerializer):

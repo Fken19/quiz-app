@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { apiGet, apiPost, apiPatch } from '@/lib/api-utils';
-import type { TeacherProfile, ApiUser } from '@/types/quiz';
+import type { TeacherProfile, ApiUser, Teacher } from '@/types/quiz';
 import { UserCircleIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 
 export default function TeacherProfilePage() {
   const [profile, setProfile] = useState<TeacherProfile | null>(null);
   const [user, setUser] = useState<ApiUser | null>(null);
+  const [teacher, setTeacher] = useState<Teacher | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -31,8 +32,11 @@ export default function TeacherProfilePage() {
       const currentUser = (await apiGet('/api/users/me/')) as ApiUser;
       setUser(currentUser);
       
+      const teacherRecord = (await apiGet('/api/teachers/me/')) as Teacher;
+      setTeacher(teacherRecord);
+      
       try {
-        const teacherProfile = (await apiGet(`/api/teacher-profiles/${currentUser.user_id}/`)) as TeacherProfile;
+        const teacherProfile = (await apiGet(`/api/teacher-profiles/${teacherRecord.teacher_id}/`)) as TeacherProfile;
         setProfile(teacherProfile);
         setFormData({
           display_name: teacherProfile.display_name || '',
@@ -40,9 +44,18 @@ export default function TeacherProfilePage() {
           bio: teacherProfile.bio || '',
           avatar_url: teacherProfile.avatar_url || '',
         });
-      } catch (err) {
+      } catch (err: any) {
         // Profile doesn't exist yet
         setProfile(null);
+        setFormData({
+          display_name: '',
+          affiliation: '',
+          bio: '',
+          avatar_url: '',
+        });
+        if (err?.status && err.status !== 404) {
+          throw err;
+        }
       }
     } catch (err) {
       console.error('Failed to load profile', err);
@@ -59,12 +72,11 @@ export default function TeacherProfilePage() {
     setSaving(true);
 
     try {
-      if (!user) {
-        throw new Error('ユーザー情報が読み込まれていません');
+      if (!user || !teacher) {
+        throw new Error('講師情報が読み込まれていません');
       }
 
       const data = {
-        teacher: user.user_id,
         display_name: formData.display_name.trim() || null,
         affiliation: formData.affiliation.trim() || null,
         bio: formData.bio.trim() || null,
@@ -75,7 +87,7 @@ export default function TeacherProfilePage() {
       
       if (profile) {
         // Update existing profile
-        updatedProfile = await apiPatch(`/api/teacher-profiles/${user.user_id}/`, data) as TeacherProfile;
+        updatedProfile = await apiPatch(`/api/teacher-profiles/${teacher.teacher_id}/`, data) as TeacherProfile;
       } else {
         // Create new profile
         updatedProfile = await apiPost('/api/teacher-profiles/', data) as TeacherProfile;
