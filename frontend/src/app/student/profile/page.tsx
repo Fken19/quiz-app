@@ -4,7 +4,6 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { apiGet, apiPatch, apiPost } from '@/lib/api-utils';
-import { BrowserQRCodeReader } from '@zxing/browser';
 import type { ApiUser, UserProfile, StudentTeacherLink } from '@/types/quiz';
 
 interface ProfileSummary {
@@ -196,30 +195,67 @@ export default function ProfilePage() {
     }
   };
 
+  const decodeQrWithBarcodeDetector = async (image: HTMLImageElement) => {
+    // BarcodeDetectorは対応ブラウザのみ利用
+    // @ts-ignore
+    if (typeof window === 'undefined' || !('BarcodeDetector' in window)) {
+      throw new Error('BarcodeDetectorに対応していません');
+    }
+    // @ts-ignore
+    const supported = await window.BarcodeDetector.getSupportedFormats();
+    if (!supported.includes('qr_code')) {
+      throw new Error('QRコードの読み取りに対応していません');
+    }
+    // @ts-ignore
+    const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('QRコードの解析に失敗しました');
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const results = await detector.detect(canvas);
+    if (!results.length) throw new Error('QRコードが見つかりませんでした');
+    return results[0].rawValue;
+  };
+
   const handleScanFile = async (file: File) => {
     setScanMessage(null);
+    setScanning(true);
     try {
       const reader = new FileReader();
       reader.onload = async (ev) => {
         try {
           const dataUrl = ev.target?.result as string;
-          const codeReader = new BrowserQRCodeReader();
-          const result = await codeReader.decodeFromImage(undefined as any, dataUrl);
-          if (result?.getText()) {
-            setInviteCode(result.getText());
-            setScanMessage('QRからコードを取得しました。内容を確認して登録してください。');
-          } else {
-            setScanMessage('QRコードが読み取れませんでした。');
-          }
+          const img = new Image();
+          img.onload = async () => {
+            try {
+              const text = await decodeQrWithBarcodeDetector(img);
+              setInviteCode(text);
+              setScanMessage('QRからコードを取得しました。内容を確認して登録してください。');
+            } catch (e) {
+              console.error(e);
+              setScanMessage(e instanceof Error ? e.message : 'QRコードの解析に失敗しました。');
+            } finally {
+              setScanning(false);
+            }
+          };
+          img.onerror = () => {
+            setScanMessage('画像の読み込みに失敗しました。');
+            setScanning(false);
+          };
+          img.src = dataUrl;
         } catch (e) {
           console.error(e);
           setScanMessage('QRコードの解析に失敗しました。');
+          setScanning(false);
         }
       };
       reader.readAsDataURL(file);
     } catch (err) {
       console.error(err);
       setScanMessage('QRコードの読み取りに失敗しました。');
+      setScanning(false);
     }
   };
 
