@@ -1,28 +1,54 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiGet, apiPost } from '@/lib/api-utils';
-import type { Quiz, QuizQuestion, Vocabulary, VocabChoice, QuizResult, QuizResultDetail } from '@/types/quiz';
+import type { Quiz, QuizResult } from '@/types/quiz';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
-interface QuizQuestionView {
-  question: QuizQuestion;
-  vocabulary: Vocabulary | null;
-  choices: VocabChoice[];
+interface ChoiceOption {
+  vocab_choice_id: string;
+  text_ja: string;
+}
+
+interface QuizSessionQuestion {
+  quiz_question_id: string;
+  question_order: number;
+  vocabulary: {
+    vocabulary_id: string;
+    text_en: string;
+    part_of_speech?: string | null;
+    explanation?: string | null;
+  };
+  choices: ChoiceOption[];
 }
 
 interface QuizProgress {
   currentIndex: number;
   answers: Array<{
-    question: QuizQuestionView;
+    question: QuizSessionQuestion;
     selectedChoiceId: string | null;
     selectedText: string | null;
     isCorrect: boolean;
+    isTimeout: boolean;
     reactionTimeMs: number;
   }>;
   startedAt: number;
+}
+
+interface QuizSessionResponse {
+  quiz_result_id: string;
+  timer_seconds: number;
+  questions: QuizSessionQuestion[];
+  question_count: number;
+}
+
+interface AnswerResponse {
+  is_correct: boolean;
+  is_timeout: boolean;
+  reaction_time_ms?: number | null;
+  selected_text?: string | null;
 }
 
 export default function QuizPlayPage() {
@@ -31,142 +57,116 @@ export default function QuizPlayPage() {
   const quizId = searchParams?.get('quizId');
 
   const [quiz, setQuiz] = useState<Quiz | null>(null);
-  const [questions, setQuestions] = useState<QuizQuestionView[]>([]);
+  const [questions, setQuestions] = useState<QuizSessionQuestion[]>([]);
   const [progress, setProgress] = useState<QuizProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [answering, setAnswering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completedResult, setCompletedResult] = useState<QuizResult | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [timerSeconds, setTimerSeconds] = useState<number>(10);
 
-  useEffect(() => {
+  const startSession = useCallback(async () => {
     if (!quizId) {
       setError('クイズIDが指定されていません');
       setLoading(false);
       return;
     }
 
-    const loadQuiz = async () => {
-      try {
-        setLoading(true);
-        const quizData = (await apiGet(`/api/quizzes/${quizId}/`)) as Quiz;
-        const questionResponse = await apiGet(`/api/quiz-questions/?quiz=${quizId}&page_size=200`);
-        const questionList: QuizQuestion[] = Array.isArray(questionResponse)
-          ? questionResponse
-          : questionResponse?.results || [];
+    try {
+      setLoading(true);
+      setError(null);
+      setSessionId(null);
+      setCompletedResult(null);
 
-        const vocabularyIds = Array.from(new Set(questionList.map((q) => q.vocabulary)));
-        const vocabularies = await Promise.all(
-          vocabularyIds.map((id) => apiGet(`/api/vocabularies/${id}/`).catch(() => null)),
-        );
-        const vocabMap = new Map<string, Vocabulary>();
-        vocabularies.forEach((vocab) => {
-          if (vocab && 'vocabulary_id' in vocab) {
-            vocabMap.set(vocab.vocabulary_id, vocab as Vocabulary);
-          }
-        });
+      const [quizData, sessionResponse] = await Promise.all([
+        apiGet(`/api/quizzes/${quizId}/`).catch(() => null),
+        apiPost('/api/quiz-sessions/', { quiz: quizId }),
+      ]);
 
-        const choicesMatrix = await Promise.all(
-          questionList.map((question) =>
-            apiGet(`/api/vocab-choices/?vocabulary=${question.vocabulary}`).catch(() => ({ results: [] })),
-          ),
-        );
-
-        const questionViews: QuizQuestionView[] = questionList
-          .sort((a, b) => a.question_order - b.question_order)
-          .map((question, index) => {
-            const entry = choicesMatrix[index];
-            const choices: VocabChoice[] = Array.isArray(entry) ? entry : entry?.results || [];
-            return {
-              question,
-              vocabulary: vocabMap.get(question.vocabulary) ?? null,
-              choices: shuffleChoices(choices),
-            };
-          });
-
-        setQuiz(quizData);
-        setQuestions(questionViews);
-        setProgress({
-          currentIndex: 0,
-          answers: [],
-          startedAt: Date.now(),
-        });
-      } catch (err) {
-        console.error(err);
-        setError('クイズ情報の取得に失敗しました');
-      } finally {
-        setLoading(false);
+      if (!quizData || !('quiz_id' in quizData)) {
+        throw new Error('クイズ情報の取得に失敗しました');
       }
-    };
 
-    loadQuiz();
+      const sessionData = sessionResponse as QuizSessionResponse;
+      setQuiz(quizData as Quiz);
+      setQuestions(sessionData.questions || []);
+      setSessionId(sessionData.quiz_result_id);
+      setTimerSeconds(sessionData.timer_seconds || (quizData.timer_seconds ?? 10) || 10);
+      setProgress({
+        currentIndex: 0,
+        answers: [],
+        startedAt: Date.now(),
+      });
+    } catch (err) {
+      console.error(err);
+      setError('クイズの開始に失敗しました');
+    } finally {
+      setLoading(false);
+    }
   }, [quizId]);
+
+  useEffect(() => {
+    startSession();
+  }, [startSession]);
 
   const currentQuestion = useMemo(() => {
     if (!progress) return null;
     return questions[progress.currentIndex] ?? null;
   }, [progress, questions]);
 
-  const handleAnswer = (choice: VocabChoice) => {
-    if (!progress || !currentQuestion) return;
+  const handleAnswer = async (choice: ChoiceOption) => {
+    if (!progress || !currentQuestion || !sessionId || submitting || answering) return;
 
     const endTime = Date.now();
     const reactionTime = endTime - progress.startedAt;
-    const isCorrect = choice.is_correct;
 
-    const newAnswers = [...progress.answers, {
-      question: currentQuestion,
-      selectedChoiceId: choice.vocab_choice_id,
-      selectedText: choice.text_ja,
-      isCorrect,
-      reactionTimeMs: reactionTime,
-    }];
+    try {
+      setAnswering(true);
+      const answerResponse = (await apiPost(`/api/quiz-sessions/${sessionId}/answer/`, {
+        question_order: currentQuestion.question_order,
+        choice_id: choice.vocab_choice_id,
+        elapsed_ms: reactionTime,
+      })) as AnswerResponse;
 
-    const nextIndex = progress.currentIndex + 1;
+      const newAnswers = [
+        ...progress.answers,
+        {
+          question: currentQuestion,
+          selectedChoiceId: choice.vocab_choice_id,
+          selectedText: choice.text_ja,
+          isCorrect: answerResponse.is_correct,
+          isTimeout: answerResponse.is_timeout,
+          reactionTimeMs: answerResponse.reaction_time_ms ?? reactionTime,
+        },
+      ];
 
-    if (nextIndex >= questions.length) {
-      submitResults(newAnswers);
-    } else {
-      setProgress({
-        currentIndex: nextIndex,
-        answers: newAnswers,
-        startedAt: Date.now(),
-      });
+      const nextIndex = progress.currentIndex + 1;
+
+      if (nextIndex >= questions.length) {
+        await completeSession();
+      } else {
+        setProgress({
+          currentIndex: nextIndex,
+          answers: newAnswers,
+          startedAt: Date.now(),
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      setError('回答の送信に失敗しました');
+    } finally {
+      setAnswering(false);
     }
   };
 
-  const submitResults = async (answers: QuizProgress['answers']) => {
-    if (!quizId) return;
+  const completeSession = async () => {
+    if (!sessionId) return;
     try {
       setSubmitting(true);
-      const completedAt = new Date();
-      const correctCount = answers.filter((a) => a.isCorrect).length;
-      const totalTime = answers.reduce((acc, item) => acc + item.reactionTimeMs, 0);
-
-      const resultPayload = {
-        quiz: quizId,
-        completed_at: completedAt.toISOString(),
-        total_time_ms: totalTime,
-        score: correctCount,
-      };
-
-      const result = (await apiPost('/api/quiz-results/', resultPayload)) as QuizResult;
-
-      await Promise.all(
-        answers.map((answer, index) => {
-          const detailPayload = {
-            quiz_result: result.quiz_result_id,
-            question_order: index + 1,
-            vocabulary: answer.question.vocabulary?.vocabulary_id ?? answer.question.question.vocabulary,
-            selected_text: answer.selectedText,
-            is_correct: answer.isCorrect,
-            reaction_time_ms: answer.reactionTimeMs,
-          } satisfies Partial<QuizResultDetail>;
-
-          return apiPost('/api/quiz-result-details/', detailPayload);
-        }),
-      );
-
-      setCompletedResult({ ...result, score: correctCount, total_time_ms: totalTime, completed_at: completedAt.toISOString() });
+      const result = (await apiPost(`/api/quiz-sessions/${sessionId}/complete/`, {})) as QuizResult;
+      setCompletedResult(result);
       setProgress(null);
     } catch (err) {
       console.error(err);
@@ -177,9 +177,7 @@ export default function QuizPlayPage() {
   };
 
   const handleRetry = () => {
-    if (!quizId) return;
-    setCompletedResult(null);
-    setProgress({ currentIndex: 0, answers: [], startedAt: Date.now() });
+    startSession();
   };
 
   if (loading) {
@@ -206,7 +204,7 @@ export default function QuizPlayPage() {
     );
   }
 
-  if (!quiz || !questions.length) {
+  if (!quiz || !questions.length || !sessionId) {
     return (
       <div className="max-w-xl mx-auto py-10">
         <p className="text-slate-600">クイズに問題が登録されていません。</p>
@@ -220,7 +218,9 @@ export default function QuizPlayPage() {
         <h1 className="text-3xl font-bold text-slate-900">結果</h1>
         <section className="bg-white shadow rounded-lg p-6 space-y-2">
           <p className="text-slate-600">クイズ: {quiz.title ?? quiz.quiz_id}</p>
-          <p className="text-slate-600">正解数: {completedResult.score} / {questions.length}</p>
+          <p className="text-slate-600">
+            正解数: {completedResult.score ?? 0} / {completedResult.question_count ?? questions.length}
+          </p>
           <p className="text-slate-600">合計時間: {(completedResult.total_time_ms ?? 0) / 1000}s</p>
         </section>
         <div className="flex gap-4">
@@ -252,7 +252,9 @@ export default function QuizPlayPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">{quiz.title ?? 'クイズ'}</h1>
-          <p className="text-slate-600">問題 {progress.currentIndex + 1} / {questions.length}</p>
+          <p className="text-slate-600">
+            問題 {progress.currentIndex + 1} / {questions.length} （1問{timerSeconds}秒）
+          </p>
         </div>
         <Link href="/student/quiz" className="text-indigo-600 font-semibold">← コレクションに戻る</Link>
       </div>
@@ -268,8 +270,8 @@ export default function QuizPlayPage() {
             <button
               key={choice.vocab_choice_id}
               onClick={() => handleAnswer(choice)}
-              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-left text-slate-700 hover:border-indigo-400 hover:bg-indigo-50"
-              disabled={submitting}
+              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-left text-slate-700 hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-50"
+              disabled={submitting || answering}
             >
               {choice.text_ja}
             </button>
@@ -278,13 +280,4 @@ export default function QuizPlayPage() {
       </section>
     </div>
   );
-}
-
-function shuffleChoices<T>(choices: T[]): T[] {
-  const result = [...choices];
-  for (let i = result.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
 }

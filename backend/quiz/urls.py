@@ -35,5 +35,16 @@ router.register(r"test-result-details", views.TestResultDetailViewSet, basename=
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("quiz-sessions/", views.QuizSessionStartView.as_view(), name="quiz-session-start"),
+    path(
+        "quiz-sessions/<uuid:quiz_result_id>/answer/",
+        views.QuizSessionAnswerView.as_view(),
+        name="quiz-session-answer",
+    ),
+    path(
+        "quiz-sessions/<uuid:quiz_result_id>/complete/",
+        views.QuizSessionCompleteView.as_view(),
+        name="quiz-session-complete",
+    ),
     path("debug/create-user/", views.debug_create_user, name="debug-create-user"),
 ]

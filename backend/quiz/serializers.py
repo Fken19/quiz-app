@@ -3,6 +3,7 @@
 from rest_framework import serializers
 
 from . import models
+from .utils import is_teacher_whitelisted
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -234,6 +235,16 @@ class VocabChoiceSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user_is_teacher = False
+        if request is not None and request.user and request.user.is_authenticated:
+            user_is_teacher = is_teacher_whitelisted(request.user.email)
+        if not user_is_teacher:
+            data.pop("is_correct", None)
+        return data
 
 
 class QuizCollectionSerializer(serializers.ModelSerializer):
