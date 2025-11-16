@@ -258,10 +258,12 @@ class RosterMembershipSerializer(serializers.ModelSerializer):
         links = getattr(obj.student, "prefetched_teacher_links", None) or getattr(obj.student, "teacher_links", None)
         if links:
             for link in links:
-                if link.teacher_id == teacher.id:
+                if link.teacher_id == teacher.id and link.status != models.LinkStatus.REVOKED:
                     return link
         return (
-            models.StudentTeacherLink.objects.filter(student=obj.student, teacher=teacher)
+            models.StudentTeacherLink.objects.filter(student=obj.student, teacher=teacher).exclude(
+                status=models.LinkStatus.REVOKED
+            )
             .select_related("student__profile")
             .first()
         )

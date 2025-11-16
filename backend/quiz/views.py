@@ -367,9 +367,14 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
             link.save(update_fields=fields + ["updated_at"])
             return Response(serializers.TeacherStudentListSerializer(link).data)
 
-        qs = models.StudentTeacherLink.objects.select_related("student__profile").filter(teacher=teacher).order_by(
-            "-linked_at"
+        include_revoked = str(request.query_params.get("include_revoked", "false")).lower() in {"1", "true"}
+        qs = (
+            models.StudentTeacherLink.objects.select_related("student__profile")
+            .filter(teacher=teacher)
+            .order_by("-linked_at")
         )
+        if not include_revoked:
+            qs = qs.exclude(status=models.LinkStatus.REVOKED)
         data = serializers.TeacherStudentListSerializer(qs, many=True).data
         return Response(data)
 
@@ -446,7 +451,10 @@ class RosterMembershipViewSet(BaseModelViewSet):
                     to_attr="prefetched_teacher_links",
                 )
             )
-            .filter(roster_folder__owner_teacher=teacher)
+            .filter(
+                roster_folder__owner_teacher=teacher,
+                student__teacher_links__teacher=teacher,
+            )
             .order_by("-added_at")
         )
         roster_folder_id = self.request.query_params.get("roster_folder") or self.request.query_params.get(
@@ -457,6 +465,7 @@ class RosterMembershipViewSet(BaseModelViewSet):
             qs = qs.filter(roster_folder_id=roster_folder_id)
         if not include_removed:
             qs = qs.filter(removed_at__isnull=True)
+        qs = qs.exclude(student__teacher_links__status=models.LinkStatus.REVOKED).distinct()
         return qs
 
     def create(self, request, *args, **kwargs):  # type: ignore[override]
