@@ -35,6 +35,8 @@ router.register(r"test-result-details", views.TestResultDetailViewSet, basename=
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("student/dashboard-summary/", views.StudentDashboardSummaryView.as_view(), name="student-dashboard-summary"),
+    path("focus-questions/", views.FocusQuestionView.as_view(), name="focus-questions"),
     path("quiz-sessions/", views.QuizSessionStartView.as_view(), name="quiz-session-start"),
     path(
         "quiz-sessions/<uuid:quiz_result_id>/answer/",

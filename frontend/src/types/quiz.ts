@@ -251,6 +251,61 @@ export interface LearningSummaryDaily {
   updated_at: string;
 }
 
+export type LearningStatusKey = 'unlearned' | 'weak' | 'learning' | 'mastered';
+
+export interface DashboardFocusSummary {
+  unlearned: { count: number };
+  weak: { count: number };
+  learning: { count: number };
+  mastered: { count: number };
+}
+
+export interface DashboardDailyChartItem {
+  date: string;
+  correct_count: number;
+  incorrect_count: number;
+  timeout_count: number;
+}
+
+export interface StudentDashboardSummary {
+  user: ApiUser;
+  streak: {
+    current: number;
+    best: number;
+  };
+  today_summary: {
+    correct_count: number;
+    incorrect_count: number;
+    timeout_count: number;
+    total_time_ms: number;
+  };
+  weekly_summary: {
+    correct_count: number;
+    incorrect_count: number;
+    timeout_count: number;
+    total_time_ms: number;
+  };
+  recent_daily: {
+    chart: DashboardDailyChartItem[];
+    max_total: number;
+  };
+  focus_summary: DashboardFocusSummary;
+  quiz_result_count: number;
+  test_result_count: number;
+  pending_tests: number;
+}
+
+export interface FocusQuestionsResponse {
+  status: LearningStatusKey;
+  requested_limit: number;
+  available_count: number;
+  vocabulary_ids: string[];
+  preview: Array<{
+    vocabulary_id: string;
+    text_en: string | null;
+  }>;
+}
+
 export interface Test {
   test_id: string;
   teacher: string;

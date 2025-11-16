@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import random
 import uuid
+from datetime import timedelta
 from typing import Any
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Max, Q, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
@@ -253,6 +254,186 @@ class QuizResultDetailViewSet(BaseModelViewSet):
         if quiz_result.user_id != self.request.user.id:
             raise PermissionDenied("Quiz result does not belong to the current user.")
         serializer.save()
+
+
+class StudentDashboardSummaryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        today = timezone.localdate()
+        seven_days_ago = today - timedelta(days=6)
+
+        daily_qs = models.LearningSummaryDaily.objects.filter(
+            user=user,
+            activity_date__range=(seven_days_ago, today),
+        )
+        daily_map = {entry.activity_date: entry for entry in daily_qs}
+
+        # Today summary and weekly aggregate
+        today_entry = daily_map.get(today)
+        today_summary = {
+            "correct_count": today_entry.correct_count if today_entry else 0,
+            "incorrect_count": today_entry.incorrect_count if today_entry else 0,
+            "timeout_count": today_entry.timeout_count if today_entry else 0,
+            "total_time_ms": today_entry.total_time_ms if today_entry else 0,
+        }
+        weekly_totals = daily_qs.aggregate(
+            correct=Sum("correct_count"),
+            incorrect=Sum("incorrect_count"),
+            timeout=Sum("timeout_count"),
+            time_ms=Sum("total_time_ms"),
+        )
+        weekly_summary = {
+            "correct_count": weekly_totals["correct"] or 0,
+            "incorrect_count": weekly_totals["incorrect"] or 0,
+            "timeout_count": weekly_totals["timeout"] or 0,
+            "total_time_ms": weekly_totals["time_ms"] or 0,
+        }
+
+        chart_data = []
+        max_daily_total = 0
+        for offset in range(7):
+            day = seven_days_ago + timedelta(days=offset)
+            entry = daily_map.get(day)
+            chart_item = {
+                "date": day.isoformat(),
+                "correct_count": entry.correct_count if entry else 0,
+                "incorrect_count": entry.incorrect_count if entry else 0,
+                "timeout_count": entry.timeout_count if entry else 0,
+            }
+            chart_data.append(chart_item)
+            max_daily_total = max(
+                max_daily_total,
+                chart_item["correct_count"] + chart_item["incorrect_count"] + chart_item["timeout_count"],
+            )
+
+        # Streak
+        latest_entry = (
+            models.LearningSummaryDaily.objects.filter(user=user).order_by("-activity_date").first()
+        )
+        current_streak = latest_entry.streak_count if latest_entry else 0
+        best_streak = (
+            models.LearningSummaryDaily.objects.filter(user=user).aggregate(best=Max("streak_count"))["best"] or 0
+        )
+
+        # Focus summary counts
+        status_rows = (
+            models.UserVocabStatus.objects.filter(user=user)
+            .values("status")
+            .annotate(count=Count("id"))
+        )
+        status_count_map = {row["status"]: row["count"] for row in status_rows}
+
+        total_vocab_candidates = models.Vocabulary.objects.filter(
+            visibility=models.VocabVisibility.PUBLIC,
+            status=models.VocabStatus.PUBLISHED,
+        )
+        total_vocab = total_vocab_candidates.count()
+        studied_total = sum(status_count_map.values())
+        unlearned_count = max(total_vocab - studied_total, 0)
+
+        focus_summary = {
+            "unlearned": {"count": unlearned_count},
+            "weak": {"count": status_count_map.get(models.LearningStatus.WEAK, 0)},
+            "learning": {"count": status_count_map.get(models.LearningStatus.LEARNING, 0)},
+            "mastered": {"count": status_count_map.get(models.LearningStatus.MASTERED, 0)},
+        }
+
+        quiz_result_count = models.QuizResult.objects.filter(user=user).count()
+        test_result_count = models.TestResult.objects.filter(student=user).count()
+        pending_tests = (
+            models.TestAssignee.objects.filter(student=user)
+            .exclude(
+                test__results__student=user,
+                test__results__completed_at__isnull=False,
+            )
+            .distinct()
+            .count()
+        )
+
+        summary = {
+            "user": serializers.UserSerializer(user, context={"request": request}).data,
+            "streak": {
+                "current": current_streak,
+                "best": best_streak,
+            },
+            "today_summary": today_summary,
+            "weekly_summary": weekly_summary,
+            "recent_daily": {
+                "chart": chart_data,
+                "max_total": max_daily_total,
+            },
+            "focus_summary": focus_summary,
+            "quiz_result_count": quiz_result_count,
+            "test_result_count": test_result_count,
+            "pending_tests": pending_tests,
+        }
+        return Response(summary)
+
+
+class FocusQuestionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        status_param = request.query_params.get("status", models.LearningStatus.WEAK)
+        limit_param = request.query_params.get("limit", "10")
+        try:
+            limit = max(1, min(int(limit_param), 100))
+        except (TypeError, ValueError):
+            return Response({"detail": "limit は整数で指定してください"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if status_param not in models.LearningStatus.values:
+            return Response({"detail": "status が不正です"}, status=status.HTTP_400_BAD_REQUEST)
+
+        vocabulary_ids: list[str] = []
+        preview: list[dict[str, Any]] = []
+        available_count = 0
+
+        if status_param == models.LearningStatus.UNLEARNED:
+            vocab_qs = (
+                models.Vocabulary.objects.filter(
+                    visibility=models.VocabVisibility.PUBLIC,
+                    status=models.VocabStatus.PUBLISHED,
+                )
+                .exclude(user_statuses__user=user)
+                .order_by("sort_key")
+            )
+            available_count = vocab_qs.count()
+            selected = list(vocab_qs[:limit])
+            vocabulary_ids = [str(vocab.id) for vocab in selected]
+            preview = [{"vocabulary_id": str(vocab.id), "text_en": vocab.text_en} for vocab in selected]
+        else:
+            status_qs = (
+                models.UserVocabStatus.objects.filter(user=user, status=status_param)
+                .order_by("last_answered_at")
+            )
+            available_count = status_qs.count()
+            selected_ids = list(status_qs.values_list("vocabulary_id", flat=True)[:limit])
+            vocabulary_ids = [str(v_id) for v_id in selected_ids]
+            vocab_map = {
+                str(vocab.id): vocab
+                for vocab in models.Vocabulary.objects.filter(id__in=selected_ids)
+            }
+            preview = []
+            for vocab_id in vocabulary_ids:
+                vocab_obj = vocab_map.get(vocab_id)
+                preview.append(
+                    {
+                        "vocabulary_id": vocab_id,
+                        "text_en": vocab_obj.text_en if vocab_obj else None,
+                    }
+                )
+
+        data = {
+            "status": status_param,
+            "requested_limit": limit,
+            "available_count": available_count,
+            "vocabulary_ids": vocabulary_ids,
+            "preview": preview,
+        }
+        return Response(data)
 
 
 class QuizSessionStartView(APIView):
@@ -608,6 +789,7 @@ __all__ = [
     "TeacherViewSet",
     "TeacherProfileViewSet",
     "TeacherWhitelistViewSet",
+    "FocusQuestionView",
     "InvitationCodeViewSet",
     "StudentTeacherLinkViewSet",
     "RosterFolderViewSet",
@@ -622,6 +804,7 @@ __all__ = [
     "QuizQuestionViewSet",
     "QuizResultViewSet",
     "QuizResultDetailViewSet",
+    "StudentDashboardSummaryView",
     "UserVocabStatusViewSet",
     "TestViewSet",
     "TestQuestionViewSet",
