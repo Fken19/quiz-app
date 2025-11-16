@@ -10,7 +10,7 @@ from typing import Any
 from django.conf import settings
 from django.core.cache import caches
 from django.core.files.storage import default_storage
-from django.db.models import Count, Max, Prefetch, Q, Sum
+from django.db.models import Count, Max, Prefetch, Q, Sum, F
 from django.db.models.functions import TruncMonth, TruncWeek
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -796,48 +796,50 @@ class TeacherStudentProgressViewSet(viewsets.ViewSet):
         student = link.student
         date_from, date_to = self._date_range(request)
         level_param = request.query_params.get("level")
+        try:
+            qs = (
+                models.QuizResultDetail.objects.select_related("quiz_result__quiz__quiz_collection")
+                .filter(
+                    quiz_result__user=student,
+                    quiz_result__completed_at__date__gte=date_from,
+                    quiz_result__completed_at__date__lte=date_to,
+                )
+                .annotate(
+                    level_code=F("quiz_result__quiz__quiz_collection__level_code"),
+                    level_label=F("quiz_result__quiz__quiz_collection__level_label"),
+                )
+                .exclude(level_code__isnull=True)
+            )
+            if level_param:
+                qs = qs.filter(level_code=level_param)
 
-        qs = (
-            models.QuizResultDetail.objects.select_related("quiz_result__quiz__quiz_collection")
-            .filter(
-                quiz_result__user=student,
-                quiz_result__completed_at__date__gte=date_from,
-                quiz_result__completed_at__date__lte=date_to,
+            level_rows = (
+                qs.values("level_code", "level_label")
+                .annotate(
+                    correct_count=Count("id", filter=Q(is_correct=True, is_timeout=False)),
+                    incorrect_count=Count("id", filter=Q(is_correct=False, is_timeout=False)),
+                    timeout_count=Count("id", filter=Q(is_timeout=True)),
+                )
+                .order_by("level_label")
             )
-            .annotate(
-                level_code=F("quiz_result__quiz__quiz_collection__level_code"),
-                level_label=F("quiz_result__quiz__quiz_collection__level_label"),
-            )
-            .exclude(level_code__isnull=True)
-        )
-        if level_param:
-            qs = qs.filter(level_code=level_param)
-
-        level_rows = (
-            qs.values("level_code", "level_label")
-            .annotate(
-                correct_count=Count("id", filter=Q(is_correct=True, is_timeout=False)),
-                incorrect_count=Count("id", filter=Q(is_correct=False, is_timeout=False)),
-                timeout_count=Count("id", filter=Q(is_timeout=True)),
-            )
-            .order_by("level_label")
-        )
-        data = []
-        for row in level_rows:
-            total = (row["correct_count"] or 0) + (row["incorrect_count"] or 0) + (row["timeout_count"] or 0)
-            accuracy = row["correct_count"] / total * 100 if total else 0.0
-            data.append(
-                {
-                    "level_code": row["level_code"],
-                    "level_label": row["level_label"] or row["level_code"],
-                    "correct_count": row["correct_count"],
-                    "incorrect_count": row["incorrect_count"],
-                    "timeout_count": row["timeout_count"],
-                    "answer_count": total,
-                    "accuracy": accuracy,
-                }
-            )
-        return Response({"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "items": data})
+            data = []
+            for row in level_rows:
+                total = (row["correct_count"] or 0) + (row["incorrect_count"] or 0) + (row["timeout_count"] or 0)
+                accuracy = row["correct_count"] / total * 100 if total else 0.0
+                data.append(
+                    {
+                        "level_code": row["level_code"],
+                        "level_label": row["level_label"] or row["level_code"],
+                        "correct_count": row["correct_count"],
+                        "incorrect_count": row["incorrect_count"],
+                        "timeout_count": row["timeout_count"],
+                        "answer_count": total,
+                        "accuracy": accuracy,
+                    }
+                )
+            return Response({"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "items": data})
+        except Exception as exc:  # noqa: BLE001
+            return Response({"detail": f"level-stats 集計でエラーが発生しました: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["get"], url_path="sessions")
     def sessions(self, request, pk=None):
