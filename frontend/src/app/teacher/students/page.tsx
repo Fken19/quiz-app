@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { apiGet, apiPost } from '@/lib/api-utils';
+import { apiGet, apiPost, apiPatch } from '@/lib/api-utils';
 interface TeacherStudent {
   student_teacher_link_id: string;
   display_name: string;
@@ -84,14 +84,10 @@ export default function TeacherStudentsPage() {
     if (!aliasModalId) return;
     try {
       setActionMessage(null);
-      await apiPost(
-        `/api/teacher/students/`,
-        {
-          student_teacher_link_id: aliasModalId,
-          custom_display_name: aliasValue,
-        },
-        'PATCH',
-      );
+      await apiPatch(`/api/teacher/students/`, {
+        student_teacher_link_id: aliasModalId,
+        custom_display_name: aliasValue,
+      });
       setAliasModalId(null);
       setActionMessage('表示名を更新しました');
       await fetchStudents();
@@ -362,21 +358,17 @@ export default function TeacherStudentsPage() {
                   if (!showEditId) return;
                   setActionMessage(null);
                   try {
-                    await apiPost(
-                      '/api/teacher/students/',
-                      {
-                        student_teacher_link_id: showEditId,
-                        local_student_code: editForm.local_student_code,
-                        tags: editForm.tags
-                          .split(',')
-                          .map((t) => t.trim())
-                          .filter(Boolean),
-                        private_note: editForm.private_note,
-                        kana_for_sort: editForm.kana_for_sort,
-                        color: editForm.color,
-                      },
-                      'PATCH',
-                    );
+                    await apiPatch('/api/teacher/students/', {
+                      student_teacher_link_id: showEditId,
+                      local_student_code: editForm.local_student_code,
+                      tags: editForm.tags
+                        .split(',')
+                        .map((t) => t.trim())
+                        .filter(Boolean),
+                      private_note: editForm.private_note,
+                      kana_for_sort: editForm.kana_for_sort,
+                      color: editForm.color,
+                    });
                     setActionMessage('属性を更新しました');
                     setShowEditId(null);
                     fetchStudents();
