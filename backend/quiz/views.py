@@ -552,6 +552,7 @@ class FocusQuestionView(APIView):
         user = request.user
         status_param = request.query_params.get("status", models.LearningStatus.WEAK)
         limit_param = request.query_params.get("limit", "10")
+        supplement = str(request.query_params.get("supplement", "false")).lower() in {"1", "true", "yes"}
         try:
             limit = max(1, min(int(limit_param), 100))
         except (TypeError, ValueError):
@@ -563,19 +564,24 @@ class FocusQuestionView(APIView):
         vocabulary_ids: list[str] = []
         preview: list[dict[str, Any]] = []
         available_count = 0
+        primary_count = 0
+        filled_from: list[dict[str, Any]] = []
+
+        # まだ出題していない公開語彙（UNLEARNED候補）
+        unlearned_qs = (
+            models.Vocabulary.objects.filter(
+                visibility=models.VocabVisibility.PUBLIC,
+                status=models.VocabStatus.PUBLISHED,
+            )
+            .exclude(user_statuses__user=user)
+            .order_by("sort_key")
+        )
 
         if status_param == models.LearningStatus.UNLEARNED:
-            vocab_qs = (
-                models.Vocabulary.objects.filter(
-                    visibility=models.VocabVisibility.PUBLIC,
-                    status=models.VocabStatus.PUBLISHED,
-                )
-                .exclude(user_statuses__user=user)
-                .order_by("sort_key")
-            )
-            available_count = vocab_qs.count()
-            selected = list(vocab_qs[:limit])
+            available_count = unlearned_qs.count()
+            selected = list(unlearned_qs[:limit])
             vocabulary_ids = [str(vocab.id) for vocab in selected]
+            primary_count = len(vocabulary_ids)
             preview = [{"vocabulary_id": str(vocab.id), "text_en": vocab.text_en} for vocab in selected]
         else:
             status_qs = (
@@ -585,6 +591,7 @@ class FocusQuestionView(APIView):
             available_count = status_qs.count()
             selected_ids = list(status_qs.values_list("vocabulary_id", flat=True)[:limit])
             vocabulary_ids = [str(v_id) for v_id in selected_ids]
+            primary_count = len(vocabulary_ids)
             vocab_map = {
                 str(vocab.id): vocab
                 for vocab in models.Vocabulary.objects.filter(id__in=selected_ids)
@@ -599,12 +606,58 @@ class FocusQuestionView(APIView):
                     }
                 )
 
+        # 不足があれば補充（別ステータスや未学習語から）
+        if supplement and len(vocabulary_ids) < limit:
+            fallback_order = [
+                models.LearningStatus.WEAK,
+                models.LearningStatus.UNLEARNED,
+                models.LearningStatus.LEARNING,
+                models.LearningStatus.MASTERED,
+            ]
+            fallback_order = [s for s in fallback_order if s != status_param]
+            selected_set = set(vocabulary_ids)
+            needed = limit - len(vocabulary_ids)
+
+            for fb_status in fallback_order:
+                if needed <= 0:
+                    break
+                extra_ids: list[str] = []
+                if fb_status == models.LearningStatus.UNLEARNED:
+                    extra_ids = [
+                        str(v_id)
+                        for v_id in unlearned_qs.exclude(id__in=selected_set).values_list("id", flat=True)[:needed]
+                    ]
+                else:
+                    extra_ids = [
+                        str(v_id)
+                        for v_id in models.UserVocabStatus.objects.filter(user=user, status=fb_status)
+                        .exclude(vocabulary_id__in=selected_set)
+                        .order_by("last_answered_at")
+                        .values_list("vocabulary_id", flat=True)[:needed]
+                    ]
+                if extra_ids:
+                    vocabulary_ids.extend(extra_ids)
+                    selected_set.update(extra_ids)
+                    filled_from.append({"status": fb_status, "count": len(extra_ids)})
+                    needed = limit - len(vocabulary_ids)
+
+        # プレビューは最初の5件を表示用に取得
+        if not preview:
+            preview_vocab = models.Vocabulary.objects.filter(id__in=vocabulary_ids[:5])
+            preview_map = {str(vocab.id): vocab for vocab in preview_vocab}
+            preview = [
+                {"vocabulary_id": vid, "text_en": preview_map.get(vid).text_en if preview_map.get(vid) else None}
+                for vid in vocabulary_ids[:5]
+            ]
+
         data = {
             "status": status_param,
             "requested_limit": limit,
             "available_count": available_count,
+            "primary_count": primary_count,
             "vocabulary_ids": vocabulary_ids[:limit],
             "preview": preview[:5],
+            "filled_from": filled_from,
         }
         return Response(data)
 

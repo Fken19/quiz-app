@@ -62,6 +62,9 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [focusMessage, setFocusMessage] = useState<string | null>(null);
   const [focusLoading, setFocusLoading] = useState<LearningStatusKey | null>(null);
+  const [focusModal, setFocusModal] = useState<{ statusKey: LearningStatusKey; response: FocusQuestionsResponse } | null>(
+    null,
+  );
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -89,34 +92,58 @@ export default function DashboardPage() {
 
   const dayChart = useMemo(() => summary.recent_daily.chart, [summary]);
 
+  const requestFocusQuestions = async (statusKey: LearningStatusKey, opts?: { supplement?: boolean }) => {
+    const query = `/api/focus-questions/?status=${statusKey}&limit=10${
+      opts?.supplement ? '&supplement=true' : ''
+    }`;
+    return (await apiGet(query)) as FocusQuestionsResponse;
+  };
+
+  const beginFocusSession = async (statusKey: LearningStatusKey, vocabularyIds: string[]) => {
+    const payload = { vocabulary_ids: vocabularyIds.slice(0, 10), status: statusKey };
+    const session = (await apiPost('/api/focus-quiz-sessions/', payload)) as FocusQuizSessionResponse;
+    if (session && session.quiz_id) {
+      router.push(`/student/quiz/play?quizId=${session.quiz_id}`);
+    } else {
+      setFocusMessage('フォーカス学習の開始に失敗しました。');
+    }
+  };
+
   const handleFocusStart = async (statusKey: LearningStatusKey) => {
     try {
       setFocusLoading(statusKey);
       setFocusMessage(null);
-      const res = (await apiGet(`/api/focus-questions/?status=${statusKey}&limit=10`)) as FocusQuestionsResponse;
+      const res = await requestFocusQuestions(statusKey);
       if (res.available_count === 0) {
         setFocusMessage(`「${statusLabels[statusKey]}」の語が見つかりません。別のステータスを選んでください。`);
         return;
       }
-      const limitedIds = res.vocabulary_ids.slice(0, res.requested_limit);
-      const payload = {
-        vocabulary_ids: limitedIds,
-        status: statusKey,
-      };
       if (res.available_count < res.requested_limit) {
-        const proceed = window.confirm(
-          `「${statusLabels[statusKey]}」は ${res.available_count} 件のみです。このまま始めますか？`,
-        );
-        if (!proceed) {
-          return;
-        }
+        setFocusModal({ statusKey, response: res });
+        return;
       }
-      const session = (await apiPost('/api/focus-quiz-sessions/', payload)) as FocusQuizSessionResponse;
-      if (session && session.quiz_id) {
-        router.push(`/student/quiz/play?quizId=${session.quiz_id}`);
-      } else {
-        setFocusMessage('フォーカス学習の開始に失敗しました。');
+      await beginFocusSession(statusKey, res.vocabulary_ids);
+    } catch (err) {
+      console.error(err);
+      setFocusMessage('フォーカス対象の取得に失敗しました。');
+    } finally {
+      setFocusLoading(null);
+    }
+  };
+
+  const handleFocusModalAction = async (mode: 'as-is' | 'supplement') => {
+    if (!focusModal) return;
+    const { statusKey, response } = focusModal;
+    try {
+      setFocusLoading(statusKey);
+      setFocusMessage(null);
+      let vocabIds = response.vocabulary_ids;
+      if (mode === 'supplement') {
+        const supplemented = await requestFocusQuestions(statusKey, { supplement: true });
+        vocabIds = supplemented.vocabulary_ids;
       }
+      await beginFocusSession(statusKey, vocabIds);
+      setFocusModal(null);
     } catch (err) {
       console.error(err);
       setFocusMessage('フォーカス対象の取得に失敗しました。');
@@ -282,6 +309,57 @@ export default function DashboardPage() {
           })}
         </div>
       </section>
+
+      {focusModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6 space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">フォーカス対象が不足しています</h3>
+              <p className="text-sm text-slate-600 mt-1">
+                「{statusLabels[focusModal.statusKey]}」は {focusModal.response.available_count} 件
+                （必要{focusModal.response.requested_limit}件）でした。
+              </p>
+              {focusModal.response.filled_from && focusModal.response.filled_from.length > 0 && (
+                <p className="text-xs text-slate-500 mt-1">
+                  補充候補: {focusModal.response.filled_from.map((f) => `${statusLabels[f.status]}+${f.count}件`).join(' / ')}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2 text-sm text-slate-700">
+              <p>どうしますか？</p>
+              <ul className="list-disc list-inside text-slate-600">
+                <li>そのまま始める: 今ある分だけで開始</li>
+                <li>不足を埋める: 他ステータスから補充して開始</li>
+              </ul>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => handleFocusModalAction('as-is')}
+                disabled={focusLoading !== null}
+                className="flex-1 rounded-md bg-slate-100 text-slate-900 px-4 py-2 font-semibold hover:bg-slate-200 disabled:opacity-60"
+              >
+                この件数で始める
+              </button>
+              <button
+                type="button"
+                onClick={() => handleFocusModalAction('supplement')}
+                disabled={focusLoading !== null}
+                className="flex-1 rounded-md bg-indigo-600 text-white px-4 py-2 font-semibold hover:bg-indigo-700 disabled:opacity-60"
+              >
+                不足を埋めて始める
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFocusModal(null)}
+              className="w-full text-sm text-slate-500 hover:text-slate-700"
+            >
+              やめる
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

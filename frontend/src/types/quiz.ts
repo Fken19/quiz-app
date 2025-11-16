@@ -301,6 +301,8 @@ export interface FocusQuestionsResponse {
   status: LearningStatusKey;
   requested_limit: number;
   available_count: number;
+  primary_count?: number;
+  filled_from?: Array<{ status: LearningStatusKey; count: number }>;
   vocabulary_ids: string[];
   preview: Array<{
     vocabulary_id: string;
