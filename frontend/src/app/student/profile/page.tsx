@@ -28,8 +28,8 @@ export default function ProfilePage() {
     displayName: '',
     grade: '',
     selfIntro: '',
-    avatarUrl: '',
   });
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
@@ -61,11 +61,11 @@ export default function ProfilePage() {
 
         setSummary({ user, profile, teacherLinks: links });
         setFormState({
-          displayName: profile?.display_name || user.email,
+          displayName: profile?.display_name || session?.user?.name || user.email,
           grade: profile?.grade || '',
           selfIntro: profile?.self_intro || '',
-          avatarUrl: profile?.avatar_url || '',
         });
+        setAvatarPreview(profile?.avatar_url || session?.user?.image || null);
       } catch (err) {
         console.error(err);
         setError('プロフィール情報の取得に失敗しました');
@@ -117,7 +117,6 @@ export default function ProfilePage() {
       setSaving(true);
       const payload = {
         display_name: formState.displayName.trim() || summary.user.email,
-        avatar_url: formState.avatarUrl.trim(),
         grade: formState.grade.trim() || null,
         self_intro: formState.selfIntro.trim() || null,
       };
@@ -134,14 +133,35 @@ export default function ProfilePage() {
         displayName: updated.display_name,
         grade: updated.grade || '',
         selfIntro: updated.self_intro || '',
-        avatarUrl: updated.avatar_url || '',
       });
+      setAvatarPreview(updated.avatar_url || null);
       setError(null);
     } catch (err) {
       console.error(err);
       setError('プロフィールの更新に失敗しました');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAvatarChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('file', file);
+    form.append('target', 'student');
+    try {
+      const resp = (await apiPost('/api/avatar-upload/', form)) as { avatar_url: string };
+      setAvatarPreview(resp.avatar_url);
+      if (summary.profile) {
+        setSummary((prev) =>
+          prev.profile ? { ...prev, profile: { ...prev.profile, avatar_url: resp.avatar_url } } : prev,
+        );
+      }
+      setLinkMessage('アイコンを更新しました。');
+    } catch (err) {
+      console.error(err);
+      setLinkMessage('アイコンの更新に失敗しました。');
     }
   };
 
@@ -190,13 +210,26 @@ export default function ProfilePage() {
           <p className="text-slate-600 mt-1">表示名や自己紹介を編集できます。</p>
         </div>
         <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="flex items-center gap-4">
+            <div className="flex-shrink-0">
+              {avatarPreview ? (
+                <img src={avatarPreview} alt="avatar" className="w-16 h-16 rounded-full object-cover border" />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-slate-200" />
+              )}
+            </div>
+            <label className="px-3 py-2 rounded-md border border-slate-300 text-sm font-semibold text-slate-800 bg-slate-50 hover:bg-slate-100 cursor-pointer">
+              アイコンを選択
+              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleAvatarChange} />
+            </label>
+          </div>
           <div>
             <label className="block text-sm font-medium text-slate-700">表示名</label>
             <input
               type="text"
               value={formState.displayName}
               onChange={handleChange('displayName')}
-              className="mt-1 w-full rounded-md border border-slate-400 px-3 py-2 text-base text-slate-900 focus:border-indigo-500 focus:ring-indigo-500"
+              className="mt-1 w-full rounded-md border border-slate-500 px-3 py-2 text-base text-slate-900 focus:border-indigo-500 focus:ring-indigo-500 placeholder:text-slate-400"
               required
             />
           </div>
@@ -206,7 +239,7 @@ export default function ProfilePage() {
               type="text"
               value={formState.grade}
               onChange={handleChange('grade')}
-              className="mt-1 w-full rounded-md border border-slate-400 px-3 py-2 text-base text-slate-900 focus:border-indigo-500 focus:ring-indigo-500"
+              className="mt-1 w-full rounded-md border border-slate-500 px-3 py-2 text-base text-slate-900 focus:border-indigo-500 focus:ring-indigo-500 placeholder:text-slate-400"
               placeholder="例: 中学1年A組"
             />
           </div>
@@ -215,7 +248,7 @@ export default function ProfilePage() {
             <textarea
               value={formState.selfIntro}
               onChange={handleChange('selfIntro')}
-              className="mt-1 w-full rounded-md border border-slate-400 px-3 py-2 text-base text-slate-900 focus:border-indigo-500 focus:ring-indigo-500"
+              className="mt-1 w-full rounded-md border border-slate-500 px-3 py-2 text-base text-slate-900 focus:border-indigo-500 focus:ring-indigo-500 placeholder:text-slate-400"
               rows={4}
               placeholder="簡単な自己紹介を入力してください"
             />
@@ -272,22 +305,6 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      <section className="bg-white shadow rounded-lg p-6">
-        <h2 className="text-lg font-semibold text-slate-900 mb-3">リンク中の講師</h2>
-        {summary.teacherLinks.length === 0 ? (
-          <p className="text-slate-600">現在アクティブな講師リンクはありません。</p>
-        ) : (
-          <ul className="space-y-2">
-            {summary.teacherLinks.map((link) => (
-              <li key={link.student_teacher_link_id} className="flex items-center justify-between text-sm text-slate-600">
-                <span>ID: {link.student_teacher_link_id}</span>
-                <span>ステータス: {link.status}</span>
-                <span>連携日時: {new Date(link.linked_at).toLocaleString()}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
   );
 }
@@ -298,8 +315,9 @@ function TeacherLinkRow({ link, onRevoke }: { link: StudentTeacherLink; onRevoke
   return (
     <div className="py-2 flex items-center justify-between">
       <div>
-        <p className="text-sm font-semibold text-slate-800">{displayName}</p>
-        <p className="text-xs text-slate-500">状態: {link.status}</p>
+        <p className="text-sm font-semibold text-slate-900">{displayName}</p>
+        {link.teacher_email && <p className="text-xs text-slate-600">{link.teacher_email}</p>}
+        <p className="text-xs text-slate-600">状態: {link.status}</p>
       </div>
       <button
         type="button"

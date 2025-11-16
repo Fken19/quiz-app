@@ -7,6 +7,8 @@ import uuid
 from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
+from django.core.files.storage import default_storage
 from django.db.models import Count, Max, Q, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -14,6 +16,7 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -68,6 +71,57 @@ class UserProfileViewSet(BaseModelViewSet):
 
     def perform_update(self, serializer):  # type: ignore[override]
         serializer.save(user=self.request.user)
+
+
+class AvatarUploadView(APIView):
+    """
+    ユーザー/講師のアバターをアップロードするエンドポイント
+    - target=student（既定）: UserProfile.avatar_url を更新
+    - target=teacher: TeacherProfile.avatar_url を更新（講師ホワイトリスト必須）
+    """
+
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from .utils import is_teacher_whitelisted
+
+        upload_for = request.data.get("target", "student")
+        file = request.FILES.get("file")
+        if not file:
+            return Response({"detail": "ファイルが指定されていません。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        content_type = (file.content_type or "").lower()
+        if content_type not in {"image/png", "image/jpeg", "image/jpg"}:
+            return Response({"detail": "png または jpeg 画像のみアップロードできます。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        suffix = ".png" if "png" in content_type else ".jpg"
+        filename = f"avatars/{request.user.id}/{uuid.uuid4()}{suffix}"
+        saved_path = default_storage.save(filename, file)
+        public_url = default_storage.url(saved_path)
+
+        if upload_for == "teacher":
+            if not is_teacher_whitelisted(request.user.email):
+                return Response({"detail": "講師でないためアップロードできません。"}, status=status.HTTP_403_FORBIDDEN)
+            teacher, _ = models.Teacher.objects.get_or_create(
+                email=request.user.email.lower(),
+                defaults={
+                    "oauth_provider": getattr(request.user, "oauth_provider", "google"),
+                    "oauth_sub": getattr(request.user, "oauth_sub", "") + "_teacher",
+                },
+            )
+            profile, _ = models.TeacherProfile.objects.get_or_create(teacher=teacher)
+            profile.avatar_url = public_url
+            profile.save(update_fields=["avatar_url"])
+            return Response({"avatar_url": public_url})
+
+        profile, _ = models.UserProfile.objects.get_or_create(
+            user=request.user,
+            defaults={"display_name": request.user.email, "avatar_url": public_url},
+        )
+        profile.avatar_url = public_url
+        profile.save(update_fields=["avatar_url"])
+        return Response({"avatar_url": public_url})
 
 
 class TeacherViewSet(BaseModelViewSet):

@@ -39,19 +39,26 @@ const extractErrorMessage = (body: unknown, fallback: string): string => {
 
 export async function apiRequest(endpoint: string, options: RequestInit = {}) {
   const token = await getBackendToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const isFormData = options.body instanceof FormData;
+  const headers: Record<string, string> = {};
+  if (!isFormData) {
+    headers['Content-Type'] = 'application/json';
+  }
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
-    headers: {
-      ...headers,
-      ...(options.headers as Record<string, string> | undefined),
-    },
+    headers: isFormData
+      ? {
+          ...(options.headers as Record<string, string> | undefined),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        }
+      : {
+          ...headers,
+          ...(options.headers as Record<string, string> | undefined),
+        },
   });
 
   if (response.status === 204) {
@@ -70,7 +77,10 @@ export async function apiRequest(endpoint: string, options: RequestInit = {}) {
 
 export const apiGet = (endpoint: string) => apiRequest(endpoint);
 export const apiPost = (endpoint: string, payload: unknown) =>
-  apiRequest(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+  apiRequest(endpoint, {
+    method: 'POST',
+    body: payload instanceof FormData ? payload : JSON.stringify(payload),
+  });
 export const apiPatch = (endpoint: string, payload: unknown) =>
   apiRequest(endpoint, { method: 'PATCH', body: JSON.stringify(payload) });
 export const apiDelete = (endpoint: string) => apiRequest(endpoint, { method: 'DELETE' });

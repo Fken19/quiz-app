@@ -94,36 +94,44 @@ export default function TeacherInvitesPage() {
       </div>
 
       <div className="bg-white shadow rounded-lg divide-y">
-        <div className="grid grid-cols-5 gap-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+        <div className="grid grid-cols-6 gap-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
           <span>コード</span>
           <span>期限</span>
           <span>使用状況</span>
           <span>発行日時</span>
+          <span>発行者</span>
           <span>コピー</span>
         </div>
-        {invites.map((invite) => (
-          <div
-            key={invite.invitation_code_id}
-            className={`grid grid-cols-5 gap-4 px-6 py-3 text-sm ${
-              invite.used_at || (invite.expires_at && new Date(invite.expires_at) < new Date())
-                ? 'text-slate-400'
-                : 'text-slate-700'
-            }`}
-          >
-            <span className="font-semibold select-all">{invite.invitation_code}</span>
-            <span>{invite.expires_at ? new Date(invite.expires_at).toLocaleString() : '期限なし'}</span>
-            <span>{invite.used_at ? `使用済: ${new Date(invite.used_at).toLocaleDateString()}` : '未使用'}</span>
-            <span>{invite.issued_at ? new Date(invite.issued_at).toLocaleString() : '---'}</span>
-            <button
-              type="button"
-              disabled={!!invite.used_at || (invite.expires_at && new Date(invite.expires_at) < new Date())}
-              onClick={() => navigator.clipboard.writeText(invite.invitation_code)}
-              className="text-indigo-600 text-xs font-semibold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+        {invites.map((invite) => {
+          const isExpired = invite.expires_at ? new Date(invite.expires_at) < new Date() : false;
+          const isUsed = Boolean(invite.used_at);
+          const disabled = isExpired || isUsed;
+          return (
+            <div
+              key={invite.invitation_code_id}
+              className={`grid grid-cols-6 gap-4 px-6 py-3 text-sm ${disabled ? 'text-slate-400' : 'text-slate-800'}`}
             >
-              コピー
-            </button>
-          </div>
-        ))}
+              <div className="flex items-center gap-2">
+                <span className="font-semibold select-all">{invite.invitation_code}</span>
+                {isUsed && <span className="text-xs px-2 py-0.5 rounded bg-slate-200">使用済</span>}
+                {isExpired && !isUsed && <span className="text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-700">期限切れ</span>}
+              </div>
+              <span>{invite.expires_at ? new Date(invite.expires_at).toLocaleString() : '期限なし'}</span>
+              <span>{invite.used_at ? `使用: ${new Date(invite.used_at).toLocaleDateString()}` : '未使用'}</span>
+              <span>{invite.issued_at ? new Date(invite.issued_at).toLocaleString() : '---'}</span>
+              <span className="text-slate-600">{invite.issued_by || '---'}</span>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => navigator.clipboard.writeText(invite.invitation_code)}
+                className="flex items-center justify-center text-indigo-600 text-xl hover:text-indigo-800 disabled:opacity-30 disabled:cursor-not-allowed"
+                title="コードをコピー"
+              >
+                📋
+              </button>
+            </div>
+          );
+        })}
         {invites.length === 0 && (
           <div className="px-6 py-6 text-sm text-slate-500">招待コードが登録されていません。</div>
         )}
