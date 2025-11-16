@@ -200,6 +200,20 @@ class InvitationCodeViewSet(BaseModelViewSet):
         )
         return Response(serializers.InvitationCodeSerializer(code).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="revoke")
+    def revoke(self, request, pk=None):
+        """招待コードを失効させる"""
+        teacher = getattr(request, "teacher", None)
+        if teacher is None:
+            raise PermissionDenied("講師のみが失効操作できます。")
+        invite = self.get_object()
+        if invite.issued_by_id != teacher.id:
+            raise PermissionDenied("自分が発行したコードのみ失効できます。")
+        invite.revoked = True
+        invite.revoked_at = timezone.now()
+        invite.save(update_fields=["revoked", "revoked_at"])
+        return Response({"detail": "招待コードを失効しました。"})
+
     @action(detail=False, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="redeem")
     def redeem(self, request):
         """生徒が招待コードを利用してリンクを作成する"""

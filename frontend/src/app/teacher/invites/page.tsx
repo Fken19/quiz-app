@@ -12,6 +12,7 @@ export default function TeacherInvitesPage() {
   const [issuing, setIssuing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const fetchInvites = async () => {
     try {
@@ -43,6 +44,18 @@ export default function TeacherInvitesPage() {
       setMessage('招待コードの発行に失敗しました。');
     } finally {
       setIssuing(false);
+    }
+  };
+
+  const handleRevoke = async (id: string) => {
+    try {
+      setActionMessage(null);
+      await apiPost(`/api/invitation-codes/${id}/revoke/`, {});
+      setActionMessage('招待コードを失効しました。');
+      await fetchInvites();
+    } catch (err) {
+      console.error(err);
+      setActionMessage('失効に失敗しました。');
     }
   };
 
@@ -95,12 +108,15 @@ export default function TeacherInvitesPage() {
         </div>
       </div>
 
+      {actionMessage && <p className="text-sm text-slate-800">{actionMessage}</p>}
+
       <div className="bg-white shadow rounded-lg divide-y">
-        <div className="grid grid-cols-4 gap-4 px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
+        <div className="grid grid-cols-5 gap-4 px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
           <span>コード</span>
           <span>期限</span>
           <span>使用状況</span>
           <span>発行日時</span>
+          <span>操作</span>
         </div>
         {[...invites]
           .sort((a, b) => new Date(b.issued_at).getTime() - new Date(a.issued_at).getTime())
@@ -111,7 +127,7 @@ export default function TeacherInvitesPage() {
           return (
             <div
               key={invite.invitation_code_id}
-              className={`grid grid-cols-4 gap-4 px-6 py-3 text-sm ${disabled ? 'text-slate-400' : 'text-slate-900'}`}
+              className={`grid grid-cols-5 gap-4 px-6 py-3 text-sm ${disabled ? 'text-slate-400' : 'text-slate-900'}`}
             >
               <div className="flex items-center gap-2">
                 <span className="font-semibold select-all">{invite.invitation_code}</span>
@@ -135,7 +151,16 @@ export default function TeacherInvitesPage() {
               <span>{invite.expires_at ? new Date(invite.expires_at).toLocaleString() : '期限なし'}</span>
               <span>{invite.used_at ? `使用: ${new Date(invite.used_at).toLocaleDateString()}` : '未使用'}</span>
               <span>{invite.issued_at ? new Date(invite.issued_at).toLocaleString() : '---'}</span>
-              <span className="text-slate-600">{invite.issued_by || '---'}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => handleRevoke(invite.invitation_code_id)}
+                  className="px-3 py-1 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  失効
+                </button>
+              </div>
             </div>
           );
         })}
