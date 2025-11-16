@@ -204,7 +204,10 @@ export default function TeacherStudentsPage() {
                   key={row.student_teacher_link_id}
                   className="grid grid-cols-6 gap-3 px-3 py-3 text-sm text-slate-800 border-b last:border-0 border-slate-100"
                 >
-                  <div className="flex items-center gap-3">
+                  <Link
+                    href={`/teacher/students/${row.student_teacher_link_id}/progress?from=list`}
+                    className="flex items-center gap-3 hover:bg-slate-50 rounded-md px-2 py-1 -mx-2 transition"
+                  >
                     {avatarUrl ? (
                       <img src={avatarUrl} alt={display} className="w-9 h-9 rounded-full object-cover border border-slate-200" />
                     ) : (
@@ -216,7 +219,7 @@ export default function TeacherStudentsPage() {
                       <span className="font-semibold text-slate-900">{display}</span>
                       <span className="text-xs text-slate-500">IDは表示されません</span>
                     </div>
-                  </div>
+                  </Link>
                   <span>
                     <span className={`px-2 py-1 rounded text-xs inline-block ${statusBadge}`}>{row.status}</span>
                   </span>
@@ -225,12 +228,6 @@ export default function TeacherStudentsPage() {
                     {row.linked_at ? new Date(row.linked_at).toLocaleString() : '-'}
                   </span>
                   <div className="flex items-center gap-2 justify-end">
-                    <Link
-                      href={`/teacher/students/${row.student_teacher_link_id}/progress?from=list`}
-                      className="px-2 py-1 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
-                    >
-                      学習状況
-                    </Link>
                     <button
                       type="button"
                       onClick={() => {

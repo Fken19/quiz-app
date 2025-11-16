@@ -381,43 +381,63 @@ export default function TeacherGroupsPage() {
               <div className="border rounded-lg border-slate-200 divide-y divide-slate-100">
                 {members.map((m) => (
                   <div key={m.roster_membership_id} className="flex items-center justify-between px-3 py-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      {m.avatar_url ? (
-                        <img src={m.avatar_url} alt={m.display_name} className="w-10 h-10 rounded-full object-cover border border-slate-200" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 font-semibold">
-                          {(m.display_name || 'S').slice(0, 1).toUpperCase()}
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="font-semibold text-slate-900 truncate">{m.display_name}</p>
-                        <p className="text-xs text-slate-600">{m.status}</p>
-                        <div className="flex flex-wrap gap-2 mt-1 text-xs text-slate-700">
-                          {m.local_student_code && <span className="px-2 py-0.5 rounded bg-slate-100">{m.local_student_code}</span>}
-                          {(m.tags || []).map((t) => (
-                            <span key={t} className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800">
-                              {t}
-                            </span>
-                          ))}
-                          {m.note && <span className="text-slate-600">{m.note}</span>}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
+                    {m.student_teacher_link_id ? (
                       <Link
                         href={`/teacher/students/${m.student_teacher_link_id}/progress?from=group&group=${selectedFolder.roster_folder_id}`}
-                        className="px-3 py-1 rounded border border-slate-300 text-slate-700 text-xs hover:bg-slate-50"
+                        className="flex items-center gap-3 min-w-0 hover:bg-slate-50 rounded-md px-2 py-1 -mx-2 transition"
                       >
-                        学習状況
+                        {m.avatar_url ? (
+                          <img src={m.avatar_url} alt={m.display_name} className="w-10 h-10 rounded-full object-cover border border-slate-200" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 font-semibold">
+                            {(m.display_name || 'S').slice(0, 1).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900 truncate">{m.display_name}</p>
+                          <p className="text-xs text-slate-600">{m.status}</p>
+                          <div className="flex flex-wrap gap-2 mt-1 text-xs text-slate-700">
+                            {m.local_student_code && <span className="px-2 py-0.5 rounded bg-slate-100">{m.local_student_code}</span>}
+                            {(m.tags || []).map((t) => (
+                              <span key={t} className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800">
+                                {t}
+                              </span>
+                            ))}
+                            {m.note && <span className="text-slate-600">{m.note}</span>}
+                          </div>
+                        </div>
                       </Link>
-                      <button
-                        type="button"
-                        className="px-3 py-1 rounded border border-slate-300 text-slate-700 text-xs hover:bg-slate-50"
-                        onClick={() => removeMember(m.roster_membership_id)}
-                      >
-                        解除
-                      </button>
-                    </div>
+                    ) : (
+                      <div className="flex items-center gap-3 min-w-0">
+                        {m.avatar_url ? (
+                          <img src={m.avatar_url} alt={m.display_name} className="w-10 h-10 rounded-full object-cover border border-slate-200" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 font-semibold">
+                            {(m.display_name || 'S').slice(0, 1).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900 truncate">{m.display_name}</p>
+                          <p className="text-xs text-slate-600">{m.status}</p>
+                          <div className="flex flex-wrap gap-2 mt-1 text-xs text-slate-700">
+                            {m.local_student_code && <span className="px-2 py-0.5 rounded bg-slate-100">{m.local_student_code}</span>}
+                            {(m.tags || []).map((t) => (
+                              <span key={t} className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800">
+                                {t}
+                              </span>
+                            ))}
+                            {m.note && <span className="text-slate-600">{m.note}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="px-3 py-1 rounded border border-slate-300 text-slate-700 text-xs hover:bg-slate-50"
+                      onClick={() => removeMember(m.roster_membership_id)}
+                    >
+                      解除
+                    </button>
                   </div>
                 ))}
                 {members.length === 0 && (
