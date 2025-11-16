@@ -93,7 +93,6 @@ class TeacherAccessControlMiddleware:
         '/api/roster-folders/',
         '/api/roster-memberships/',
         '/api/invitation-codes/',
-        '/api/student-teacher-links/',
     ]
     
     def __init__(self, get_response):
