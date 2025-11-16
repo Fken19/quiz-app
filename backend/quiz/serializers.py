@@ -152,6 +152,12 @@ class TeacherStudentListSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
 
+    def _safe_profile(self, user: models.User):
+        try:
+            return user.profile
+        except Exception:
+            return None
+
     class Meta:
         model = models.StudentTeacherLink
         fields = [
@@ -172,11 +178,11 @@ class TeacherStudentListSerializer(serializers.ModelSerializer):
     def get_display_name(self, obj):
         if obj.custom_display_name:
             return obj.custom_display_name
-        profile = getattr(obj.student, "profile", None)
+        profile = self._safe_profile(obj.student)
         return profile.display_name if profile and profile.display_name else ""
 
     def get_avatar_url(self, obj):
-        profile = getattr(obj.student, "profile", None)
+        profile = self._safe_profile(obj.student)
         return profile.avatar_url if profile else ""
 
 
@@ -215,6 +221,7 @@ class RosterMembershipSerializer(serializers.ModelSerializer):
     status = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
     local_student_code = serializers.SerializerMethodField()
+    _profile_cache: dict[str, models.UserProfile | None] = {}
 
     class Meta:
         model = models.RosterMembership
@@ -267,11 +274,11 @@ class RosterMembershipSerializer(serializers.ModelSerializer):
         link = self._get_teacher_link(obj)
         if link and link.custom_display_name:
             return link.custom_display_name
-        profile = getattr(obj.student, "profile", None)
+        profile = self._safe_profile(obj.student)
         return profile.display_name if profile and profile.display_name else ""
 
     def get_avatar_url(self, obj):
-        profile = getattr(obj.student, "profile", None)
+        profile = self._safe_profile(obj.student)
         return profile.avatar_url if profile else ""
 
     def get_status(self, obj):
@@ -285,6 +292,18 @@ class RosterMembershipSerializer(serializers.ModelSerializer):
     def get_local_student_code(self, obj):
         link = self._get_teacher_link(obj)
         return link.local_student_code if link else None
+
+    def _safe_profile(self, user: models.User):
+        cache_key = str(user.pk)
+        if cache_key in self._profile_cache:
+            return self._profile_cache[cache_key]
+        profile = None
+        try:
+            profile = user.profile
+        except Exception:
+            profile = None
+        self._profile_cache[cache_key] = profile
+        return profile
 
 
 class VocabularySerializer(serializers.ModelSerializer):
