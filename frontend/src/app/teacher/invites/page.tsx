@@ -13,6 +13,7 @@ export default function TeacherInvitesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [qrFor, setQrFor] = useState<string | null>(null);
 
   const fetchInvites = async () => {
     try {
@@ -58,6 +59,9 @@ export default function TeacherInvitesPage() {
       setActionMessage('失効に失敗しました。');
     }
   };
+
+  const qrUrl = (code: string) =>
+    `https://chart.googleapis.com/chart?chs=220x220&cht=qr&chl=${encodeURIComponent(code)}&choe=UTF-8`;
 
   if (loading) {
     return (
@@ -111,8 +115,9 @@ export default function TeacherInvitesPage() {
       {actionMessage && <p className="text-sm text-slate-800">{actionMessage}</p>}
 
       <div className="bg-white shadow rounded-lg divide-y">
-        <div className="grid grid-cols-5 gap-4 px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
+        <div className="grid grid-cols-6 gap-4 px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
           <span>コード</span>
+          <span>QR</span>
           <span>期限</span>
           <span>使用状況</span>
           <span>発行日時</span>
@@ -129,7 +134,7 @@ export default function TeacherInvitesPage() {
           return (
             <div
               key={invite.invitation_code_id}
-              className={`grid grid-cols-5 gap-4 px-6 py-3 text-sm ${disabled ? 'text-slate-400' : 'text-slate-900'}`}
+              className={`grid grid-cols-6 gap-4 px-6 py-3 text-sm ${disabled ? 'text-slate-400' : 'text-slate-900'}`}
             >
               <div className="flex items-center gap-2">
                 <span className="font-semibold select-all">{invite.invitation_code}</span>
@@ -151,6 +156,18 @@ export default function TeacherInvitesPage() {
                 {!isRevoked && isUsed && <span className="text-xs px-2 py-0.5 rounded bg-slate-200">使用済</span>}
                 {!isRevoked && !isUsed && isExpired && (
                   <span className="text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-700">期限切れ</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQrFor(qrFor === invite.invitation_code_id ? null : invite.invitation_code_id)}
+                  className="text-sm text-indigo-600 hover:text-indigo-800"
+                >
+                  {qrFor === invite.invitation_code_id ? '閉じる' : 'QR表示'}
+                </button>
+                {qrFor === invite.invitation_code_id && (
+                  <img src={qrUrl(invite.invitation_code)} alt="QR" className="w-16 h-16 border rounded" />
                 )}
               </div>
               <span>{invite.expires_at ? new Date(invite.expires_at).toLocaleString() : '期限なし'}</span>
