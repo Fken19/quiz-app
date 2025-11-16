@@ -26,14 +26,6 @@ interface QuizSessionQuestion {
 
 interface QuizProgress {
   currentIndex: number;
-  answers: Array<{
-    question: QuizSessionQuestion;
-    selectedChoiceId: string | null;
-    selectedText: string | null;
-    isCorrect: boolean;
-    isTimeout: boolean;
-    reactionTimeMs: number;
-  }>;
   startedAt: number;
 }
 
@@ -50,6 +42,15 @@ interface AnswerResponse {
   reaction_time_ms?: number | null;
   selected_text?: string | null;
 }
+
+type AnswerLog = {
+  question: QuizSessionQuestion;
+  selectedChoiceId: string | null;
+  selectedText: string | null;
+  isCorrect: boolean;
+  isTimeout: boolean;
+  reactionTimeMs: number;
+};
 
 type JudgeState =
   | null
@@ -68,6 +69,8 @@ export default function QuizPlayPage() {
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [questions, setQuestions] = useState<QuizSessionQuestion[]>([]);
   const [progress, setProgress] = useState<QuizProgress | null>(null);
+  const [answers, setAnswers] = useState<AnswerLog[]>([]);
+  const [answers, setAnswers] = useState<AnswerLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [answering, setAnswering] = useState(false);
@@ -109,9 +112,9 @@ export default function QuizPlayPage() {
       setTimeLeftMs((sessionData.timer_seconds || quizData.timer_seconds || 10) * 1000);
       setProgress({
         currentIndex: 0,
-        answers: [],
         startedAt: Date.now(),
       });
+      setAnswers([]);
 
       if (quizData.quiz_collection) {
         const list = await apiGet(`/api/quizzes/?quiz_collection=${quizData.quiz_collection}&page_size=300`).catch(
@@ -153,7 +156,7 @@ export default function QuizPlayPage() {
         elapsed_ms: reactionTime,
       })) as AnswerResponse;
 
-      const newAnswer = {
+      const newAnswer: AnswerLog = {
         question: currentQuestion,
         selectedChoiceId: choice.vocab_choice_id,
         selectedText: choice.text_ja,
@@ -161,11 +164,7 @@ export default function QuizPlayPage() {
         isTimeout: answerResponse.is_timeout,
         reactionTimeMs: answerResponse.reaction_time_ms ?? reactionTime,
       };
-      setProgress({
-        currentIndex: progress.currentIndex,
-        answers: [...progress.answers, newAnswer],
-        startedAt: progress.startedAt,
-      });
+      setAnswers((prev) => [...prev, newAnswer]);
       setJudge({
         isCorrect: newAnswer.isCorrect,
         isTimeout: newAnswer.isTimeout,
@@ -189,7 +188,7 @@ export default function QuizPlayPage() {
         question_order: currentQuestion.question_order,
         elapsed_ms: timerMs,
       })) as AnswerResponse;
-      const newAnswer = {
+      const newAnswer: AnswerLog = {
         question: currentQuestion,
         selectedChoiceId: null,
         selectedText: answerResponse.selected_text ?? null,
@@ -197,11 +196,7 @@ export default function QuizPlayPage() {
         isTimeout: answerResponse.is_timeout,
         reactionTimeMs: answerResponse.reaction_time_ms ?? timerMs,
       };
-      setProgress({
-        currentIndex: progress.currentIndex,
-        answers: [...progress.answers, newAnswer],
-        startedAt: progress.startedAt,
-      });
+      setAnswers((prev) => [...prev, newAnswer]);
       setJudge({
         isCorrect: newAnswer.isCorrect,
         isTimeout: newAnswer.isTimeout,
@@ -221,24 +216,25 @@ export default function QuizPlayPage() {
     const nextIndex = progress.currentIndex + 1;
     setJudge(null);
     if (nextIndex >= questions.length) {
-      await completeSession(progress.answers);
+      await completeSession(answers);
       return;
     }
     setProgress({
       currentIndex: nextIndex,
-      answers: progress.answers,
       startedAt: Date.now(),
     });
     setTimeLeftMs(timerSeconds * 1000);
   };
 
-  const completeSession = async (answers?: QuizProgress['answers']) => {
+  const completeSession = async (finalAnswers?: AnswerLog[]) => {
     if (!sessionId) return;
     try {
       setSubmitting(true);
       const result = (await apiPost(`/api/quiz-sessions/${sessionId}/complete/`, {})) as QuizResult;
       setCompletedResult(result);
-      setProgress(answers ? { currentIndex: answers.length, answers, startedAt: Date.now() } : null);
+      const merged = finalAnswers ?? answers;
+      setProgress(merged ? { currentIndex: merged.length, startedAt: Date.now() } : null);
+      setAnswers(merged);
       setJudge(null);
     } catch (err) {
       console.error(err);
