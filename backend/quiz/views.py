@@ -441,7 +441,7 @@ class RosterMembershipViewSet(BaseModelViewSet):
             models.RosterMembership.objects.select_related("roster_folder", "student__profile")
             .prefetch_related(
                 Prefetch(
-                    "student__student_teacher_links",
+                    "student__teacher_links",
                     queryset=models.StudentTeacherLink.objects.filter(teacher=teacher),
                     to_attr="teacher_links",
                 )
