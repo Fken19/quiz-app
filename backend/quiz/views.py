@@ -8,6 +8,7 @@ from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
+from django.core.cache import caches
 from django.core.files.storage import default_storage
 from django.db.models import Count, Max, Q, Sum
 from django.shortcuts import get_object_or_404
@@ -177,6 +178,23 @@ class InvitationCodeViewSet(BaseModelViewSet):
     serializer_class = serializers.InvitationCodeSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def _rate_limit(self, key: str, limit: int, window_seconds: int):
+        cache = caches["default"]
+        current = cache.get(key, 0)
+        if current >= limit:
+            return False
+        cache.set(key, current + 1, timeout=window_seconds)
+        return True
+
+    def _generate_unique_code(self, length: int = 8) -> str:
+        """他ユーザーと衝突しない招待コードを生成"""
+        for _ in range(5):
+            code = uuid.uuid4().hex[:length].upper()
+            if not models.InvitationCode.objects.filter(invitation_code=code).exists():
+                return code
+        # 万一衝突が続いた場合は長めに生成して返す
+        return uuid.uuid4().hex[:12].upper()
+
     @action(detail=False, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="issue")
     def issue(self, request):
         """講師が招待コードを発行する"""
@@ -184,17 +202,15 @@ class InvitationCodeViewSet(BaseModelViewSet):
         if teacher is None:
             raise PermissionDenied("講師のみが招待コードを発行できます。")
 
-        # レート制限の簡易チェック: 1分間に5件まで
-        one_minute_ago = timezone.now() - timezone.timedelta(minutes=1)
-        recent = models.InvitationCode.objects.filter(issued_by=teacher, issued_at__gte=one_minute_ago).count()
-        if recent >= 5:
+        # レート制限の簡易チェック: 1分間に50件まで（キャッシュ）
+        if not self._rate_limit(f"invite_issue:{teacher.id}", limit=50, window_seconds=60):
             return Response({"detail": "発行上限に達しました。少し待って再試行してください。"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         expires_in_minutes = int(request.data.get("expires_in_minutes") or 60)
         expires_at = timezone.now() + timezone.timedelta(minutes=expires_in_minutes)
 
         code = models.InvitationCode.objects.create(
-            invitation_code=str(uuid.uuid4())[:8],
+            invitation_code=self._generate_unique_code(),
             issued_by=teacher,
             expires_at=expires_at,
         )
@@ -218,6 +234,13 @@ class InvitationCodeViewSet(BaseModelViewSet):
     def redeem(self, request):
         """生徒が招待コードを利用してリンクを作成する"""
         user = request.user
+        # IP とユーザー単位で試行回数を制限
+        ip_addr = request.META.get("REMOTE_ADDR", "unknown")
+        if not self._rate_limit(f"invite_redeem_ip:{ip_addr}", limit=10, window_seconds=300):
+            return Response({"detail": "短時間の招待コード試行回数を超えました。しばらくしてから再試行してください。"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        if not self._rate_limit(f"invite_redeem_user:{user.id}", limit=10, window_seconds=600):
+            return Response({"detail": "短時間の招待コード試行回数を超えました。しばらくしてから再試行してください。"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
         code_str = (request.data.get("invitation_code") or "").strip()
         if not code_str:
             return Response({"detail": "招待コードを入力してください。"}, status=status.HTTP_400_BAD_REQUEST)
