@@ -588,8 +588,8 @@ class StudentDashboardSummaryView(APIView):
                 continue
             weekly_chart.append(
                 {
-                    "period": week.date().isoformat(),
-                    "label": week.date().strftime("%m/%d"),
+                    "period": week.isoformat(),
+                    "label": week.strftime("%m/%d"),
                     "correct_count": entry.get("correct_count") or 0,
                     "incorrect_count": entry.get("incorrect_count") or 0,
                     "timeout_count": entry.get("timeout_count") or 0,
@@ -621,8 +621,8 @@ class StudentDashboardSummaryView(APIView):
                 continue
             monthly_chart.append(
                 {
-                    "period": month.date().isoformat(),
-                    "label": month.date().strftime("%Y/%m"),
+                    "period": month.isoformat(),
+                    "label": month.strftime("%Y/%m"),
                     "correct_count": entry.get("correct_count") or 0,
                     "incorrect_count": entry.get("incorrect_count") or 0,
                     "timeout_count": entry.get("timeout_count") or 0,
