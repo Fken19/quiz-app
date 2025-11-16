@@ -548,6 +548,85 @@ class StudentDashboardSummaryView(APIView):
             .count()
         )
 
+        # 日/週/月のチャートデータを構築
+        recent_daily = models.LearningSummaryDaily.objects.filter(
+            user=user, activity_date__gte=today - timedelta(days=30)
+        ).order_by("activity_date")
+        daily_chart = [
+            {
+                "date": summary.activity_date.isoformat(),
+                "correct_count": summary.correct_count,
+                "incorrect_count": summary.incorrect_count,
+                "timeout_count": summary.timeout_count,
+            }
+            for summary in recent_daily
+        ]
+        max_daily_total = max(
+            [
+                data["correct_count"] + data["incorrect_count"] + data["timeout_count"]
+                for data in daily_chart
+            ]
+            or [0]
+        )
+
+        weekly_qs = (
+            models.LearningSummaryDaily.objects.filter(user=user, activity_date__gte=today - timedelta(days=180))
+            .annotate(week=TruncWeek("activity_date"))
+            .values("week")
+            .annotate(
+                correct_count=Sum("correct_count"),
+                incorrect_count=Sum("incorrect_count"),
+                timeout_count=Sum("timeout_count"),
+            )
+            .order_by("week")
+        )
+        weekly_chart = [
+            {
+                "period": entry["week"].date().isoformat(),
+                "label": entry["week"].date().strftime("%m/%d"),
+                "correct_count": entry["correct_count"] or 0,
+                "incorrect_count": entry["incorrect_count"] or 0,
+                "timeout_count": entry["timeout_count"] or 0,
+            }
+            for entry in weekly_qs
+        ]
+        max_weekly_total = max(
+            [
+                item["correct_count"] + item["incorrect_count"] + item["timeout_count"]
+                for item in weekly_chart
+            ]
+            or [0]
+        )
+
+        monthly_qs = (
+            models.LearningSummaryDaily.objects.filter(user=user, activity_date__gte=today - timedelta(days=365))
+            .annotate(month=TruncMonth("activity_date"))
+            .values("month")
+            .annotate(
+                correct_count=Sum("correct_count"),
+                incorrect_count=Sum("incorrect_count"),
+                timeout_count=Sum("timeout_count"),
+            )
+            .order_by("month")
+        )
+        monthly_chart = [
+            {
+                "period": entry["month"].date().isoformat(),
+                "label": entry["month"].date().strftime("%Y/%m"),
+                "correct_count": entry["correct_count"] or 0,
+                "incorrect_count": entry["incorrect_count"] or 0,
+                "timeout_count": entry["timeout_count"] or 0,
+            }
+            for entry in monthly_qs
+        ]
+        max_monthly_total = max(
+            [
+                item["correct_count"] + item["incorrect_count"] + item["timeout_count"]
+                for item in monthly_chart
+            ]
+            or [0]
+        )
+
         summary = {
             "user": serializers.UserSerializer(user, context={"request": request}).data,
             "streak": {
@@ -557,9 +636,11 @@ class StudentDashboardSummaryView(APIView):
             "today_summary": today_summary,
             "weekly_summary": weekly_summary,
             "recent_daily": {
-                "chart": chart_data,
+                "chart": daily_chart,
                 "max_total": max_daily_total,
             },
+            "weekly_chart": {"chart": weekly_chart, "max_total": max_weekly_total},
+            "monthly_chart": {"chart": monthly_chart, "max_total": max_monthly_total},
             "focus_summary": focus_summary,
             "quiz_result_count": quiz_result_count,
             "test_result_count": test_result_count,

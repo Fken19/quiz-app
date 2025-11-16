@@ -269,6 +269,14 @@ export interface DashboardDailyChartItem {
   timeout_count: number;
 }
 
+export interface DashboardPeriodChartItem {
+  period: string;
+  label: string;
+  correct_count: number;
+  incorrect_count: number;
+  timeout_count: number;
+}
+
 export interface StudentDashboardSummary {
   user: ApiUser;
   streak: {
@@ -289,6 +297,14 @@ export interface StudentDashboardSummary {
   };
   recent_daily: {
     chart: DashboardDailyChartItem[];
+    max_total: number;
+  };
+  weekly_chart?: {
+    chart: DashboardPeriodChartItem[];
+    max_total: number;
+  };
+  monthly_chart?: {
+    chart: DashboardPeriodChartItem[];
     max_total: number;
   };
   focus_summary: DashboardFocusSummary;
