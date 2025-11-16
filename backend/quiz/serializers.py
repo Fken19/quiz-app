@@ -132,10 +132,9 @@ class StudentTeacherLinkSerializer(serializers.ModelSerializer):
             "tags",
             "kana_for_sort",
             "color",
-            "created_at",
             "updated_at",
         ]
-        read_only_fields = ["linked_at", "created_at", "updated_at"]
+        read_only_fields = ["linked_at", "updated_at"]
 
 
 class RosterFolderSerializer(serializers.ModelSerializer):
