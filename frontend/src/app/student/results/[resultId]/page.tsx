@@ -19,6 +19,7 @@ export default function QuizResultDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [quizTitle, setQuizTitle] = useState<string>('クイズ');
+  const [quizLevel, setQuizLevel] = useState<string | null>(null);
 
   useEffect(() => {
     if (!params?.resultId) return;
@@ -46,12 +47,23 @@ export default function QuizResultDetailPage() {
         setResult(header);
         // クイズタイトルを取得
         if (header && header.quiz) {
-          const quizData = await apiGet(`/api/quizzes/${header.quiz}/`).catch(() => null);
-          if (quizData && 'title' in quizData) {
-            setQuizTitle((quizData as Quiz).title ?? 'クイズ');
+          const quizData = (await apiGet(`/api/quizzes/${header.quiz}/`).catch(() => null)) as Quiz | null;
+          if (quizData) {
+            setQuizTitle(quizData.title ?? 'クイズ');
+            if (quizData.quiz_collection) {
+              const collection = await apiGet(`/api/quiz-collections/${quizData.quiz_collection}/`).catch(() => null);
+              if (collection && 'level_label' in collection) {
+                const label = (collection as any).level_label || (collection as any).level_code;
+                setQuizLevel(label ?? null);
+              }
+            }
           }
         }
-        setRows(details.map((detail) => ({ detail, vocabulary: vocabMap.get(detail.vocabulary) })));
+        const uniqueDetails = Array.from(
+          new Map(details.map((detail) => [detail.question_order, detail])).values(),
+        ).sort((a, b) => a.question_order - b.question_order);
+
+        setRows(uniqueDetails.map((detail) => ({ detail, vocabulary: vocabMap.get(detail.vocabulary) })));
       } catch (err) {
         console.error(err);
         setError('結果詳細の取得に失敗しました');
@@ -89,43 +101,70 @@ export default function QuizResultDetailPage() {
     return null;
   }
 
+  const totalQuestions = rows.length;
   const correctCount = rows.filter((row) => row.detail.is_correct).length;
+  const totalTimeMs = rows.reduce((sum, row) => sum + (row.detail.reaction_time_ms ?? 0), 0);
+  const averageTimeSec = rows.length > 0 ? (totalTimeMs / 1000 / rows.length).toFixed(2) : null;
+  const finishedAt = result.completed_at ? new Date(result.completed_at).toLocaleString() : null;
+  const levelDisplay = quizLevel ? (quizLevel.startsWith('レベル') ? quizLevel : `レベル${quizLevel}`) : null;
 
   return (
     <div className="max-w-4xl mx-auto py-10 space-y-6 px-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">クイズ結果詳細</h1>
-          <p className="text-slate-600 text-sm">{quizTitle}</p>
         </div>
         <Link href="/student/results" className="text-indigo-600 font-semibold">← 一覧へ戻る</Link>
       </div>
 
-      <section className="bg-white shadow rounded-lg p-6 space-y-2">
-        <p className="text-slate-600">開始: {new Date(result.started_at).toLocaleString()}</p>
-        <p className="text-slate-600">
-          終了: {result.completed_at ? new Date(result.completed_at).toLocaleString() : '---'}
-        </p>
-        <p className="text-slate-600">スコア: {result.score ?? correctCount} / {rows.length}</p>
+      <section className="bg-white shadow rounded-lg border border-slate-100 px-5 py-4 space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-lg font-semibold text-slate-900">
+            {levelDisplay ? `${levelDisplay} ` : ''}
+            {quizTitle}
+          </p>
+          <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 text-indigo-700 px-4 py-1.5 text-sm font-semibold">
+            スコア <span className="text-base">{`${correctCount} / ${totalQuestions || '---'}`}</span>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex items-baseline gap-2">
+            <span className="text-xs text-slate-500">平均解答時間</span>
+            <span className="text-sm font-semibold text-slate-900">{averageTimeSec ? `${averageTimeSec}秒` : '---'}</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-xs text-slate-500">解答時刻</span>
+            <span className="text-sm font-semibold text-slate-900">{finishedAt ?? '---'}</span>
+          </div>
+        </div>
       </section>
 
       <section className="bg-white shadow rounded-lg overflow-hidden">
         <div className="grid grid-cols-5 gap-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-          <span>#</span>
+          <span>出題順</span>
           <span>英単語</span>
           <span>選択した解答</span>
-          <span>正誤</span>
-          <span>反応時間(ms)</span>
+          <span>正解の解答</span>
+          <span>解答時間（秒）</span>
         </div>
         {rows.map((row) => (
-          <div key={row.detail.quiz_result_detail_id} className="grid grid-cols-5 gap-4 px-6 py-3 text-sm text-slate-700">
+          <div
+            key={row.detail.question_order}
+            className="grid grid-cols-5 gap-4 px-6 py-3 text-sm text-slate-700 border-t border-slate-100 first:border-t-0"
+          >
             <span>{row.detail.question_order}</span>
-            <span>{row.vocabulary?.text_en ?? row.detail.vocabulary}</span>
-            <span>{row.detail.selected_text ?? '---'}</span>
-            <span className={row.detail.is_correct ? 'text-green-600' : 'text-red-600'}>
-              {row.detail.is_correct ? '○' : '×'}
+            <span className={row.detail.is_correct ? 'text-slate-900' : 'text-red-600'}>
+              {row.vocabulary?.text_en ?? row.detail.vocabulary}
             </span>
-            <span>{row.detail.reaction_time_ms ?? '---'}</span>
+            <span>{row.detail.selected_text || '未解答'}</span>
+            <span className={row.detail.is_correct ? 'text-slate-900' : 'text-red-600'}>
+              {row.detail.correct_text || '---'}
+            </span>
+            <span>
+              {row.detail.reaction_time_ms != null
+                ? `${(row.detail.reaction_time_ms / 1000).toFixed(2)}秒`
+                : '---'}
+            </span>
           </div>
         ))}
         {rows.length === 0 && (

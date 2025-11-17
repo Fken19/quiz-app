@@ -209,6 +209,7 @@ export interface QuizResultDetail {
   question_order: number;
   vocabulary: string;
   selected_text?: string | null;
+  correct_text?: string | null;
   is_correct: boolean;
   is_timeout: boolean;
   reaction_time_ms?: number | null;

@@ -466,6 +466,7 @@ class QuizResultSerializer(serializers.ModelSerializer):
 
 class QuizResultDetailSerializer(serializers.ModelSerializer):
     quiz_result_detail_id = serializers.UUIDField(source="id", read_only=True)
+    correct_text = serializers.SerializerMethodField()
 
     class Meta:
         model = models.QuizResultDetail
@@ -475,12 +476,31 @@ class QuizResultDetailSerializer(serializers.ModelSerializer):
             "question_order",
             "vocabulary",
             "selected_text",
+            "correct_text",
             "is_correct",
             "is_timeout",
             "reaction_time_ms",
             "created_at",
         ]
         read_only_fields = ["created_at"]
+
+    def get_correct_text(self, obj) -> str | None:
+        # 優先: クエリセット側で注入したサブクエリ値
+        annotated = getattr(obj, "correct_text", None)
+        if annotated:
+            return annotated
+
+        # 次に正解選択肢
+        choice = obj.vocabulary.choices.filter(is_correct=True).order_by("created_at").first()
+        if choice:
+            return choice.text_ja
+
+        # 最後に翻訳のプライマリ
+        translation = obj.vocabulary.translations.filter(is_primary=True).order_by("created_at").first()
+        if translation:
+            return translation.text_ja
+
+        return None
 
 
 class UserVocabStatusSerializer(serializers.ModelSerializer):

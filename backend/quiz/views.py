@@ -10,7 +10,7 @@ from typing import Any
 from django.conf import settings
 from django.core.cache import caches
 from django.core.files.storage import default_storage
-from django.db.models import Count, Max, Prefetch, Q, Sum, F
+from django.db.models import Count, Max, Prefetch, Q, Sum, F, OuterRef, Subquery
 from django.db.models.functions import TruncMonth, TruncWeek
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -1128,9 +1128,17 @@ class QuizResultDetailViewSet(BaseModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):  # type: ignore[override]
-        return models.QuizResultDetail.objects.select_related("quiz_result", "vocabulary").filter(
-            quiz_result__user=self.request.user
-        ).order_by("question_order")
+        correct_choice_subquery = (
+            models.VocabChoice.objects.filter(vocabulary=OuterRef("vocabulary"), is_correct=True)
+            .order_by("created_at")
+            .values("text_ja")[:1]
+        )
+        return (
+            models.QuizResultDetail.objects.select_related("quiz_result", "vocabulary")
+            .annotate(correct_text=Subquery(correct_choice_subquery))
+            .filter(quiz_result__user=self.request.user)
+            .order_by("question_order")
+        )
 
     def perform_create(self, serializer):  # type: ignore[override]
         quiz_result: models.QuizResult = serializer.validated_data["quiz_result"]
