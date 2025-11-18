@@ -67,5 +67,6 @@ urlpatterns = [
         views.QuizSessionCompleteView.as_view(),
         name="quiz-session-complete",
     ),
+    path("student/learning-status/", views.StudentLearningStatusView.as_view(), name="student-learning-status"),
     path("debug/create-user/", views.debug_create_user, name="debug-create-user"),
 ]

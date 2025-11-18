@@ -40,6 +40,16 @@ type AnswerLog = {
   reactionTimeMs: number;
 };
 
+type ResultDetailRow = {
+  quiz_result_detail_id?: string | null;
+  question_order: number;
+  vocab_text_en: string | null;
+  selected_text: string | null;
+  correct_text: string | null;
+  is_correct: boolean;
+  reaction_time_ms: number | null;
+};
+
 type JudgeState =
   | null
   | {
@@ -63,6 +73,7 @@ export default function QuizPlayPage() {
   const [answering, setAnswering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completedResult, setCompletedResult] = useState<QuizResult | null>(null);
+  const [completedDetails, setCompletedDetails] = useState<ResultDetailRow[]>([]);
   const [timerSeconds, setTimerSeconds] = useState<number>(10);
   const [timeLeftMs, setTimeLeftMs] = useState<number>(0);
   const [judge, setJudge] = useState<JudgeState>(null);
@@ -71,8 +82,12 @@ export default function QuizPlayPage() {
 
   const startSession = useCallback(async () => {
     if (!quizId) {
-      setError('クイズIDが指定されていません');
-      setLoading(false);
+      router.replace('/student/quiz');
+      return;
+    }
+    if (quizId.includes('[object')) {
+      console.warn('Invalid quizId detected in query params:', quizId);
+      router.replace('/student/quiz');
       return;
     }
 
@@ -234,6 +249,19 @@ export default function QuizPlayPage() {
       };
       const res = await apiPost('/api/quiz-results/submit-session/', payload);
       const qrId = res?.quiz_result_id || res?.quiz_result || null;
+      const detailRows: ResultDetailRow[] =
+        (res?.details as ResultDetailRow[]) ||
+        merged.map((a) => ({
+          quiz_result_detail_id: null,
+          question_order: a.question.question_order,
+          vocab_text_en: a.question.vocabulary.text_en,
+          selected_text: a.selectedText,
+          correct_text:
+            a.question.choices.find((c: any) => (c as any).is_correct)?.text_ja || null,
+          is_correct: a.isCorrect,
+          reaction_time_ms: a.reactionTimeMs,
+        }));
+      setCompletedDetails(detailRows);
       setCompletedResult(
         ({
           quiz_result_id: qrId,
@@ -355,6 +383,38 @@ export default function QuizPlayPage() {
             再挑戦
           </button>
         </div>
+        <section className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="grid grid-cols-5 gap-3 px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            <span>出題順</span>
+            <span>英単語</span>
+            <span>選択した解答</span>
+            <span>正解の解答</span>
+            <span>解答時間（秒）</span>
+          </div>
+          {completedDetails.map((row) => (
+            <div
+              key={`${row.quiz_result_detail_id || row.question_order}`}
+              className="grid grid-cols-5 gap-3 px-4 py-3 text-sm text-slate-700 border-t border-slate-100 first:border-t-0"
+            >
+              <span>{row.question_order}</span>
+              <span className={row.is_correct ? 'text-slate-900' : 'text-red-600'}>
+                {row.vocab_text_en ?? ''}
+              </span>
+              <span className={row.is_correct ? 'text-slate-900' : 'text-red-600'}>
+                {row.selected_text || '未解答'}
+              </span>
+              <span className={row.is_correct ? 'text-slate-900' : 'text-red-600'}>
+                {row.correct_text || '---'}
+              </span>
+              <span>
+                {row.reaction_time_ms != null ? `${(row.reaction_time_ms / 1000).toFixed(2)}秒` : '---'}
+              </span>
+            </div>
+          ))}
+          {completedDetails.length === 0 && (
+            <div className="px-4 py-4 text-sm text-slate-500">詳細を取得できませんでした。</div>
+          )}
+        </section>
       </div>
     );
   }
