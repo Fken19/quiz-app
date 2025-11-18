@@ -55,6 +55,7 @@ urlpatterns = [
     ),
     path("focus-questions/", views.FocusQuestionView.as_view(), name="focus-questions"),
     path("focus-quiz-sessions/", views.FocusQuizSessionStartView.as_view(), name="focus-quiz-session-start"),
+    path("quiz-session-questions/", views.QuizSessionQuestionsView.as_view(), name="quiz-session-questions"),
     path("quiz-sessions/", views.QuizSessionStartView.as_view(), name="quiz-session-start"),
     path(
         "quiz-sessions/<uuid:quiz_result_id>/answer/",
