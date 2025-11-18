@@ -252,6 +252,96 @@ export default function DashboardPage() {
     }
   };
 
+  const formatTimeMinutes = (ms: number) => `${Math.round(ms / 600) / 10}分`;
+
+  const todayTotals = useMemo(() => {
+    const correct = summary.today_summary.correct_count;
+    const incorrect = summary.today_summary.incorrect_count + summary.today_summary.timeout_count;
+    const total = correct + incorrect;
+    const avgSec = total > 0 ? (summary.today_summary.total_time_ms / 1000 / total).toFixed(1) : null;
+    return { correct, incorrect, total, avgSec };
+  }, [summary.today_summary]);
+
+  const weeklyTotalQuestions =
+    summary.weekly_summary.correct_count + summary.weekly_summary.incorrect_count + summary.weekly_summary.timeout_count;
+
+  const weeklyTotals = useMemo(() => {
+    const correct = summary.weekly_summary.correct_count;
+    const incorrect = summary.weekly_summary.incorrect_count + summary.weekly_summary.timeout_count;
+    const total = correct + incorrect;
+    return { correct, incorrect, total, timeout: summary.weekly_summary.timeout_count };
+  }, [summary.weekly_summary]);
+
+  const weeklyChartData = useMemo(() => {
+    const weekLabels = ['月', '火', '水', '木', '金', '土', '日'];
+
+    // 今日が所属するISO週の月曜〜日曜を算出
+    const today = new Date();
+    const day = today.getDay(); // 0:日〜6:土
+    const diffToMonday = (day + 6) % 7;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+
+    const dates: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      dates.push(d.toISOString().slice(0, 10));
+    }
+
+    // weekly_chart があれば対応する日付にマップ、なければ heatmapDays から拾う
+    const source = summary.weekly_chart?.chart;
+    const byDate = new Map<string, number>();
+    if (source && source.length) {
+      source.forEach((d) => {
+        const dateKey = d.from_date || d.period || d.label || '';
+        const total = d.correct_count + d.incorrect_count + d.timeout_count;
+        byDate.set(dateKey, total);
+      });
+    } else {
+      // heatmapDays は todayから371日分なので、dateキーで引く
+      const map = new Map<string, number>();
+      heatmapDays.forEach((d) => {
+        const total = d.correct_count + d.incorrect_count + d.timeout_count;
+        map.set(d.date, total);
+      });
+      map.forEach((v, k) => byDate.set(k, v));
+    }
+
+    return dates.map((dateKey, idx) => ({
+      label: weekLabels[idx],
+      total: byDate.get(dateKey) ?? 0,
+      date: dateKey,
+    }));
+  }, [summary.weekly_chart, heatmapDays]);
+
+  const streakDerived = useMemo(() => {
+    const flags = heatmapDays.map(
+      (d) => (d.correct_count || 0) + (d.incorrect_count || 0) + (d.timeout_count || 0) > 0,
+    );
+    const totalActiveDays = flags.filter(Boolean).length;
+    if (!flags.length) return { current: 0, totalActiveDays };
+
+    let idx = flags.length - 1;
+    let current = 0;
+
+    if (flags[idx]) {
+      while (idx >= 0 && flags[idx]) {
+        current += 1;
+        idx -= 1;
+      }
+    } else {
+      while (idx >= 0 && !flags[idx]) idx -= 1;
+      while (idx >= 0 && flags[idx]) {
+        current += 1;
+        idx -= 1;
+      }
+    }
+
+    return { current, totalActiveDays };
+  }, [heatmapDays]);
+
   if (status === 'loading' || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -263,11 +353,6 @@ export default function DashboardPage() {
   if (!data) {
     return null;
   }
-
-  const formatTimeMinutes = (ms: number) => `${Math.round(ms / 600) / 10}分`;
-
-  const weeklyTotalQuestions =
-    summary.weekly_summary.correct_count + summary.weekly_summary.incorrect_count + summary.weekly_summary.timeout_count;
 
   return (
     <div className="max-w-6xl mx-auto py-12 space-y-10 px-4">
@@ -287,19 +372,25 @@ export default function DashboardPage() {
 
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-sm font-semibold text-slate-500">今日の成果</h2>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{summary.today_summary.correct_count} 問正解</p>
-          <p className="mt-1 text-sm text-slate-500">
-            不正解 {summary.today_summary.incorrect_count}・Timeout {summary.today_summary.timeout_count}
+          <h2 className="text-sm font-semibold text-slate-500">今日の学習量</h2>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <p className="font-bold text-slate-900 text-3xl md:text-4xl">{todayTotals.total} 問</p>
+            <p className="font-semibold text-slate-800 text-lg md:text-xl">
+              合計 {formatTimeMinutes(summary.today_summary.total_time_ms)}
+            </p>
+          </div>
+          <p className="mt-1 text-sm md:text-base text-slate-500">
+            正解 {todayTotals.correct}問 / 不正解 {todayTotals.incorrect}問
           </p>
-          <p className="mt-2 text-xs text-slate-500">
-            合計時間 {formatTimeMinutes(summary.today_summary.total_time_ms)}
+          <p className="mt-1 text-xs sm:text-sm text-slate-500">
+            1問あたり平均 {todayTotals.avgSec ? `${todayTotals.avgSec}秒` : '---'}
           </p>
         </div>
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-sm font-semibold text-slate-500">連続学習日数</h2>
-          <p className="mt-3 text-3xl font-bold text-indigo-600">{summary.streak.current} 日</p>
-          <p className="mt-1 text-sm text-slate-500">自己ベスト {summary.streak.best} 日</p>
+          <p className="mt-3 font-bold text-indigo-600 text-3xl md:text-4xl">{streakDerived.current} 日</p>
+          <p className="mt-1 text-sm md:text-base text-slate-500">自己ベスト {summary.streak.best} 日</p>
+          <p className="mt-1 text-sm md:text-base text-slate-500">累計学習日数 {streakDerived.totalActiveDays} 日</p>
           <p className="mt-2 text-xs text-slate-500">
             累計クイズ {summary.quiz_result_count} 回 / テスト {summary.test_result_count} 回
           </p>
@@ -359,13 +450,36 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">今週の学習量</h2>
-              <p className="text-sm text-slate-500">正解・不正解・Timeout の内訳です。</p>
+              <p className="text-sm text-slate-500">正解・不正解の合計です。</p>
             </div>
           </div>
           <div>
-            <p className="text-3xl font-bold text-slate-900">{weeklyTotalQuestions} 問</p>
-            <p className="text-xs text-slate-500 uppercase mt-1">正解 {summary.weekly_summary.correct_count} / 不正解 {summary.weekly_summary.incorrect_count} / Timeout {summary.weekly_summary.timeout_count}</p>
-            <p className="text-xs text-slate-500 mt-1">合計時間 {formatTimeMinutes(summary.weekly_summary.total_time_ms)}</p>
+            <p className="font-bold text-slate-900 text-3xl md:text-4xl">{weeklyTotals.total} 問</p>
+            <p className="text-sm md:text-base text-slate-500 mt-1">
+              正解 {weeklyTotals.correct}問 / 不正解 {weeklyTotals.incorrect}問
+            </p>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">合計時間 {formatTimeMinutes(summary.weekly_summary.total_time_ms)}</p>
+          </div>
+          <div className="mt-4 grid grid-cols-7 gap-2 items-end">
+            {weeklyChartData.map((d, idx) => {
+              const max = Math.max(...weeklyChartData.map((v) => v.total), 1);
+              const height = Math.max(6, Math.round((d.total / max) * 60));
+              return (
+                <div key={`${d.label}-${idx}`} className="flex flex-col items-center gap-1">
+                  <div
+                    className="w-full max-w-[18px] bg-indigo-100 rounded-sm relative group"
+                    style={{ height }}
+                    title={`${d.label}: ${d.total}問`}
+                  >
+                    <div className="w-full h-full bg-indigo-500 rounded-sm" />
+                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] text-slate-700 bg-white border border-slate-200 rounded px-2 py-1 shadow opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                      {d.label} {d.total}問
+                    </div>
+                  </div>
+                  <span className="text-[10px] sm:text-[11px] text-slate-500">{d.label}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>

@@ -1125,10 +1125,20 @@ class QuizResultViewSet(BaseModelViewSet):
     @action(detail=False, methods=["post"], url_path="submit-session", permission_classes=[permissions.IsAuthenticated])
     def submit_session(self, request, *args, **kwargs):
         try:
-            qr = _submit_quiz_session(request.user, request.data)
+            qr, details = _submit_quiz_session(request.user, request.data)
         except serializers.ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
-        return Response({"quiz_result_id": str(qr.id)}, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                "quiz_result_id": str(qr.id),
+                "quiz_id": str(qr.quiz_id),
+                "question_count": qr.question_count,
+                "score": qr.score,
+                "total_time_ms": qr.total_time_ms,
+                "details": details,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
     def perform_create(self, serializer):  # type: ignore[override]
         serializer.save(user=self.request.user)
@@ -1422,6 +1432,210 @@ class StudentDashboardSummaryView(APIView):
             "pending_tests": pending_tests,
         }
         return Response(summary)
+
+
+class StudentLearningStatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        today = timezone.localdate()
+
+        # 期間指定（デフォルト30日）
+        period_param = request.query_params.get("period", "30d")
+        period_map = {"7d": 7, "30d": 30, "90d": 90, "all": None}
+        period_days = period_map.get(period_param, 30)
+        start_date = today - timedelta(days=period_days - 1) if period_days else None
+
+        # LearningSummaryDaily から今日/7日/30日と期間集計
+        base_daily_qs = models.LearningSummaryDaily.objects.filter(user=user)
+
+        def sum_range(start: timezone.datetime.date | None, end: timezone.datetime.date):
+            qs = base_daily_qs.filter(activity_date__lte=end)
+            if start:
+                qs = qs.filter(activity_date__gte=start)
+            agg = qs.aggregate(
+                correct=Sum("correct_count"),
+                incorrect=Sum("incorrect_count"),
+                timeout=Sum("timeout_count"),
+                time_ms=Sum("total_time_ms"),
+            )
+            return {
+                "correct": agg["correct"] or 0,
+                "incorrect": agg["incorrect"] or 0,
+                "timeout": agg["timeout"] or 0,
+                "time_ms": agg["time_ms"] or 0,
+            }
+
+        today_summary = sum_range(today, today)
+        seven_summary = sum_range(today - timedelta(days=6), today)
+        thirty_summary = sum_range(today - timedelta(days=29), today)
+
+        period_summary = sum_range(start_date, today)
+
+        # 期間内の明細（完了セッションのみ）
+        detail_qs = models.QuizResultDetail.objects.filter(
+            quiz_result__user=user,
+            quiz_result__completed_at__isnull=False,
+        )
+        if start_date:
+            detail_qs = detail_qs.filter(quiz_result__completed_at__date__gte=start_date)
+
+        period_answer_count = detail_qs.count()
+        period_correct = detail_qs.filter(is_correct=True, is_timeout=False).count()
+        period_timeout = detail_qs.filter(is_timeout=True).count()
+        period_incorrect = detail_qs.filter(is_correct=False, is_timeout=False).count() + period_timeout
+        non_timeout_qs = detail_qs.filter(Q(is_timeout=False) & Q(reaction_time_ms__isnull=False))
+        total_reaction_ms = non_timeout_qs.aggregate(total=Sum("reaction_time_ms"))["total"] or 0
+        non_timeout_count = non_timeout_qs.count()
+        avg_reaction_time_sec = total_reaction_ms / non_timeout_count / 1000 if non_timeout_count else 0.0
+        accuracy_rate = period_correct / period_answer_count * 100 if period_answer_count else 0.0
+
+        # よく間違える単語（期間内上位5件） 不正解+Timeoutを降順
+        weak_agg = (
+            detail_qs.values("vocabulary_id", "vocabulary__text_en")
+            .annotate(
+                correct_count=Count("id", filter=Q(is_correct=True, is_timeout=False)),
+                incorrect_count=Count("id", filter=Q(is_correct=False, is_timeout=False)),
+                timeout_count=Count("id", filter=Q(is_timeout=True)),
+                wrong_total=Count("id", filter=Q(Q(is_correct=False) | Q(is_timeout=True))),
+                total_count=Count("id"),
+                last_incorrect=Max("created_at", filter=Q(is_correct=False, is_timeout=False)),
+            )
+            .order_by("-wrong_total", "-total_count", "-last_incorrect")[:5]
+        )
+        weak_items = []
+        for row in weak_agg:
+            total = row["total_count"] or 0
+            if total <= 0:
+                continue
+            accuracy = row["correct_count"] / total * 100 if total else 0.0
+            weak_items.append(
+                {
+                    "vocabulary_id": str(row["vocabulary_id"]),
+                    "text_en": row["vocabulary__text_en"],
+                    "answer_count": total,
+                    "correct_count": row["correct_count"],
+                    "incorrect_count": row["incorrect_count"],
+                    "timeout_count": row["timeout_count"],
+                    "accuracy": accuracy,
+                    "last_incorrect_at": row["last_incorrect"].isoformat() if row.get("last_incorrect") else None,
+                }
+            )
+
+        # 日/週/月チャート（期間に合わせて最大値を制限）
+        daily_chart: list[dict[str, Any]] = []
+        chart_days = period_days or 180
+        chart_days = min(chart_days, 180)
+        daily_start = today - timedelta(days=chart_days - 1)
+        daily_qs = base_daily_qs.filter(activity_date__gte=daily_start)
+        daily_map = {row.activity_date: row for row in daily_qs}
+        for offset in range(chart_days):
+            d = daily_start + timedelta(days=offset)
+            entry = daily_map.get(d)
+            daily_chart.append(
+                {
+                    "date": d.isoformat(),
+                    "correct_count": entry.correct_count if entry else 0,
+                    "incorrect_count": entry.incorrect_count if entry else 0,
+                    "timeout_count": entry.timeout_count if entry else 0,
+                    "total_time_ms": entry.total_time_ms if entry else 0,
+                }
+            )
+
+        weekly_chart: list[dict[str, Any]] = []
+        weekly_window_days = period_days or (7 * 26)
+        weekly_start = today - timedelta(days=weekly_window_days - 1)
+        weekly_qs = (
+            base_daily_qs.filter(activity_date__gte=weekly_start)
+            .annotate(week=TruncWeek("activity_date"))
+            .values("week")
+            .annotate(
+                correct_count=Sum("correct_count"),
+                incorrect_count=Sum("incorrect_count"),
+                timeout_count=Sum("timeout_count"),
+                total_time_ms=Sum("total_time_ms"),
+            )
+            .order_by("week")
+        )
+        for entry in weekly_qs:
+            week = entry.get("week")
+            if not week:
+                continue
+            weekly_chart.append(
+                {
+                    "period": week.isoformat(),
+                    "label": week.strftime("%m/%d"),
+                    "correct_count": entry.get("correct_count") or 0,
+                    "incorrect_count": entry.get("incorrect_count") or 0,
+                    "timeout_count": entry.get("timeout_count") or 0,
+                    "total_time_ms": entry.get("total_time_ms") or 0,
+                    "from_date": week.isoformat(),
+                    "to_date": (week + timedelta(days=6)).isoformat(),
+                }
+            )
+        if len(weekly_chart) > 12:
+            weekly_chart = weekly_chart[-12:]
+
+        monthly_chart: list[dict[str, Any]] = []
+        monthly_window_days = period_days or 365
+        monthly_start = today - timedelta(days=monthly_window_days - 1)
+        monthly_qs = (
+            base_daily_qs.filter(activity_date__gte=monthly_start)
+            .annotate(month=TruncMonth("activity_date"))
+            .values("month")
+            .annotate(
+                correct_count=Sum("correct_count"),
+                incorrect_count=Sum("incorrect_count"),
+                timeout_count=Sum("timeout_count"),
+                total_time_ms=Sum("total_time_ms"),
+            )
+            .order_by("month")
+        )
+        for entry in monthly_qs:
+            month = entry.get("month")
+            if not month:
+                continue
+            next_month = month.replace(day=28) + timedelta(days=4)
+            month_end = next_month - timedelta(days=next_month.day)
+            monthly_chart.append(
+                {
+                    "period": month.isoformat(),
+                    "label": month.strftime("%Y/%m"),
+                    "correct_count": entry.get("correct_count") or 0,
+                    "incorrect_count": entry.get("incorrect_count") or 0,
+                    "timeout_count": entry.get("timeout_count") or 0,
+                    "total_time_ms": entry.get("total_time_ms") or 0,
+                    "from_date": month.isoformat(),
+                    "to_date": month_end.isoformat(),
+                }
+            )
+        if len(monthly_chart) > 12:
+            monthly_chart = monthly_chart[-12:]
+
+        return Response(
+            {
+                "period": period_param,
+                "period_summary": {
+                    "answer_count": period_answer_count,
+                    "correct": period_correct,
+                    "incorrect": period_incorrect,
+                    "timeout": period_timeout,
+                    "accuracy_rate": accuracy_rate,
+                    "avg_reaction_time_sec": avg_reaction_time_sec,
+                },
+                "today": today_summary,
+                "last7days": seven_summary,
+                "last30days": thirty_summary,
+                "charts": {
+                    "daily": daily_chart,
+                    "weekly": weekly_chart,
+                    "monthly": monthly_chart,
+                },
+                "top_mistakes": weak_items,
+                "weak_words": weak_items,
+            }
+        )
 
 
 class FocusQuestionView(APIView):
@@ -1722,7 +1936,13 @@ def _submit_quiz_session(user, payload: dict[str, Any]) -> models.QuizResult:
             total_time_ms=total_time_ms,
         )
 
+        correct_choices = models.VocabChoice.objects.filter(
+            vocabulary_id__in=vocab_ids, is_correct=True
+        ).values_list("vocabulary_id", "text_ja")
+        correct_choice_map = {str(v_id): text for v_id, text in correct_choices}
+
         detail_objects = []
+        response_details: list[dict[str, Any]] = []
         for d in details:
             vocab_id = d.get("vocabulary_id")
             choice_id = d.get("selected_choice_id") or d.get("choice_id")
@@ -1747,7 +1967,22 @@ def _submit_quiz_session(user, payload: dict[str, Any]) -> models.QuizResult:
 
         models.QuizResultDetail.objects.bulk_create(detail_objects)
 
-    return qr
+        for obj in detail_objects:
+            vocab = vocab_map.get(str(obj.vocabulary_id))
+            response_details.append(
+                {
+                    "quiz_result_detail_id": str(obj.id) if obj.id else None,
+                    "question_order": obj.question_order,
+                    "vocabulary_id": str(obj.vocabulary_id),
+                    "vocab_text_en": vocab.text_en if vocab else None,
+                    "selected_text": obj.selected_text,
+                    "correct_text": correct_choice_map.get(str(obj.vocabulary_id)),
+                    "is_correct": obj.is_correct,
+                    "reaction_time_ms": obj.reaction_time_ms,
+                }
+            )
+
+    return qr, response_details
 
 
 class QuizSessionStartView(APIView):
@@ -1755,6 +1990,89 @@ class QuizSessionStartView(APIView):
 
     def post(self, request):
         quiz_id = request.data.get("quiz") or request.data.get("quiz_id")
+        mode = request.data.get("mode")
+        level_id = request.data.get("level_id") or request.data.get("quiz_collection_id")
+        count_param = request.data.get("count")
+
+        # ランダム/フォーカス用の即席クイズ生成（quizが無い場合のみ）
+        if not quiz_id and mode in {"random", "focus"}:
+            # count は指定があればそれを使用、無ければ vocabulary_ids 長から決定
+            count_val: int | None = None
+            try:
+                if count_param is not None:
+                    count_val = int(count_param)
+            except (TypeError, ValueError):
+                return Response({"detail": "count は整数で指定してください"}, status=status.HTTP_400_BAD_REQUEST)
+
+            vocab_ids_payload = request.data.get("vocabulary_ids")
+            vocab_ids: list[uuid.UUID] = []
+            if isinstance(vocab_ids_payload, list) and vocab_ids_payload:
+                for v in vocab_ids_payload:
+                    try:
+                        vocab_ids.append(uuid.UUID(str(v)))
+                    except (TypeError, ValueError):
+                        continue
+
+            # count 未指定なら vocabulary_ids ベースで決定
+            if count_val is None:
+                count_val = len(vocab_ids) if vocab_ids else None
+            if count_val is None:
+                return Response({"detail": "count は必須です"}, status=status.HTTP_400_BAD_REQUEST)
+            if count_val <= 0:
+                return Response({"detail": "count は1以上で指定してください"}, status=status.HTTP_400_BAD_REQUEST)
+            if not level_id:
+                return Response({"detail": "level_id は必須です"}, status=status.HTTP_400_BAD_REQUEST)
+
+            quiz_collection = get_object_or_404(
+                models.QuizCollection.objects.filter(archived_at__isnull=True),
+                pk=level_id,
+            )
+
+            # レベル内の単語プール（QuizQuestion経由で取得）から抽選
+            if not vocab_ids:
+                vocab_ids = list(
+                    models.QuizQuestion.objects.filter(
+                        quiz__quiz_collection=quiz_collection,
+                        archived_at__isnull=True,
+                        quiz__archived_at__isnull=True,
+                    )
+                    .values_list("vocabulary_id", flat=True)
+                    .distinct()
+                )
+            if not vocab_ids:
+                return Response({"detail": "このレベルに出題可能な単語がありません"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # count_val を上限にサンプリング
+            if len(vocab_ids) <= count_val:
+                selected_vocab_ids = vocab_ids
+            else:
+                selected_vocab_ids = random.sample(vocab_ids, count_val)
+
+            vocab_items = list(models.Vocabulary.objects.filter(id__in=selected_vocab_ids))
+            vocab_map = {str(v.id): v for v in vocab_items}
+            ordered_vocabs = [vocab_map[str(v_id)] for v_id in selected_vocab_ids if str(v_id) in vocab_map]
+
+            # 即席Quizを作成（既存スキーマを利用）
+            max_seq = quiz_collection.quizzes.aggregate(max_seq=Max("sequence_no"))["max_seq"] or 0
+            title_prefix = "[FOCUS]" if mode == "focus" else "[RANDOM]"
+            quiz = models.Quiz.objects.create(
+                quiz_collection=quiz_collection,
+                sequence_no=max_seq + 1,
+                title=f"{title_prefix} {quiz_collection.title} ({len(ordered_vocabs)}問)",
+                timer_seconds=10,
+            )
+
+            quiz_questions = [
+                models.QuizQuestion(
+                    quiz=quiz,
+                    vocabulary=vocab,
+                    question_order=index,
+                )
+                for index, vocab in enumerate(ordered_vocabs, start=1)
+            ]
+            models.QuizQuestion.objects.bulk_create(quiz_questions)
+            quiz_id = str(quiz.id)
+
         if not quiz_id:
             return Response({"detail": "quizは必須です"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -2200,6 +2518,7 @@ __all__ = [
     "QuizResultViewSet",
     "QuizResultDetailViewSet",
     "StudentDashboardSummaryView",
+    "StudentLearningStatusView",
     "UserVocabStatusViewSet",
     "TestViewSet",
     "TestQuestionViewSet",
