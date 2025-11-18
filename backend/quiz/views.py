@@ -10,7 +10,7 @@ from typing import Any
 from django.conf import settings
 from django.core.cache import caches
 from django.core.files.storage import default_storage
-from django.db.models import Count, Max, Prefetch, Q, Sum, F, OuterRef, Subquery
+from django.db.models import Count, Max, Prefetch, Q, Sum, F, OuterRef, Subquery, Exists
 from django.db.models.functions import TruncMonth, TruncWeek
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -25,6 +25,7 @@ from rest_framework.views import APIView
 
 from . import models, serializers
 from .utils import is_teacher_whitelisted, parse_date_param
+from django.db import transaction
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -1114,7 +1115,20 @@ class QuizResultViewSet(BaseModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):  # type: ignore[override]
-        return models.QuizResult.objects.select_related("user", "quiz").filter(user=self.request.user).order_by("-started_at")
+        return (
+            models.QuizResult.objects.select_related("user", "quiz")
+            .filter(user=self.request.user, completed_at__isnull=False)
+            .filter(Exists(models.QuizResultDetail.objects.filter(quiz_result=OuterRef("pk"))))
+            .order_by("-started_at")
+        )
+
+    @action(detail=False, methods=["post"], url_path="submit-session", permission_classes=[permissions.IsAuthenticated])
+    def submit_session(self, request, *args, **kwargs):
+        try:
+            qr = _submit_quiz_session(request.user, request.data)
+        except serializers.ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"quiz_result_id": str(qr.id)}, status=status.HTTP_201_CREATED)
 
     def perform_create(self, serializer):  # type: ignore[override]
         serializer.save(user=self.request.user)
@@ -1139,6 +1153,38 @@ class QuizResultDetailViewSet(BaseModelViewSet):
             .filter(quiz_result__user=self.request.user)
             .order_by("question_order")
         )
+
+    def list(self, request, *args, **kwargs):  # type: ignore[override]
+        """
+        quiz_result を指定された場合は、そのセッションの最新 question_count 件のみを返す。
+        過去に同じ quiz_result_id に蓄積された古い明細が混ざっていても、最新分だけに限定する。
+        """
+        quiz_result_id = request.query_params.get("quiz_result")
+        if quiz_result_id:
+            try:
+                quiz_result = models.QuizResult.objects.get(id=quiz_result_id, user=request.user)
+            except models.QuizResult.DoesNotExist:
+                return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            qs = (
+                models.QuizResultDetail.objects.select_related("quiz_result", "vocabulary")
+                .annotate(
+                    correct_text=Subquery(
+                        models.VocabChoice.objects.filter(vocabulary=OuterRef("vocabulary"), is_correct=True)
+                        .order_by("created_at")
+                        .values("text_ja")[:1]
+                    )
+                )
+                .filter(quiz_result=quiz_result)
+                .order_by("created_at", "id")
+            )
+            take = quiz_result.question_count or qs.count()
+            latest = list(qs)[-take:]
+            latest_sorted = sorted(latest, key=lambda d: d.question_order or 0)
+            serializer = self.get_serializer(latest_sorted, many=True)
+            return Response(serializer.data)
+
+        return super().list(request, *args, **kwargs)
 
     def perform_create(self, serializer):  # type: ignore[override]
         quiz_result: models.QuizResult = serializer.validated_data["quiz_result"]
@@ -1565,6 +1611,143 @@ class FocusQuizSessionStartView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class QuizSessionQuestionsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        quiz_id = request.query_params.get("quiz")
+        if not quiz_id:
+            return Response({"detail": "quiz は必須です"}, status=status.HTTP_400_BAD_REQUEST)
+
+        quiz = get_object_or_404(
+            models.Quiz.objects.select_related("quiz_collection"),
+            pk=quiz_id,
+            archived_at__isnull=True,
+        )
+        questions = list(
+            models.QuizQuestion.objects.select_related("vocabulary")
+            .filter(quiz=quiz, archived_at__isnull=True)
+            .order_by("question_order")
+        )
+        if not questions:
+            return Response({"detail": "このクイズには問題が登録されていません"}, status=status.HTTP_400_BAD_REQUEST)
+
+        vocab_ids = list({question.vocabulary_id for question in questions})
+        choices_qs = models.VocabChoice.objects.filter(vocabulary_id__in=vocab_ids)
+        choices_map: dict[str, list[models.VocabChoice]] = {}
+        for choice in choices_qs:
+            key = str(choice.vocabulary_id)
+            choices_map.setdefault(key, []).append(choice)
+
+        question_payloads: list[dict[str, Any]] = []
+        for question in questions:
+            vocab = question.vocabulary
+            vocab_key = str(vocab.id)
+            vocab_choices = choices_map.get(vocab_key, [])
+            if not vocab_choices:
+                return Response(
+                    {"detail": f"{vocab.text_en} の選択肢が不足しています"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            choices_payload = [
+                {"vocab_choice_id": str(choice.id), "text_ja": choice.text_ja, "is_correct": choice.is_correct}
+                for choice in vocab_choices
+            ]
+            random.shuffle(choices_payload)
+            correct_choice = next((c for c in vocab_choices if c.is_correct), None)
+            question_payloads.append(
+                {
+                    "quiz_question_id": str(question.id),
+                    "question_order": question.question_order,
+                    "vocabulary": {
+                        "vocabulary_id": str(vocab.id),
+                        "text_en": vocab.text_en,
+                        "part_of_speech": vocab.part_of_speech,
+                        "explanation": vocab.explanation,
+                    },
+                    "choices": choices_payload,
+                    "correct_choice_id": str(correct_choice.id) if correct_choice else None,
+                }
+            )
+
+        timer_seconds = quiz.timer_seconds or 10
+        return Response(
+            {
+                "quiz_id": str(quiz.id),
+                "timer_seconds": timer_seconds,
+                "questions": question_payloads,
+                "question_count": len(question_payloads),
+            }
+        )
+
+
+def _submit_quiz_session(user, payload: dict[str, Any]) -> models.QuizResult:
+    quiz_id = payload.get("quiz_id") or payload.get("quiz")
+    details = payload.get("details") or []
+
+    if not quiz_id:
+        raise serializers.ValidationError({"detail": "quiz_id は必須です"})
+    if not isinstance(details, list) or len(details) == 0:
+        raise serializers.ValidationError({"detail": "details は1件以上の配列で指定してください"})
+
+    quiz = get_object_or_404(models.Quiz.objects.select_related("quiz_collection"), pk=quiz_id, archived_at__isnull=True)
+
+    vocab_ids = [d.get("vocabulary_id") for d in details if d.get("vocabulary_id")]
+    vocab_qs = models.Vocabulary.objects.filter(id__in=vocab_ids)
+    vocab_map = {str(v.id): v for v in vocab_qs}
+    missing = [vid for vid in vocab_ids if vid not in vocab_map]
+    if missing:
+        raise serializers.ValidationError({"detail": f"存在しない語彙があります: {missing[:3]}..."})
+
+    question_orders = [d.get("question_order") for d in details]
+    if any(qo is None for qo in question_orders):
+        raise serializers.ValidationError({"detail": "question_order は必須です"})
+    if len(set(question_orders)) != len(question_orders):
+        raise serializers.ValidationError({"detail": "question_order が重複しています"})
+
+    with transaction.atomic():
+        question_count = len(details)
+        score = sum(1 for d in details if d.get("is_correct"))
+        total_time_ms = sum(int(d.get("reaction_time_ms") or 0) for d in details)
+
+        qr = models.QuizResult.objects.create(
+            user=user,
+            quiz=quiz,
+            started_at=payload.get("started_at") or timezone.now(),
+            completed_at=payload.get("completed_at") or timezone.now(),
+            question_count=question_count,
+            score=score,
+            total_time_ms=total_time_ms,
+        )
+
+        detail_objects = []
+        for d in details:
+            vocab_id = d.get("vocabulary_id")
+            choice_id = d.get("selected_choice_id") or d.get("choice_id")
+            is_correct = bool(d.get("is_correct"))
+            if vocab_id and choice_id:
+                correct_exists = models.VocabChoice.objects.filter(
+                    vocabulary_id=vocab_id, id=choice_id, is_correct=True
+                ).exists()
+                is_correct = is_correct or correct_exists
+
+            detail_objects.append(
+                models.QuizResultDetail(
+                    quiz_result=qr,
+                    question_order=int(d.get("question_order")),
+                    vocabulary_id=vocab_id,
+                    selected_text=d.get("selected_text"),
+                    is_correct=is_correct,
+                    is_timeout=bool(d.get("is_timeout")),
+                    reaction_time_ms=d.get("reaction_time_ms"),
+                )
+            )
+
+        models.QuizResultDetail.objects.bulk_create(detail_objects)
+
+    return qr
 
 
 class QuizSessionStartView(APIView):

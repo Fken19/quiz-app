@@ -10,6 +10,7 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 interface ChoiceOption {
   vocab_choice_id: string;
   text_ja: string;
+  is_correct?: boolean;
 }
 
 interface QuizSessionQuestion {
@@ -22,25 +23,12 @@ interface QuizSessionQuestion {
     explanation?: string | null;
   };
   choices: ChoiceOption[];
+  correct_choice_id?: string | null;
 }
 
 interface QuizProgress {
   currentIndex: number;
   startedAt: number;
-}
-
-interface QuizSessionResponse {
-  quiz_result_id: string;
-  timer_seconds: number;
-  questions: QuizSessionQuestion[];
-  question_count: number;
-}
-
-interface AnswerResponse {
-  is_correct: boolean;
-  is_timeout: boolean;
-  reaction_time_ms?: number | null;
-  selected_text?: string | null;
 }
 
 type AnswerLog = {
@@ -75,11 +63,11 @@ export default function QuizPlayPage() {
   const [answering, setAnswering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completedResult, setCompletedResult] = useState<QuizResult | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
   const [timerSeconds, setTimerSeconds] = useState<number>(10);
   const [timeLeftMs, setTimeLeftMs] = useState<number>(0);
   const [judge, setJudge] = useState<JudgeState>(null);
   const [nextQuizId, setNextQuizId] = useState<string | null>(null);
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
 
   const startSession = useCallback(async () => {
     if (!quizId) {
@@ -91,28 +79,30 @@ export default function QuizPlayPage() {
     try {
       setLoading(true);
       setError(null);
-      setSessionId(null);
       setCompletedResult(null);
+      setSessionStartedAt(null);
 
       const [quizData, sessionResponse] = await Promise.all([
         apiGet(`/api/quizzes/${quizId}/`).catch(() => null),
-        apiPost('/api/quiz-sessions/', { quiz: quizId }),
+        apiGet(`/api/quiz-session-questions/?quiz=${quizId}`).catch(() => null),
       ]);
 
       if (!quizData || !('quiz_id' in quizData)) {
         throw new Error('クイズ情報の取得に失敗しました');
       }
 
-      const sessionData = sessionResponse as QuizSessionResponse;
+      const sessionData = sessionResponse as any;
       setQuiz(quizData as Quiz);
-      setQuestions(sessionData.questions || []);
-      setSessionId(sessionData.quiz_result_id);
-      setTimerSeconds(sessionData.timer_seconds || (quizData.timer_seconds ?? 10) || 10);
-      setTimeLeftMs((sessionData.timer_seconds || quizData.timer_seconds || 10) * 1000);
+      const qList: QuizSessionQuestion[] = sessionData?.questions || [];
+      setQuestions(qList);
+      const timer = sessionData?.timer_seconds || (quizData.timer_seconds ?? 10) || 10;
+      setTimerSeconds(timer);
+      setTimeLeftMs(timer * 1000);
       setProgress({
         currentIndex: 0,
         startedAt: Date.now(),
       });
+      setSessionStartedAt(Date.now());
       setAnswers([]);
 
       if (quizData.quiz_collection) {
@@ -142,26 +132,25 @@ export default function QuizPlayPage() {
   }, [progress, questions]);
 
   const handleAnswer = async (choice: ChoiceOption) => {
-    if (!progress || !currentQuestion || !sessionId || submitting || answering || judge) return;
+    if (!progress || !currentQuestion || submitting || answering || judge) return;
 
     const endTime = Date.now();
     const reactionTime = endTime - progress.startedAt;
 
     try {
       setAnswering(true);
-      const answerResponse = (await apiPost(`/api/quiz-sessions/${sessionId}/answer/`, {
-        question_order: currentQuestion.question_order,
-        choice_id: choice.vocab_choice_id,
-        elapsed_ms: reactionTime,
-      })) as AnswerResponse;
+      const fallbackCorrect = (currentQuestion.choices.find((c: any) => (c as any).is_correct) as any)
+        ?.vocab_choice_id;
+      const correctId = currentQuestion.correct_choice_id || fallbackCorrect || null;
+      const isCorrect = correctId ? correctId === choice.vocab_choice_id : false;
 
       const newAnswer: AnswerLog = {
         question: currentQuestion,
         selectedChoiceId: choice.vocab_choice_id,
         selectedText: choice.text_ja,
-        isCorrect: answerResponse.is_correct,
-        isTimeout: answerResponse.is_timeout,
-        reactionTimeMs: answerResponse.reaction_time_ms ?? reactionTime,
+        isCorrect,
+        isTimeout: false,
+        reactionTimeMs: reactionTime,
       };
       setAnswers((prev) => [...prev, newAnswer]);
       setJudge({
@@ -179,21 +168,17 @@ export default function QuizPlayPage() {
   };
 
   const handleTimeout = async () => {
-    if (!progress || !currentQuestion || !sessionId || submitting || answering || judge) return;
+    if (!progress || !currentQuestion || submitting || answering || judge) return;
     const timerMs = timerSeconds * 1000;
     try {
       setAnswering(true);
-      const answerResponse = (await apiPost(`/api/quiz-sessions/${sessionId}/answer/`, {
-        question_order: currentQuestion.question_order,
-        elapsed_ms: timerMs,
-      })) as AnswerResponse;
       const newAnswer: AnswerLog = {
         question: currentQuestion,
         selectedChoiceId: null,
-        selectedText: answerResponse.selected_text ?? null,
-        isCorrect: answerResponse.is_correct,
-        isTimeout: answerResponse.is_timeout,
-        reactionTimeMs: answerResponse.reaction_time_ms ?? timerMs,
+        selectedText: null,
+        isCorrect: false,
+        isTimeout: true,
+        reactionTimeMs: timerMs,
       };
       setAnswers((prev) => [...prev, newAnswer]);
       setJudge({
@@ -226,7 +211,6 @@ export default function QuizPlayPage() {
   };
 
   const completeSession = async (finalAnswers?: AnswerLog[]) => {
-    if (!sessionId) return;
     const merged = finalAnswers ?? answers;
     if (merged.length !== questions.length) {
       setError('送信されていない回答があります。通信状態を確認して再試行してください。');
@@ -234,8 +218,34 @@ export default function QuizPlayPage() {
     }
     try {
       setSubmitting(true);
-      const result = (await apiPost(`/api/quiz-sessions/${sessionId}/complete/`, {})) as QuizResult;
-      setCompletedResult(result);
+      const payload = {
+        quiz_id: quizId,
+        started_at: sessionStartedAt ? new Date(sessionStartedAt).toISOString() : undefined,
+        completed_at: new Date().toISOString(),
+        details: merged.map((a) => ({
+          question_order: a.question.question_order,
+          vocabulary_id: a.question.vocabulary.vocabulary_id,
+          selected_text: a.selectedText,
+          selected_choice_id: a.selectedChoiceId,
+          is_correct: a.isCorrect,
+          is_timeout: a.isTimeout,
+          reaction_time_ms: a.reactionTimeMs,
+        })),
+      };
+      const res = await apiPost('/api/quiz-results/submit-session/', payload);
+      const qrId = res?.quiz_result_id || res?.quiz_result || null;
+      setCompletedResult(
+        ({
+          quiz_result_id: qrId,
+          quiz: quizId || '',
+          started_at: payload.started_at || new Date().toISOString(),
+          completed_at: payload.completed_at || new Date().toISOString(),
+          question_count: merged.length,
+          score: merged.filter((a) => a.isCorrect).length,
+          total_time_ms: merged.reduce((sum, a) => sum + (a.reactionTimeMs || 0), 0),
+          timeout_count: merged.filter((a) => a.isTimeout).length,
+        } as unknown) as QuizResult,
+      );
       setProgress(merged ? { currentIndex: merged.length, startedAt: Date.now() } : null);
       setAnswers(merged);
       setJudge(null);
@@ -296,7 +306,7 @@ export default function QuizPlayPage() {
     );
   }
 
-  if (!quiz || !questions.length || !sessionId) {
+  if (!quiz || !questions.length) {
     return (
       <div className="max-w-xl mx-auto py-10">
         <p className="text-slate-600">クイズに問題が登録されていません。</p>

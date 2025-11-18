@@ -3,11 +3,14 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiGet } from '@/lib/api-utils';
-import type { QuizResult, Quiz } from '@/types/quiz';
+import type { QuizResult, Quiz, QuizResultDetail } from '@/types/quiz';
 
 interface Row {
   result: QuizResult;
   quiz?: Quiz | null;
+  totalQuestions: number;
+  correctCount: number;
+  averageTimeSec: string | null;
 }
 
 export default function QuizResultsPage() {
@@ -33,7 +36,30 @@ export default function QuizResultsPage() {
           }
         });
 
-        setRows(results.map((result) => ({ result, quiz: quizMap.get(result.quiz) })));
+        const rowsData: Row[] = [];
+        for (const result of results) {
+          const detailRes = await apiGet(
+            `/api/quiz-result-details/?quiz_result=${result.quiz_result_id}&page_size=300`,
+          ).catch(() => ({ results: [] }));
+          const details: QuizResultDetail[] = Array.isArray(detailRes) ? detailRes : detailRes?.results || [];
+          const ordered = [...details].sort((a, b) => a.question_order - b.question_order);
+          const intendedCount = result.question_count || ordered.length;
+          const sessionDetails = ordered.slice(0, intendedCount);
+          const totalQuestions = sessionDetails.length;
+          const correctCount = sessionDetails.filter((d) => d.is_correct).length;
+          const totalTimeMs = sessionDetails.reduce((sum, d) => sum + (d.reaction_time_ms ?? 0), 0);
+          const averageTimeSec = totalQuestions > 0 ? (totalTimeMs / 1000 / totalQuestions).toFixed(2) : null;
+
+          rowsData.push({
+            result,
+            quiz: quizMap.get(result.quiz),
+            totalQuestions,
+            correctCount,
+            averageTimeSec,
+          });
+        }
+
+        setRows(rowsData);
       } catch (err) {
         console.error(err);
         setError('クイズ結果の取得に失敗しました');
@@ -72,19 +98,23 @@ export default function QuizResultsPage() {
       </div>
 
       <div className="bg-white shadow rounded-lg divide-y">
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 px-6 py-3 text-sm font-semibold text-slate-500">
+        <div className="grid grid-cols-1 sm:grid-cols-6 gap-4 px-6 py-3 text-sm font-semibold text-slate-500">
           <div>クイズ</div>
           <div>開始時刻</div>
           <div>終了時刻</div>
+          <div>平均解答時間</div>
           <div>スコア</div>
           <div>詳細</div>
         </div>
-        {rows.map(({ result, quiz }) => (
-          <div key={result.quiz_result_id} className="grid grid-cols-1 sm:grid-cols-5 gap-4 px-6 py-4 text-sm">
+        {rows.map(({ result, quiz, totalQuestions, correctCount, averageTimeSec }) => (
+          <div key={result.quiz_result_id} className="grid grid-cols-1 sm:grid-cols-6 gap-4 px-6 py-4 text-sm">
             <div className="text-slate-700 font-semibold">{quiz?.title || 'クイズ'}</div>
             <div className="text-slate-600">{new Date(result.started_at).toLocaleString()}</div>
             <div className="text-slate-600">{result.completed_at ? new Date(result.completed_at).toLocaleString() : '---'}</div>
-            <div className="text-slate-600">{result.score ?? '---'}</div>
+            <div className="text-slate-600">{averageTimeSec ? `${averageTimeSec}秒` : '---'}</div>
+            <div className="text-slate-600">
+              {totalQuestions > 0 ? `${correctCount} / ${totalQuestions}` : result.score ?? '---'}
+            </div>
             <div>
               <Link href={`/student/results/${result.quiz_result_id}`} className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-white text-sm font-semibold hover:bg-indigo-700">
                 詳細を見る

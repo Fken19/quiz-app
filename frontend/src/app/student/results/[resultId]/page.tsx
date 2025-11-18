@@ -28,7 +28,9 @@ export default function QuizResultDetailPage() {
       try {
         setLoading(true);
         const header = (await apiGet(`/api/quiz-results/${params.resultId}/`)) as QuizResult;
-        const detailResponse = await apiGet(`/api/quiz-result-details/?quiz_result=${params.resultId}`);
+        const detailResponse = await apiGet(
+          `/api/quiz-result-details/?quiz_result=${params.resultId}&page_size=200`,
+        );
         const details: QuizResultDetail[] = Array.isArray(detailResponse)
           ? detailResponse
           : detailResponse?.results || [];
@@ -60,10 +62,13 @@ export default function QuizResultDetailPage() {
           }
         }
         const uniqueDetails = Array.from(
-          new Map(details.map((detail) => [detail.question_order, detail])).values(),
-        ).sort((a, b) => a.question_order - b.question_order);
-
-        setRows(uniqueDetails.map((detail) => ({ detail, vocabulary: vocabMap.get(detail.vocabulary) })));
+          new Map(details.map((d) => [d.quiz_result_detail_id, d])).values(),
+        );
+        const limit = header?.question_count || uniqueDetails.length;
+        // 最新セッション分を末尾から取得したうえで設問順に並べ替え
+        const latestSessionDetails = uniqueDetails.slice(-limit);
+        const orderedDetails = [...latestSessionDetails].sort((a, b) => a.question_order - b.question_order);
+        setRows(orderedDetails.map((detail) => ({ detail, vocabulary: vocabMap.get(detail.vocabulary) })));
       } catch (err) {
         console.error(err);
         setError('結果詳細の取得に失敗しました');
@@ -101,8 +106,8 @@ export default function QuizResultDetailPage() {
     return null;
   }
 
-  const totalQuestions = rows.length;
-  const correctCount = rows.filter((row) => row.detail.is_correct).length;
+  const totalQuestions = result.question_count ?? rows.length;
+  const correctCount = result.score ?? rows.filter((row) => row.detail.is_correct).length;
   const totalTimeMs = rows.reduce((sum, row) => sum + (row.detail.reaction_time_ms ?? 0), 0);
   const averageTimeSec = rows.length > 0 ? (totalTimeMs / 1000 / rows.length).toFixed(2) : null;
   const finishedAt = result.completed_at ? new Date(result.completed_at).toLocaleString() : null;
@@ -149,7 +154,7 @@ export default function QuizResultDetailPage() {
         </div>
         {rows.map((row) => (
           <div
-            key={row.detail.question_order}
+            key={row.detail.quiz_result_detail_id}
             className="grid grid-cols-5 gap-4 px-6 py-3 text-sm text-slate-700 border-t border-slate-100 first:border-t-0"
           >
             <span>{row.detail.question_order}</span>
