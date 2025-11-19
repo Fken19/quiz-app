@@ -1076,9 +1076,35 @@ class VocabChoiceViewSet(BaseModelViewSet):
 
 
 class QuizCollectionViewSet(BaseModelViewSet):
-    queryset = models.QuizCollection.objects.select_related("owner_user", "origin_collection").order_by("order_index")
     serializer_class = serializers.QuizCollectionSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        qs = (
+            models.QuizCollection.objects.select_related("owner_user", "origin_collection")
+            .annotate(
+                active_quiz_count=Count(
+                    "quizzes__questions",
+                    filter=Q(quizzes__archived_at__isnull=True, quizzes__questions__archived_at__isnull=True),
+                    distinct=True,
+                )
+            )
+            .filter(archived_at__isnull=True)
+        )
+
+        scope = self.request.query_params.get("scope")
+        if scope:
+            qs = qs.filter(scope=scope)
+
+        include_unpublished = str(self.request.query_params.get("include_unpublished", "false")).lower() in {"1", "true"}
+        if not include_unpublished:
+            qs = qs.filter(is_published=True)
+
+        include_empty = str(self.request.query_params.get("include_empty", "false")).lower() in {"1", "true"}
+        if not include_empty:
+            qs = qs.filter(active_quiz_count__gt=0)
+
+        return qs.order_by("order_index", "level_order", "title")
 
 
 class QuizViewSet(BaseModelViewSet):

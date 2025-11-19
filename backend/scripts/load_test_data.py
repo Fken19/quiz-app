@@ -1,308 +1,416 @@
 #!/usr/bin/env python3
 """
-テストデータ投入スクリプト
-提供されたサンプル単語データをデータベースに投入します
+英単語マスタJSONLからDB投入＆クイズ自動生成スクリプト
+
+使い方:
+    docker compose exec backend python backend/scripts/load_test_data.py
+
+機能:
+    1. 単語メインファイル.json (JSONL形式) から語彙データをDBに投入
+    2. 重要度順にクイズ構造（レベル・セクション・問題）を自動生成
 """
 
 import os
 import sys
-import django
 import json
+from pathlib import Path
 
 # Django設定
 sys.path.append('/app')
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'quiz_backend.settings')
+
+import django
 django.setup()
 
-from quiz.models import User, Vocabulary, VocabTranslation, VocabChoice
+from django.utils import timezone
+from quiz.models import (
+    Vocabulary, VocabTranslation, VocabChoice,
+    VocabVisibility, VocabStatus,
+    QuizCollection, Quiz, QuizQuestion, QuizScope,
+)
 
-def load_test_data():
-    """テストデータを投入"""
+# ---------------------------------------------------------------------------
+# 定数設定
+# ---------------------------------------------------------------------------
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+JSONL_PATH = ROOT_DIR / "単語メインファイル.json"
+
+WORDS_PER_SECTION = 10       # 1セクションの問題数
+SECTIONS_PER_LEVEL = 10       # 1レベルあたりのセクション数
+RESET_EXISTING_DEFAULT_QUIZZES = False  # True にすると既存デフォルトクイズ削除
+
+# ---------------------------------------------------------------------------
+# Step 1: JSONL読み込み（順序維持 & importance抽出）
+# ---------------------------------------------------------------------------
+
+def load_jsonl_with_importance():
+    """
+    JSONLファイルを読み込み、行順を保持しつつimportanceを抽出
     
-    # テストデータ
-    test_words = [
-        {
-            "text_en": "apple",
-            "part_of_speech": "noun",
-            "primary_translation": "りんご",
-            "other_translations": ["アップル"],
-            "dummy_translations": ["バナナ", "オレンジ", "ぶどう"],
-            "explanation": "名詞。果物のりんごを表す基本語。",
-            "example_en": "I eat an apple every morning.",
-            "example_ja": "私は毎朝りんごを食べます。"
-        },
-        {
-            "text_en": "book",
-            "part_of_speech": "noun",
-            "primary_translation": "本",
-            "other_translations": ["書籍", "冊子"],
-            "dummy_translations": ["ペン", "ノート", "机"],
-            "explanation": "名詞。読むための冊子・書籍。",
-            "example_en": "I read a book at home.",
-            "example_ja": "私は家で本を読みます。"
-        },
-        {
-            "text_en": "dog",
-            "part_of_speech": "noun",
-            "primary_translation": "犬",
-            "other_translations": ["イヌ"],
-            "dummy_translations": ["猫", "鳥", "魚"],
-            "explanation": "名詞。身近な動物の一種。",
-            "example_en": "The dog is very friendly.",
-            "example_ja": "その犬はとても人なつこい。"
-        },
-        {
-            "text_en": "water",
-            "part_of_speech": "noun",
-            "primary_translation": "水",
-            "other_translations": ["ウォーター"],
-            "dummy_translations": ["牛乳", "ジュース", "お茶"],
-            "explanation": "名詞。飲用や生活に不可欠な液体。",
-            "example_en": "Please drink water.",
-            "example_ja": "水を飲んでください。"
-        },
-        {
-            "text_en": "school",
-            "part_of_speech": "noun",
-            "primary_translation": "学校",
-            "other_translations": ["スクール"],
-            "dummy_translations": ["病院", "公園", "駅"],
-            "explanation": "名詞。学ぶための施設や組織。",
-            "example_en": "I go to school every day.",
-            "example_ja": "私は毎日学校に行きます。"
-        },
-        {
-            "text_en": "chair",
-            "part_of_speech": "noun",
-            "primary_translation": "いす",
-            "other_translations": ["椅子"],
-            "dummy_translations": ["机", "窓", "ドア"],
-            "explanation": "名詞。座るための家具。",
-            "example_en": "This chair is new.",
-            "example_ja": "このいすは新しい。"
-        },
-        {
-            "text_en": "morning",
-            "part_of_speech": "noun",
-            "primary_translation": "朝",
-            "other_translations": ["午前"],
-            "dummy_translations": ["夜", "午後", "夕方"],
-            "explanation": "名詞。日の出から昼頃までの時間帯。",
-            "example_en": "I get up early in the morning.",
-            "example_ja": "私は朝早く起きます。"
-        },
-        {
-            "text_en": "big",
-            "part_of_speech": "adjective",
-            "primary_translation": "大きい",
-            "other_translations": ["大きな"],
-            "dummy_translations": ["小さい", "速い", "遅い"],
-            "explanation": "形容詞。「大きい」の意味。",
-            "example_en": "This box is big.",
-            "example_ja": "この箱は大きい。"
-        },
-        {
-            "text_en": "run",
-            "part_of_speech": "verb",
-            "primary_translation": "走る",
-            "other_translations": ["かけっこする"],
-            "dummy_translations": ["歩く", "飛ぶ", "泳ぐ"],
-            "explanation": "動詞。「走る」の意味で日常的に用いる。",
-            "example_en": "He runs fast.",
-            "example_ja": "彼は速く走る。"
-        },
-        {
-            "text_en": "eat",
-            "part_of_speech": "verb",
-            "primary_translation": "食べる",
-            "other_translations": ["食う"],
-            "dummy_translations": ["飲む", "読む", "書く"],
-            "explanation": "動詞。食物を口に入れて摂取する。",
-            "example_en": "We eat lunch at noon.",
-            "example_ja": "私たちは正午に昼食を食べます。"
-        },
-        {
-            "text_en": "train",
-            "part_of_speech": "noun",
-            "primary_translation": "電車",
-            "other_translations": ["列車", "汽車"],
-            "dummy_translations": ["バス", "自転車", "飛行機"],
-            "explanation": "名詞。レール上を走る公共交通機関。",
-            "example_en": "I go to school by train.",
-            "example_ja": "私は電車で学校に行きます。"
-        },
-        {
-            "text_en": "city",
-            "part_of_speech": "noun",
-            "primary_translation": "都市",
-            "other_translations": ["街", "市"],
-            "dummy_translations": ["村", "川", "山"],
-            "explanation": "名詞。人口が多く発達した地域。",
-            "example_en": "Tokyo is a big city.",
-            "example_ja": "東京は大きな都市です。"
-        },
-        {
-            "text_en": "family",
-            "part_of_speech": "noun",
-            "primary_translation": "家族",
-            "other_translations": ["ファミリー"],
-            "dummy_translations": ["友だち", "先生", "生徒"],
-            "explanation": "名詞。親子・兄弟などの集まり。",
-            "example_en": "My family is small.",
-            "example_ja": "私の家族は小さいです。"
-        },
-        {
-            "text_en": "teacher",
-            "part_of_speech": "noun",
-            "primary_translation": "先生",
-            "other_translations": ["教師", "教員"],
-            "dummy_translations": ["生徒", "家族", "友だち"],
-            "explanation": "名詞。教えることを職業とする人。",
-            "example_en": "Our teacher is kind.",
-            "example_ja": "私たちの先生は親切です。"
-        },
-        {
-            "text_en": "happy",
-            "part_of_speech": "adjective",
-            "primary_translation": "うれしい",
-            "other_translations": ["幸せな", "喜んでいる"],
-            "dummy_translations": ["悲しい", "怒っている", "忙しい"],
-            "explanation": "形容詞。気持ちが満たされた状態。",
-            "example_en": "I am happy today.",
-            "example_ja": "私は今日はうれしい。"
-        },
-        {
-            "text_en": "cold",
-            "part_of_speech": "adjective",
-            "primary_translation": "寒い",
-            "other_translations": ["冷たい"],
-            "dummy_translations": ["暑い", "暖かい", "涼しい"],
-            "explanation": "形容詞。気温が低いことを表す。",
-            "example_en": "It is cold in winter.",
-            "example_ja": "冬は寒い。"
-        },
-        {
-            "text_en": "write",
-            "part_of_speech": "verb",
-            "primary_translation": "書く",
-            "other_translations": ["記す"],
-            "dummy_translations": ["読む", "話す", "見る"],
-            "explanation": "動詞。文字や文を記す。",
-            "example_en": "I write a diary every night.",
-            "example_ja": "私は毎晩日記を書きます。"
-        },
-        {
-            "text_en": "open",
-            "part_of_speech": "verb",
-            "primary_translation": "開ける",
-            "other_translations": ["開く"],
-            "dummy_translations": ["閉める", "押す", "置く"],
-            "explanation": "動詞。ドアや窓などを開ける。",
-            "example_en": "Please open the door.",
-            "example_ja": "ドアを開けてください。"
-        },
-        {
-            "text_en": "music",
-            "part_of_speech": "noun",
-            "primary_translation": "音楽",
-            "other_translations": ["ミュージック"],
-            "dummy_translations": ["映画", "ゲーム", "本"],
-            "explanation": "名詞。歌や演奏などの芸術。",
-            "example_en": "I like music very much.",
-            "example_ja": "私は音楽がとても好きです。"
-        },
-        {
-            "text_en": "lunch",
-            "part_of_speech": "noun",
-            "primary_translation": "昼食",
-            "other_translations": ["ランチ", "昼ごはん"],
-            "dummy_translations": ["朝食", "夕食", "おやつ"],
-            "explanation": "名詞。正午ごろに食べる食事。",
-            "example_en": "We have lunch at twelve.",
-            "example_ja": "私たちは12時に昼食をとります。"
-        }
-    ]
+    戻り値:
+        records: [{ "line_no": int, "data": dict, "importance": int }, ...]
+        importance_map: { text_en: importance, ... }
+    """
+    records = []
+    importance_map = {}
     
-    print("Starting data loading...")
+    if not JSONL_PATH.exists():
+        print(f"❌ ファイルが見つかりません: {JSONL_PATH}")
+        return records, importance_map
     
-    # 開発ユーザーを取得または作成
-    try:
-        user = User.objects.get(email='dev@example.com')
-        print(f"Found user: {user.email}")
-    except User.DoesNotExist:
-        print("Creating dev user...")
-        user = User.objects.create_user(
-            username='dev',
-            email='dev@example.com',
-            password='dev123',
-            display_name='Dev User'
-        )
+    print(f"📖 JSONLファイル読み込み中: {JSONL_PATH}")
     
-    # 単語とその翻訳・選択肢を作成
-    vocabs_created = 0
-    for word_data in test_words:
-        try:
-            # Vocabularyオブジェクトを作成
-            vocab, created = Vocabulary.objects.get_or_create(
-                text_en=word_data['text_en'],
-                created_by_user=user,
-                defaults={
-                    'part_of_speech': word_data['part_of_speech'],
-                    'explanation': word_data['explanation'],
-                    'example_en': word_data.get('example_en', ''),
-                    'example_ja': word_data.get('example_ja', ''),
-                    'visibility': 'private',
-                    'status': 'published'
-                }
-            )
+    with open(JSONL_PATH, 'r', encoding='utf-8') as f:
+        for line_no, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
             
-            if created:
-                vocabs_created += 1
-                print(f"Created vocabulary: {vocab.text_en}")
+            try:
+                data = json.loads(line)
+                text_en = data.get('text_en', '').strip()
                 
-                # プライマリ翻訳を作成
+                if not text_en:
+                    print(f"⚠️  行 {line_no}: text_en が空です。スキップします。")
+                    continue
+                
+                # importance を取得（デフォルト 0）
+                importance = 0
+                meta = data.get('meta', {})
+                if isinstance(meta, dict):
+                    try:
+                        importance = int(meta.get('importance', 0))
+                    except (ValueError, TypeError):
+                        importance = 0
+                
+                records.append({
+                    "line_no": line_no,
+                    "data": data,
+                    "importance": importance,
+                })
+                importance_map[text_en] = importance
+                
+            except json.JSONDecodeError as e:
+                print(f"⚠️  行 {line_no}: JSON解析エラー - {e}")
+                continue
+    
+    print(f"✅ {len(records)} 件の単語を読み込みました")
+    return records, importance_map
+
+# ---------------------------------------------------------------------------
+# Step 2: Vocabulary 等の upsert
+# ---------------------------------------------------------------------------
+
+def upsert_vocab_from_records(records):
+    """
+    records を先頭から順番に処理して Vocabulary/VocabTranslation/VocabChoice を作成・更新
+    
+    戻り値:
+        vocab_list: upsert後の Vocabulary オブジェクトのリスト（順序は JSON行順）
+    """
+    vocab_list = []
+    vocab_id_set = set()  # 重複防止
+    
+    # 既存の Vocabulary を text_en でマッピング
+    existing_vocab_map = {
+        v.text_en: v for v in Vocabulary.objects.all()
+    }
+    
+    created_vocab = 0
+    updated_vocab = 0
+    created_trans = 0
+    created_choice = 0
+    
+    now = timezone.now()
+    
+    print("\n📝 語彙データをDBに投入中...")
+    
+    for rec in records:
+        data = rec['data']
+        line_no = rec['line_no']
+        
+        text_en = data.get('text_en', '').strip()
+        if not text_en:
+            continue
+        
+        # Vocabulary の取得または作成
+        vocab = existing_vocab_map.get(text_en)
+        if vocab:
+            # 既存レコードの更新
+            updated = False
+            
+            # 各フィールドが非空の場合のみ上書き
+            if data.get('part_of_speech'):
+                vocab.part_of_speech = data['part_of_speech']
+                updated = True
+            if data.get('explanation'):
+                vocab.explanation = data['explanation']
+                updated = True
+            if data.get('example_en'):
+                vocab.example_en = data['example_en']
+                updated = True
+            if data.get('example_ja'):
+                vocab.example_ja = data['example_ja']
+                updated = True
+            
+            # visibility / status / published_at を整合
+            if vocab.visibility != VocabVisibility.PUBLIC:
+                vocab.visibility = VocabVisibility.PUBLIC
+                updated = True
+            if vocab.status != VocabStatus.PUBLISHED:
+                vocab.status = VocabStatus.PUBLISHED
+                updated = True
+            if vocab.published_at is None:
+                vocab.published_at = now
+                updated = True
+            
+            # sense_count を更新
+            translations = data.get('translations', [])
+            sense_count = max(1, len(translations))
+            if vocab.sense_count != sense_count:
+                vocab.sense_count = sense_count
+                updated = True
+            
+            if updated:
+                vocab.save()
+                updated_vocab += 1
+        else:
+            # 新規作成
+            translations = data.get('translations', [])
+            vocab = Vocabulary.objects.create(
+                text_en=text_en,
+                part_of_speech=data.get('part_of_speech', ''),
+                explanation=data.get('explanation', ''),
+                example_en=data.get('example_en', ''),
+                example_ja=data.get('example_ja', ''),
+                sense_count=max(1, len(translations)),
+                visibility=VocabVisibility.PUBLIC,
+                status=VocabStatus.PUBLISHED,
+                published_at=now,
+            )
+            existing_vocab_map[text_en] = vocab
+            created_vocab += 1
+        
+        # vocab_list に追加（重複防止）
+        if vocab.id not in vocab_id_set:
+            vocab_list.append(vocab)
+            vocab_id_set.add(vocab.id)
+        
+        # VocabTranslation の処理
+        translations = data.get('translations', [])
+        for idx, text_ja in enumerate(translations):
+            if not text_ja.strip():
+                continue
+            
+            # 既存チェック
+            existing_trans = VocabTranslation.objects.filter(
+                vocabulary=vocab,
+                text_ja=text_ja
+            ).first()
+            
+            if not existing_trans:
+                # primary かどうかの判定
+                has_primary = VocabTranslation.objects.filter(
+                    vocabulary=vocab,
+                    is_primary=True
+                ).exists()
+                
+                is_primary = (idx == 0 and not has_primary)
+                
                 VocabTranslation.objects.create(
                     vocabulary=vocab,
-                    text_ja=word_data['primary_translation'],
-                    is_primary=True
+                    text_ja=text_ja,
+                    is_primary=is_primary,
                 )
-                
-                # その他の翻訳を作成
-                for other_trans in word_data.get('other_translations', []):
-                    VocabTranslation.objects.create(
-                        vocabulary=vocab,
-                        text_ja=other_trans,
-                        is_primary=False
-                    )
-                
-                # 正解の選択肢（プライマリ翻訳）
-                VocabChoice.objects.create(
-                    vocabulary=vocab,
-                    text_ja=word_data['primary_translation'],
-                    is_correct=True,
-                    weight=1.0
-                )
-                
-                # ダミー選択肢を作成
-                for i, dummy in enumerate(word_data.get('dummy_translations', []), 1):
-                    VocabChoice.objects.create(
-                        vocabulary=vocab,
-                        text_ja=dummy,
-                        is_correct=False,
-                        weight=0.8 - (i * 0.1)
-                    )
-                    
-        except Exception as e:
-            print(f"Error creating vocabulary {word_data['text_en']}: {e}")
+                created_trans += 1
+            else:
+                # 既存レコードがあり、primary が未設定の場合
+                if idx == 0 and not existing_trans.is_primary:
+                    if not VocabTranslation.objects.filter(vocabulary=vocab, is_primary=True).exists():
+                        existing_trans.is_primary = True
+                        existing_trans.save()
+        
+        # VocabChoice の処理
+        choices = data.get('choices', {})
+        correct_list = choices.get('correct', [])
+        dummies_list = choices.get('dummies', [])
+        
+        for text_ja in correct_list:
+            if not text_ja.strip():
+                continue
+            
+            choice, choice_created = VocabChoice.objects.get_or_create(
+                vocabulary=vocab,
+                text_ja=text_ja,
+                defaults={'is_correct': True, 'weight': 1.0}
+            )
+            if choice_created:
+                created_choice += 1
+            elif not choice.is_correct:
+                choice.is_correct = True
+                choice.save()
+        
+        for text_ja in dummies_list:
+            if not text_ja.strip():
+                continue
+            
+            choice, choice_created = VocabChoice.objects.get_or_create(
+                vocabulary=vocab,
+                text_ja=text_ja,
+                defaults={'is_correct': False, 'weight': 0.5}
+            )
+            if choice_created:
+                created_choice += 1
+            elif choice.is_correct:
+                choice.is_correct = False
+                choice.save()
     
-    print(f"Created {vocabs_created} vocabularies")
-    print("Data loading completed!")
+    print(f"✅ 語彙投入完了:")
+    print(f"   新規作成: {created_vocab} 件")
+    print(f"   更新: {updated_vocab} 件")
+    print(f"   翻訳作成: {created_trans} 件")
+    print(f"   選択肢作成: {created_choice} 件")
+    
+    return vocab_list
+
+# ---------------------------------------------------------------------------
+# Step 3: クイズ構造生成
+# ---------------------------------------------------------------------------
+
+def build_quizzes_from_vocab(vocab_list, importance_map):
+    """
+    vocab_list を importance 順にソートし、クイズ構造を自動生成
+    """
+    # 既存デフォルトクイズの削除（必要に応じて）
+    if RESET_EXISTING_DEFAULT_QUIZZES:
+        print("\n🗑️  既存のデフォルトクイズを削除中...")
+        QuizQuestion.objects.filter(quiz__quiz_collection__scope=QuizScope.DEFAULT).delete()
+        Quiz.objects.filter(quiz_collection__scope=QuizScope.DEFAULT).delete()
+        QuizCollection.objects.filter(scope=QuizScope.DEFAULT).delete()
+        print("✅ 削除完了")
+    
+    # importance 降順でソート
+    sorted_vocab = sorted(
+        vocab_list,
+        key=lambda v: (-importance_map.get(v.text_en, 0), v.text_en),
+    )
+    
+    print(f"\n🎯 クイズ構造を生成中（全 {len(sorted_vocab)} 単語）...")
+    
+    now = timezone.now()
+    level_set = set()
+    section_set = set()
+    question_count = 0
+    
+    for idx, vocab in enumerate(sorted_vocab):
+        # レベル・セクション・問題番号の計算
+        level_idx = idx // (WORDS_PER_SECTION * SECTIONS_PER_LEVEL)
+        level_no = level_idx + 1
+
+        section_idx = (idx // WORDS_PER_SECTION) % SECTIONS_PER_LEVEL
+        section_no = section_idx + 1
+
+        question_order = (idx % WORDS_PER_SECTION) + 1
+        
+        # QuizCollection (レベル) の取得または作成
+        level_code = f"L{level_no}"
+        qc, qc_created = QuizCollection.objects.get_or_create(
+            scope=QuizScope.DEFAULT,
+            level_code=level_code,
+            defaults={
+                'title': f"レベル{level_no}",
+                'description': f"重要度順 英単語レベル{level_no}",
+                'level_label': f"レベル{level_no}",
+                'level_order': level_no,
+                'order_index': level_no,
+                'is_published': True,
+                'published_at': now,
+            }
+        )
+        level_set.add(level_no)
+        
+        # Quiz (セクション) の取得または作成
+        quiz, quiz_created = Quiz.objects.get_or_create(
+            quiz_collection=qc,
+            sequence_no=section_no,
+            defaults={
+                'title': f"セクション{section_no}",
+                'section_no': section_no,
+                'section_label': f"セクション{section_no}",
+                'timer_seconds': 10,
+            }
+        )
+        if not quiz_created:
+            updated = False
+            desired_title = f"セクション{section_no}"
+            desired_label = f"セクション{section_no}"
+            if quiz.title != desired_title:
+                quiz.title = desired_title
+                updated = True
+            if quiz.section_label != desired_label:
+                quiz.section_label = desired_label
+                updated = True
+            if quiz.section_no != section_no:
+                quiz.section_no = section_no
+                updated = True
+            if quiz.timer_seconds is None:
+                quiz.timer_seconds = 10
+                updated = True
+            if updated:
+                quiz.save(update_fields=["title", "section_label", "section_no", "timer_seconds", "updated_at"])
+        section_set.add((level_no, section_no))
+        
+        # QuizQuestion (問題) の作成または更新
+        QuizQuestion.objects.update_or_create(
+            quiz=quiz,
+            question_order=question_order,
+            defaults={
+                'vocabulary': vocab,
+                'note': '',
+            }
+        )
+        question_count += 1
+    
+    print(f"✅ クイズ生成完了:")
+    print(f"   レベル数: {len(level_set)}")
+    print(f"   セクション数: {len(section_set)}")
+    print(f"   総問題数: {question_count}")
+
+# ---------------------------------------------------------------------------
+# メイン実行関数
+# ---------------------------------------------------------------------------
+
+def run():
+    """メイン処理"""
+    print("=" * 60)
+    print("英単語マスタJSONL → DB投入 ＆ クイズ自動生成")
+    print("=" * 60)
+    
+    # Step 1: JSONL読み込み
+    records, importance_map = load_jsonl_with_importance()
+    if not records:
+        print("❌ 読み込むデータがありません。処理を終了します。")
+        return
+    
+    # Step 2: Vocabulary 等の upsert
+    vocab_list = upsert_vocab_from_records(records)
+    
+    # Step 3: クイズ構造生成
+    build_quizzes_from_vocab(vocab_list, importance_map)
     
     # 統計情報を表示
-    print(f"\nDatabase Statistics:")
+    print("\n" + "=" * 60)
+    print("📊 最終統計")
+    print("=" * 60)
     print(f"Total Vocabularies: {Vocabulary.objects.count()}")
     print(f"Total Translations: {VocabTranslation.objects.count()}")
     print(f"Total Choices: {VocabChoice.objects.count()}")
+    print(f"Total QuizCollections: {QuizCollection.objects.count()}")
+    print(f"Total Quizzes: {Quiz.objects.count()}")
+    print(f"Total QuizQuestions: {QuizQuestion.objects.count()}")
+    print("=" * 60)
+    print("✨ 処理が完了しました！")
 
 if __name__ == '__main__':
-    load_test_data()
+    run()
