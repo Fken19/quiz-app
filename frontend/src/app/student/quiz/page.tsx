@@ -16,7 +16,9 @@ export default function QuizzesPage() {
         setLoading(true);
         setError(null);
 
-        const collectionResponse = await apiGet('/api/quiz-collections/?page_size=50');
+        const collectionResponse = await apiGet(
+          '/api/quiz-collections/?scope=default&include_empty=false&page_size=200'
+        );
         const collections: QuizCollection[] = Array.isArray(collectionResponse)
           ? collectionResponse
           : collectionResponse?.results || [];
