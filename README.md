@@ -1,6 +1,6 @@
 
 
-# Quiz App - 英単語学習プラットフォーム
+# 英単語クイズアプリ — 中学生向け学習プラットフォーム
 
 ![Backend Tests](https://github.com/Fken19/quiz-app/actions/workflows/backend-test.yml/badge.svg)
 ![Full Stack Tests](https://github.com/Fken19/quiz-app/actions/workflows/test.yml/badge.svg)
@@ -8,15 +8,109 @@
 
 ---
 
-## 🚀 プロジェクト概要
+## 📖 このアプリについて
 
-**Django REST Framework + Next.js + PostgreSQL + Google OAuth** を用いた統合型英単語クイズ学習プラットフォームです。
+### なぜ作ったのか
 
-### 主な機能
-- 👨‍🎓 **生徒機能**: Google認証でログイン、レベル別クイズ、学習履歴の可視化
-- 👨‍🏫 **教師機能**: グループ管理、テスト作成・配信、学習進捗の追跡
-- 📊 **統計・分析**: 日次学習統計、正答率分析、学習傾向の把握
-- 🔐 **セキュアな認証**: Google OAuth2 + Django REST Framework Token認証
+学習塾でのアルバイト経験から、中学生の**英単語力不足**という課題に直面しました。中学生には専用の英単語帳がなく、教科書の付録程度の語彙しか学習手段がありません。また、塾では授業冒頭に単語テストを実施しますが、**貴重な授業時間を暗記テストに使うのは非効率**です。
+
+そこで、自身がTOEICや大学受験で効果を実感した**「スマホ×短時間反復学習」**を中学生向けに最適化し、次の3つの目的を実現するアプリを開発しました：
+
+1. **英単語力の底上げ** — 日常的に短時間で反復できる仕組みで、継続コストを最小化
+2. **スマホ中心の学習体験** — 机やPCなしで、いつでもどこでも学習開始
+3. **授業時間の最適化** — 単語テストを事前オンライン化し、授業は応用・解説に集中
+
+また、予算制約のある学習塾でも導入できるよう、**外部SaaSに依存しない自前の管理機能**を備えています。
+
+---
+
+## 🎯 アプリの特徴
+
+### 🔐 セキュアで透明性の高い認証設計
+
+- **Google OAuth必須** — 信頼性の高い外部認証で個人情報保護とセキュリティを両立
+- **講師の2段階認証** — Googleログイン + 開発者ホワイトリスト照合で不正利用を防止
+- **生徒の自己決定権** — 講師による監視は生徒の承認が必須。いつでも解除可能で透明性を確保
+
+### 📱 スマホ最適化の学習体験
+
+- **レスポンシブWebアプリ** — iOS/Android両対応、アプリ配布・審査不要
+- **URL + QRコード配布** — 塾生以外でも自習利用可能（講師監視は承認制）
+- **生徒用・講師用URLを分離** — UIレベルで誤操作を防止（セキュリティはAPI側で厳格管理）
+
+### 🧠 学習の質を高める設計
+
+- **10秒タイマー** — 即答力を鍛え、考え込みすぎを防止（講師テストは可変設定可）
+- **4択縦並び** — スマホでの視認性とタップ距離を最適化
+- **位置ランダム化** — 毎回選択肢の順序を変更し、位置記憶を無効化
+- **タップ必須遷移** — 自動遷移なしで学習者の主導感を維持
+- **フォーカス学習** — 「苦手だけ10問」「未学習だけ10問」など、弱点に集中した学習が可能
+- **学習ステータス可視化** — 未学習/苦手/学習済み/得意を直近履歴から自動判定
+
+### 📊 モチベーション維持の仕組み
+
+- **学習ダッシュボード** — 日/週/月の学習量を積み上げ棒グラフで可視化（正解・不正解・Timeout内訳付き）
+- **Streak（連続学習日数）** — 習慣化を促す可視報酬
+- **直近7日ヒートマップ** — 学習リズムを一目で把握
+
+### 👨‍🏫 講師向け管理機能
+
+- **生徒管理** — 学校・学年・クラス等の定義済みラベル + 任意タグで柔軟に絞り込み・ソート
+- **招待トークン方式** — 6〜8桁の短期有効コードで安全に生徒を紐付け（QRコード対応）
+- **テスト作成・配信** — 任意の単語でテスト作成、作成済みテストは再利用可能
+- **学習進捗の把握** — 生徒単位・クラス単位で学習状況を確認
+
+### 🛡️ プライバシー保護
+
+- **同意フロー** — 講師の閲覧権限は生徒の明示的な承認が必要
+- **承認/解除履歴** — 生徒はいつでも管理講師を確認・解除可能
+- **公開ランキング非搭載** — データ流出や不必要な競争を防止
+
+### 🔧 品質改善サイクル
+
+- **問題の指摘機能** — 生徒が誤訳や不適切な選択肢を報告可能
+- **サーバー側正誤判定** — クライアント側に正解を渡さず、不正解答を防止
+
+---
+
+## ✅ 実装状況
+
+### 🟢 実装済み（バックエンド）
+
+- ✅ Django REST Framework + PostgreSQL 15
+- ✅ Google OAuth認証（NextAuth.js + Django連携）
+- ✅ 講師ホワイトリスト認証
+- ✅ ユーザー管理（生徒・講師）
+- ✅ 語彙・クイズデータモデル（レベル・セクション構成）
+- ✅ クイズセッション・回答記録
+- ✅ 学習進捗集計（正解・不正解・Timeout、Streak）
+- ✅ 招待トークン発行・承認システム
+- ✅ テスト作成・配信機能
+- ✅ Django管理画面（ホワイトリスト登録、データ管理）
+- ✅ Docker開発環境
+- ✅ CI/CD（GitHub Actions）
+- ✅ GCP Cloud Runデプロイ
+
+### 🟡 部分実装・調整中（フロントエンド）
+
+- 🟡 Next.js 15（App Router、TypeScript、TanStack Query）
+- 🟡 生徒用UI（ログイン、レベル・セクション選択、クイズ画面）
+- 🟡 講師用UI（生徒管理、テスト作成）
+- 🟡 学習ダッシュボード（棒グラフ、Streak表示）
+- 🟡 レスポンシブデザイン（スマホ最適化）
+
+### 🔴 未実装
+
+- ❌ フォーカス学習UI（苦手だけ10問、未学習だけ10問など）
+- ❌ 直近7日ヒートマップ
+- ❌ 解答履歴の詳細表示
+- ❌ 問題の指摘フォーム
+- ❌ 承認/解除履歴UI
+- ❌ 講師テストの可変タイマー設定UI
+- ❌ 利用規約・プライバシー同意フロー
+- ❌ E2Eテスト（Playwright）
+- ❌ LLM自動ダミー生成（将来検討）
+- ❌ 教科書準拠マッピング（将来検討）
 
 ---
 
@@ -31,65 +125,22 @@
 
 ---
 
-## 🔄 CI/CD パイプライン
-
-### GitHub Actions ワークフロー
-
-1. **Full Stack CI/CD Tests** (`.github/workflows/test.yml`)
-   - バックエンド: スキーマチェック、マイグレーション検証、Django system check
-   - フロントエンド: TypeScriptビルド、型チェック
-   - Docker: バックエンド・フロントエンドのDockerイメージビルド検証
-
-2. **Backend Integration Tests** (`.github/workflows/backend-test.yml`)
-   - PostgreSQL 15でのDB統合テスト
-   - マイグレーション実行とスキーマ検証
-   - モデル関係性の検証
-   - デプロイ準備チェック
-
-3. **Deploy to GCP** (`.github/workflows/deploy.yml`)
-   - バックエンド: Cloud Run へのデプロイ
-   - フロントエンド: Cloud Run へのデプロイ
-   - 自動マイグレーション実行
-
-4. **Backend Standalone Deploy** (`.github/workflows/backend-deploy.yml`)
-   - バックエンドのみの単独デプロイ
-   - テスト実行後の自動デプロイ
-
-### デプロイトリガー
-- `main` ブランチへのプッシュで自動デプロイ
-- `migration/**` ブランチでもテスト実行
-- 手動デプロイも可能（workflow_dispatch）
-
----
-
-## 🧪 テスト戦略
-
-### 現在の実装
-- **スキーマ検証**: Django migrationの整合性チェック
-- **モデル検証**: 全モデルのインポート・関係性チェック
-- **システムチェック**: Django の `check --deploy` でセキュリティ検証
-- **Docker検証**: 本番用Dockerイメージのビルド成功確認
-
-### 今後の拡張予定
-- ユニットテスト（pytest-django）
-- APIエンドポイントの統合テスト
-- E2Eテスト（Playwright）
-- パフォーマンステスト
-
----
-
 ## 📁 ディレクトリ構成
 
 ```
 quiz-app/
 ├── backend/                    # Django REST API
 │   ├── quiz_backend/          # Django設定
-│   ├── quiz/                  # メインアプリ
+│   ├── quiz/                  # メインアプリ（models, views, serializers）
 │   ├── manage.py
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/                  # Next.jsフロントエンド
 │   ├── src/
+│   │   ├── app/              # App Router（ページ）
+│   │   ├── components/       # 共通コンポーネント
+│   │   ├── lib/              # API、認証ロジック
+│   │   └── types/            # TypeScript型定義
 │   ├── package.json
 │   └── Dockerfile
 ├── docker-compose.yml         # 開発用コンテナ定義
@@ -99,304 +150,166 @@ quiz-app/
 
 ---
 
-## 🐳 開発環境セットアップ（Docker推奨）
+## 🐳 開発環境セットアップ
 
 ### 1. 必要なツール
+
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [Node.js 18+](https://nodejs.org/)（フロント単体開発時のみ）
 
 ### 2. リポジトリのクローン
+
 ```sh
 git clone <このリポジトリのURL>
 cd quiz-app
 ```
 
 ### 3. 環境変数ファイルの準備
-- `backend/.env` および `frontend/.env.local` を編集
-	- Google認証やDB接続情報を正しく設定
-	- サンプル:
-		- `frontend/.env.local`
-			```env
-			NEXT_PUBLIC_API_URL=http://localhost:8080
-			NEXT_PUBLIC_API_URL_BROWSER=http://localhost:8080
-			NEXTAUTH_URL=http://localhost:3000
-			GOOGLE_CLIENT_ID=xxx
-			GOOGLE_CLIENT_SECRET=xxx
-			```
-		- `backend/.env`
-			```env
-			DJANGO_SECRET_KEY=xxx
-			DJANGO_ALLOWED_HOSTS=*
-			POSTGRES_DB=quiz_db
-			POSTGRES_USER=postgres
-			POSTGRES_PASSWORD=postgres
-			GOOGLE_CLIENT_ID=xxx
-			GOOGLE_CLIENT_SECRET=xxx
-			```
 
-### 4. Dockerコンテナのビルド＆起動
+`backend/.env` および `frontend/.env.local` を作成し、以下の情報を設定：
+
+**`frontend/.env.local`**
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8080
+NEXT_PUBLIC_API_URL_BROWSER=http://localhost:8080
+NEXTAUTH_URL=http://localhost:3000
+GOOGLE_CLIENT_ID=xxx
+GOOGLE_CLIENT_SECRET=xxx
+NEXTAUTH_SECRET=xxx
+```
+
+**`backend/.env`**
+```env
+DJANGO_SECRET_KEY=xxx
+DJANGO_ALLOWED_HOSTS=*
+POSTGRES_DB=quiz_db
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+GOOGLE_CLIENT_ID=xxx
+GOOGLE_CLIENT_SECRET=xxx
+```
+
+### 4. Dockerコンテナの起動
+
 ```sh
-make dev    # または docker-compose up -d
+docker-compose up -d
 ```
 
 ### 5. マイグレーション・管理ユーザー作成
+
 ```sh
 docker-compose exec backend python manage.py migrate
 docker-compose exec backend python manage.py createsuperuser
 ```
 
 ### 6. 動作確認
+
 - **フロントエンド**: http://localhost:3000
-- **バックエンド API**: http://localhost:8080
-- **管理画面**: http://localhost:8080/admin/
+- **バックエンドAPI**: http://localhost:8080
+- **Django管理画面**: http://localhost:8080/admin/
 
----
+### 7. よく使うコマンド
 
-## 🔑 Google認証の流れ
+```sh
+# バックエンドのシェル
+docker-compose exec backend bash
 
-1. ユーザーがNext.jsフロントでGoogleログイン
-2. NextAuth.jsがGoogle OAuthで認証し、Django APIにIDトークンを送信
-3. Django側でIDトークンを検証し、独自アクセストークンを発行
-4. フロントエンドは以降、Django APIにアクセストークン付きでリクエスト
+# フロントエンドのシェル
+docker-compose exec frontend sh
+
+# ログ確認
+docker-compose logs -f
+
+# コンテナ停止
+docker-compose down
+```
+
+> ⚠️ ローカルで直接 `python` や `npm` を実行せず、**必ずコンテナ内で作業**してください。
 
 ---
 
 ## 🌐 主なAPIエンドポイント
 
----
-
-## 🧑‍💻 開発・ビルド・テスト
-
-### 開発サーバー起動
-```sh
-make dev
-# または
-docker-compose up -d
-```
-
-### フロントエンド単体開発
-```sh
-cd frontend
-npm install
-npm run dev
-# http://localhost:3000 で確認
-```
-
-### バックエンド単体開発
-```sh
-cd backend
-pip install -r requirements.txt
-python manage.py runserver
-# http://localhost:8080 で確認
-```
-
-### ビルド（本番用）
-```sh
-make build
-# または
-docker-compose build
-```
-
-### テスト
-```sh
-docker-compose exec backend python manage.py test
-```
-
----
-
-## ⚠️ よくあるトラブル・FAQ
-
-- **APIが401/403になる**
-	- Google認証が正しく完了しているか、Django側でIDトークン検証が通っているか確認
-	- `.env`のAPI URLやGoogle認証情報が正しいか再確認
-- **ポート競合エラー**
-	- 既にサーバーが起動している場合は`docker-compose down`で一度全て停止
-- **DBに接続できない**
-	- `.env`のDB設定、`docker-compose.yml`の`db`サービス設定を確認
-- **フロントエンドの型エラーでビルド失敗**
-	- `any`型を使わず型安全に修正。`npm run build`でエラー内容を確認
-
----
-
-## 🤝 コントリビューション
-
-1. `migrate/django` ブランチで開発
-2. 機能追加・修正はプルリクエスト
-3. テスト通過を確認してマージ
-
----
-
-## � サポート
-
-質問や問題がある場合は、GitHubのIssueを作成してください。
-
----
-
-## 🏗️ アーキテクチャ
-
-- **バックエンド**: Django REST Framework + Supabase(PostgreSQL)
-- **フロントエンド**: Next.js（静的書き出し + Cloud Storage + CDN）
-- **認証**: Google OAuth（django-allauth）
-- **デプロイ**: Cloud Run（API） + Cloud Storage/CDN（フロント）
-- **監視**: Cloud Logging / Error Reporting
-
----
-
-## 📁 ディレクトリ構成
-
-```
-quiz-app/
-├── backend/                    # Django REST API
-│   ├── quiz_backend/          # Django設定
-│   ├── quiz/                  # メインアプリ
-│   ├── manage.py
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/                  # Next.jsフロントエンド
-├── .github/workflows/         # CI/CD
-└── README.md
-```
-
----
-
-## 🗄️ データベース設計（主要テーブル）
-
----
-
-## 🐳 開発環境セットアップ（Docker推奨）
-
-### 1. 必要なツール
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-
-### 2. リポジトリのクローン
-```sh
-git clone <このリポジトリのURL>
-cd quiz-app
-```
-
-### 3. 環境変数ファイルの準備
-- `backend/.env` および `frontend/.env.local` を編集（Google認証やDB接続情報を正しく設定）
-
-### 4. Dockerコンテナのビルド＆起動（開発環境）
-```sh
-docker-compose up -d
-```
-
-### 5. マイグレーション・管理ユーザー作成
-```sh
-docker-compose exec backend python manage.py migrate
-docker-compose exec backend python manage.py createsuperuser
-```
-
-### 6. 動作確認
-- バックエンドAPI:  
-	`curl http://localhost:8080/health/`
-- フロントエンド:  
-	`http://localhost:3000` にアクセス
-
-### 7. その他よく使うコマンド
-- バックエンドのシェルに入る
-	```sh
-	docker-compose exec backend bash
-	```
-- フロントエンドのシェルに入る
-	```sh
-	docker-compose exec frontend sh
-	```
-- サーバーログ確認
-	```sh
-	docker-compose logs -f
-	```
-- コンテナ停止
-	```sh
-	docker-compose down
-	```
-
-> ⚠️ ローカルで直接 `python` や `npm` コマンドを実行せず、**必ずコンテナ内で作業**してください。
-
----
-
-## 🌐 API エンドポイント
-
 ### 認証
+- `POST /api/auth/google/` - Google OAuth認証
 - `GET /api/auth/me/` - 現在のユーザー情報
-- `POST /accounts/google/login/callback/` - Google OAuth コールバック
 
 ### 学習者向け
-- `GET /api/questions/?level={level}&segment={segment}&limit={limit}` - 問題取得
-- `POST /api/sessions/` - クイズセッション開始
-- `POST /api/sessions/{id}/answers/` - 回答送信
-- `POST /api/sessions/{id}/complete/` - セッション完了
-- `GET /api/me/results/?from={date}&to={date}` - 結果履歴
+- `GET /api/vocabularies/` - 語彙一覧
+- `POST /api/quiz-sessions/` - クイズセッション開始
+- `POST /api/quiz-sessions/{id}/submit-answer/` - 回答送信
+- `POST /api/quiz-sessions/{id}/complete/` - セッション完了
+- `GET /api/learning-progress/` - 学習進捗取得
 
-### 講師向け（ホワイトリスト登録必須）
+### 講師向け（ホワイトリスト必須）
 
-> **重要**: 講師ポータルへのアクセスには、システム管理者によるホワイトリスト登録が必要です。
-> 詳細は [`WHITELIST_ACCESS_CONTROL.md`](./WHITELIST_ACCESS_CONTROL.md) を参照してください。
+> **重要**: Django管理画面（`/admin/`）からホワイトリスト登録が必要です。
 
-- `GET /api/teachers/` - 講師一覧
 - `GET /api/teacher-profiles/` - 講師プロフィール
-- `GET /api/tests/` - テスト管理
-- `GET /api/roster-folders/` - グループ管理
-- `GET /api/invitation-codes/` - 招待コード管理
-
-**ホワイトリスト管理（管理者専用）**:
-- Django管理画面（`/admin/`）からのみアクセス可能
-- 講師ポータルからは閲覧・変更不可
+- `POST /api/invitation-codes/` - 招待コード発行
+- `GET /api/roster-students/` - 管理生徒一覧
+- `POST /api/tests/` - テスト作成
+- `GET /api/student-progress/{student_id}/` - 生徒の学習状況
 
 ---
 
-## 🚢 デプロイ
+## 🧪 テスト・CI/CD
 
-### Cloud Run（API）
-```sh
-gcloud builds submit --tag gcr.io/{PROJECT_ID}/quiz-api
-gcloud run deploy quiz-api --image gcr.io/{PROJECT_ID}/quiz-api --platform managed
-```
+### GitHub Actions
 
-### Next.js（フロント）
-```sh
-npm run build
-npm run export
-gcloud storage rsync out/ gs://your-frontend-bucket --recursive
-```
+- **Full Stack Tests** — バックエンド（スキーマ、マイグレーション）+ フロントエンド（TypeScriptビルド）
+- **Backend Integration Tests** — PostgreSQL統合テスト、モデル検証
+- **Deploy to GCP** — Cloud Runへの自動デプロイ（`main`ブランチ）
 
----
-
-## 🧪 テスト
+### ローカルテスト
 
 ```sh
-python manage.py test
+# バックエンド
+docker-compose exec backend python manage.py test
+
+# フロントエンド
+docker-compose exec frontend npm run build
 ```
 
 ---
 
-## 📋 移行ステータス
+## 🎓 主な機能フロー
 
-| 項目 | 状況 | 備考 |
-|------|------|------|
-| Django設定・モデル | ✅ 完了 | PostgreSQL対応、認証設定済み |
-| DRF API実装 | ✅ 完了 | CRUD、認証、管理者API |
-| Firestore→PostgreSQL移行 | ⏳ 準備中 | ETLスクリプト作成予定 |
-| Next.jsフロント | ⏳ 未着手 | 静的書き出し前提で開発予定 |
-| CI/CD更新 | ⏳ 準備中 | GitHub Actions更新予定 |
+### 生徒側
+
+1. 生徒用URLにアクセス → Googleログイン
+2. ユーザーホーム（塾管理下の場合は連絡・テスト・Streakを表示）
+3. 「英単語クイズに進む」→ レベル選択 → セクション選択（10問単位 or レベル内ランダム）
+4. クイズ開始（英単語 → 日本語4択、10秒タイマー）
+5. 判定表示（◯/×/Timeout）→ どこでもタップで次へ
+6. セクション結果表示 → 次のセクション or レベル一覧
+7. ダッシュボードで学習量を可視化
+8. プロフィールで管理講師を確認・解除可能
+
+### 講師側
+
+1. 講師用URLにアクセス → Googleログイン + ホワイトリスト照合
+2. 講師ホーム（生徒一覧、生徒追加、テスト作成）
+3. 招待トークン発行 → 生徒に配布（QRコード可）
+4. 生徒が承認 → 学習状況の確認が可能に
+5. テスト作成 → 生徒・クラス・学年単位で配信
+6. 作成済みテストは再利用可能
 
 ---
 
-## 🔄 Firestore→PostgreSQL 移行計画
+## 🔒 セキュリティ・プライバシー
 
-1. **ETLスクリプト作成**: Firestoreデータを読み取り、PostgreSQLに投入
-2. **冪等性確保**: 同じデータを何度実行しても同一結果
-3. **検証**: 既存データとの一致確認
-4. **段階切替**: Blue/Green デプロイで安全に移行
+- **サーバー側正誤判定** — クライアントに正解ラベルを渡さない
+- **Django管理画面** — ホワイトリスト登録、データ変更は管理者のみ（ポート8080）
+- **講師の閲覧権限** — 生徒の承認が必須、いつでも解除可能
+- **匿名利用不可** — Google認証必須
 
 ---
 
 ## 🤝 コントリビューション
 
-1. `migrate/django` ブランチで開発
-2. 機能追加・修正はプルリクエスト
-3. テスト通過を確認してマージ
+1. ブランチを切って開発
+2. プルリクエストを作成
+3. CI/CDテスト通過を確認してマージ
 
 ---
 

@@ -1,0 +1,618 @@
+[
+{
+  "model": "quiz.quizresult",
+  "pk": "13867126-5a06-49f1-9158-26e1743ffeb8",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:33:43.125Z",
+    "completed_at": "2025-11-16T07:34:04.739Z",
+    "total_time_ms": 16701,
+    "score": 5,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "1453d253-63b2-4820-ae0a-16bc5314374e",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:14:28.350Z",
+    "completed_at": "2025-11-16T07:14:36.510Z",
+    "total_time_ms": 7682,
+    "score": 3,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "14ede614-dc42-4924-ba43-a51286046736",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "188c1979-41e6-4ff1-9136-23b88da3eda6",
+    "started_at": "2025-11-18T15:28:50.947Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 20,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "1a4dfba5-0944-4b28-b202-af7784e7311b",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T08:31:30.075Z",
+    "completed_at": "2025-11-16T08:31:41.176Z",
+    "total_time_ms": 6341,
+    "score": 1,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "1ab27bd3-86b7-4cf4-8529-8c99ec8a00d9",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "7bdc89c6-bcbb-4f08-b1d1-eb5d19ba57de",
+    "started_at": "2025-11-17T16:51:30.448Z",
+    "completed_at": "2025-11-17T16:51:57.635Z",
+    "total_time_ms": 22431,
+    "score": 9,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "22926642-aa2f-4e22-bceb-59d4320b2dc6",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T08:31:30.075Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "24df1bc1-8040-4984-b6d9-3f09a97c0345",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "ca964e30-73f5-4930-8822-9be2ab2a90d8",
+    "started_at": "2025-11-16T07:54:12.589Z",
+    "completed_at": "2025-11-16T07:54:45.141Z",
+    "total_time_ms": 26768,
+    "score": 4,
+    "question_count": 10,
+    "timeout_count": 1
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "28116ca1-7dcb-445a-990a-28ac55a6ff69",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-18T14:41:40.315Z",
+    "completed_at": "2025-11-18T14:41:45.304Z",
+    "total_time_ms": 2756,
+    "score": 3,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "2c80526c-f58e-4258-aea0-8621e1280884",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "62024eda-02c3-47ad-ae60-ecf86a29aa71",
+    "started_at": "2025-11-16T07:21:25.276Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "2e43f012-630d-4d65-898a-bba9c9e54cab",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-17T14:12:01.476Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "73759564-1753-4672-9e58-6ebdd19dec13",
+    "started_at": "2025-11-18T15:49:39.718Z",
+    "completed_at": "2025-11-18T15:50:04.672Z",
+    "total_time_ms": 20628,
+    "score": 9,
+    "question_count": 15,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "48ba837e-f591-4b75-9af1-0d6c8cfa4e2a",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "ca964e30-73f5-4930-8822-9be2ab2a90d8",
+    "started_at": "2025-11-18T02:55:41.668Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "4ac92e34-6aea-431e-ac13-1ffbc7b76446",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "0ea84aca-0a42-4f61-b822-6b7d7fede8ed",
+    "started_at": "2025-11-17T16:22:51.982Z",
+    "completed_at": "2025-11-17T16:22:56.587Z",
+    "total_time_ms": 2425,
+    "score": 1,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "574de570-b94e-420e-80b2-237baae8acc7",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:41:53.916Z",
+    "completed_at": null,
+    "total_time_ms": 10000,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 1
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "736e22f2-8723-4435-b177-4b25763393c7",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "2e43be44-8904-4bc4-8023-1ed485bb466e",
+    "started_at": "2025-11-17T16:22:56.881Z",
+    "completed_at": "2025-11-17T16:23:01.740Z",
+    "total_time_ms": 2049,
+    "score": 2,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "769eb92f-9119-41fb-9193-71513e9a067c",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:47:06.206Z",
+    "completed_at": null,
+    "total_time_ms": 10000,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 1
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "78cf5cde-49c4-4d20-8ed4-84497ee05122",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "ca964e30-73f5-4930-8822-9be2ab2a90d8",
+    "started_at": "2025-11-18T02:55:41.667Z",
+    "completed_at": "2025-11-18T02:56:10.677Z",
+    "total_time_ms": 24274,
+    "score": 9,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "799e28ae-56b8-4034-883d-9a215b4942d6",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "4e21e3a5-27c9-45d6-8791-b10cc673d07f",
+    "started_at": "2025-11-17T16:23:31.898Z",
+    "completed_at": "2025-11-17T16:23:43.552Z",
+    "total_time_ms": 7473,
+    "score": 2,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "7b2f1b75-8653-4da8-96dc-21ba29b454a9",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "4e21e3a5-27c9-45d6-8791-b10cc673d07f",
+    "started_at": "2025-11-17T16:23:31.899Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "7e789ae9-10ab-4c38-bd8e-1124b16208f7",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "73759564-1753-4672-9e58-6ebdd19dec13",
+    "started_at": "2025-11-18T15:49:39.577Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 15,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "86950e1b-431d-459e-ac89-76153f1336bd",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "1c232b8c-25da-4456-aae6-e6848529c0f1",
+    "started_at": "2025-11-18T09:31:50.326Z",
+    "completed_at": "2025-11-18T09:32:41.906Z",
+    "total_time_ms": 35926,
+    "score": 8,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "8734c050-4606-48dc-9678-af1d7f73d895",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "98d711ef-358a-42bc-af1f-a7de66204bdd",
+    "started_at": "2025-11-17T16:22:43.773Z",
+    "completed_at": "2025-11-17T16:22:48.613Z",
+    "total_time_ms": 2547,
+    "score": 2,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "8c7b069d-9353-400d-9961-e33754179bf0",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "7bdc89c6-bcbb-4f08-b1d1-eb5d19ba57de",
+    "started_at": "2025-11-17T16:51:30.448Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "8e1654cd-77a6-443c-a2b5-c929c5494790",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "99eb3ab7-2198-420e-a499-95e3de243b72",
+    "started_at": "2025-11-17T16:22:36.467Z",
+    "completed_at": "2025-11-17T16:22:42.340Z",
+    "total_time_ms": 3530,
+    "score": 2,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "974ab0b0-8d88-4f81-93ff-b2182732fa70",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-17T14:12:01.478Z",
+    "completed_at": "2025-11-17T14:12:43.031Z",
+    "total_time_ms": 34123,
+    "score": 8,
+    "question_count": 10,
+    "timeout_count": 1
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "982a9ca1-7157-4bb3-848e-b6d3b797e934",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:43:20.855Z",
+    "completed_at": null,
+    "total_time_ms": 29909,
+    "score": 8,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "9b0d721c-ef34-4cf7-b7c8-943145c7637b",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:41:53.917Z",
+    "completed_at": null,
+    "total_time_ms": 3703,
+    "score": 1,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "b554cb65-b87d-4445-8dd4-7485d141ca70",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "2b20e121-8acb-4086-991c-bf7c744c1f37",
+    "started_at": "2025-11-18T09:15:29.015Z",
+    "completed_at": "2025-11-18T09:15:54.327Z",
+    "total_time_ms": 21364,
+    "score": 7,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "b57b1315-14e8-4124-824e-877908a174d7",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "188c1979-41e6-4ff1-9136-23b88da3eda6",
+    "started_at": "2025-11-18T15:28:51.165Z",
+    "completed_at": "2025-11-18T15:29:52.362Z",
+    "total_time_ms": 54501,
+    "score": 17,
+    "question_count": 20,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "bf11e6cc-396a-46e2-a7e3-c5b83b812a96",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:37:24.249Z",
+    "completed_at": null,
+    "total_time_ms": 20000,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 2
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "c0b1b5f9-fc00-4a27-834f-c98cd9bd0583",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "677f9393-cfb3-479b-8288-fc81cf717e0c",
+    "started_at": "2025-11-18T15:18:12.030Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 20,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "cb39deba-ebe1-4fc5-9a26-2a9cbee4deb9",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "55a29dc9-3ea1-4c2f-89e1-ddbe00bd96a3",
+    "started_at": "2025-11-18T15:18:38.157Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 20,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "d557ab50-3e2e-471e-a14c-bfade12a2071",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "6deac692-becf-4d82-97c3-73268f99c08d",
+    "started_at": "2025-11-17T16:22:20.298Z",
+    "completed_at": "2025-11-17T16:22:28.076Z",
+    "total_time_ms": 4192,
+    "score": 1,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "d55f4526-cf1a-40e5-ad14-e1f44d1999a2",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:40:45.205Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "d7a944f8-0f03-46e8-ba43-19cb705b8f5d",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "ca964e30-73f5-4930-8822-9be2ab2a90d8",
+    "started_at": "2025-11-16T07:54:12.588Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "d811d844-abaf-4dc3-b08d-3d86e3776480",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "98d711ef-358a-42bc-af1f-a7de66204bdd",
+    "started_at": "2025-11-18T03:23:40.209Z",
+    "completed_at": "2025-11-18T03:23:52.579Z",
+    "total_time_ms": 8960,
+    "score": 8,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "dac28e65-1c80-4c74-9052-2b69b4928b9f",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:37:24.248Z",
+    "completed_at": null,
+    "total_time_ms": 10000,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 1
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "db270c76-e2da-4020-bed2-9bb82b846258",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:47:01.785Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "dd1130c5-206e-468e-85ce-1ec2e5c8aa99",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "24efe48a-039c-4063-a917-98c5a17adf48",
+    "started_at": "2025-11-18T03:27:48.093Z",
+    "completed_at": "2025-11-18T03:28:05.574Z",
+    "total_time_ms": 14043,
+    "score": 5,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "e8e647eb-45e6-4424-a8f4-4a46735ff770",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:47:21.249Z",
+    "completed_at": null,
+    "total_time_ms": 10000,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 1
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "ee935e7a-0a6e-496d-97aa-85b42537f705",
+  "fields": {
+    "user": "c5cc471b-8322-44a4-9ff4-abac1d0e896a",
+    "quiz": "6deac692-becf-4d82-97c3-73268f99c08d",
+    "started_at": "2025-11-17T16:22:20.299Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "f4273b7f-7d90-4269-bcc4-dcadf2a5e70a",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:14:28.349Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "f4af783b-6813-4558-a1d0-b3dea5d9ce76",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "62024eda-02c3-47ad-ae60-ecf86a29aa71",
+    "started_at": "2025-11-16T07:21:25.278Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+},
+{
+  "model": "quiz.quizresult",
+  "pk": "f51d8f9f-070d-4f5d-9a3a-49dd4796545c",
+  "fields": {
+    "user": "11981351-b2c5-40b8-81cb-5a53eed6cd77",
+    "quiz": "d20e08a1-a09a-439c-a58c-2a3248327bec",
+    "started_at": "2025-11-16T07:33:43.125Z",
+    "completed_at": null,
+    "total_time_ms": 0,
+    "score": 0,
+    "question_count": 10,
+    "timeout_count": 0
+  }
+}
+]

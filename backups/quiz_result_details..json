@@ -1,0 +1,3264 @@
+[
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0006a090-2311-4d45-8b57-31a40385f765",
+  "fields": {
+    "quiz_result": "982a9ca1-7157-4bb3-848e-b6d3b797e934",
+    "question_order": 6,
+    "vocabulary": "be58fc32-3013-4a3b-b094-e48342e4dea8",
+    "selected_text": "〜の上に(へ)",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 8526,
+    "created_at": "2025-11-16T07:44:35.492Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "01f6cca7-6f5e-461d-ba54-08e750942af5",
+  "fields": {
+    "quiz_result": "1ab27bd3-86b7-4cf4-8529-8c99ec8a00d9",
+    "question_order": 1,
+    "vocabulary": "2c19290b-8f7d-43d3-a292-9ece1c895d43",
+    "selected_text": "当てはめる",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1908,
+    "created_at": "2025-11-17T16:51:32.402Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0219141f-fc97-45d0-9d12-497b8be9ce6b",
+  "fields": {
+    "quiz_result": "1ab27bd3-86b7-4cf4-8529-8c99ec8a00d9",
+    "question_order": 4,
+    "vocabulary": "2ff8511a-d867-4e48-b68a-3c45889bc76b",
+    "selected_text": "４月",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1418,
+    "created_at": "2025-11-17T16:51:39.516Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0224cb59-9e45-4a10-8265-66f3dec0cf95",
+  "fields": {
+    "quiz_result": "d557ab50-3e2e-471e-a14c-bfade12a2071",
+    "question_order": 9,
+    "vocabulary": "f14f8536-2d50-43ac-bc37-da4e8c6f7369",
+    "selected_text": "後で",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 319,
+    "created_at": "2025-11-17T16:22:26.834Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "031b0665-b49b-4360-bb0d-64cdb228335f",
+  "fields": {
+    "quiz_result": "d811d844-abaf-4dc3-b08d-3d86e3776480",
+    "question_order": 8,
+    "vocabulary": "2c930904-8339-49e7-bbf7-c0117acf1759",
+    "selected_text": "アルファベット",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 900,
+    "created_at": "2025-11-18T03:23:52.626Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0363684e-7553-4fb7-b9ee-ba0ad0b17383",
+  "fields": {
+    "quiz_result": "736e22f2-8723-4435-b177-4b25763393c7",
+    "question_order": 4,
+    "vocabulary": "e081862a-bec9-4df4-a454-33f4c87b82ca",
+    "selected_text": "未来の",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 185,
+    "created_at": "2025-11-17T16:22:58.625Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "038feeae-012e-46ed-81e5-bc9acfea2eb9",
+  "fields": {
+    "quiz_result": "4ac92e34-6aea-431e-ac13-1ffbc7b76446",
+    "question_order": 10,
+    "vocabulary": "6f6cb4b6-78ee-4a0d-a7ee-ca240e5fb7a2",
+    "selected_text": "～の後ろに",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 217,
+    "created_at": "2025-11-17T16:22:56.330Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "05836117-7eeb-4ab8-8511-feea6761bc48",
+  "fields": {
+    "quiz_result": "24df1bc1-8040-4984-b6d9-3f09a97c0345",
+    "question_order": 10,
+    "vocabulary": "ceced185-f938-4149-95be-85fc15581f62",
+    "selected_text": "活動",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2034,
+    "created_at": "2025-11-16T07:54:44.587Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "06941804-d3e9-4a29-a4df-efcef78b7de0",
+  "fields": {
+    "quiz_result": "1ab27bd3-86b7-4cf4-8529-8c99ec8a00d9",
+    "question_order": 7,
+    "vocabulary": "01aff844-e0f4-4799-9ef3-c11af3fd3be5",
+    "selected_text": "アラブ語（の）",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1933,
+    "created_at": "2025-11-17T16:51:48.059Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "072fdfec-ed2a-4efd-a544-ba7a46e71b3a",
+  "fields": {
+    "quiz_result": "982a9ca1-7157-4bb3-848e-b6d3b797e934",
+    "question_order": 2,
+    "vocabulary": "e67ac2a9-31cc-48ed-958b-c2dcdffbeefd",
+    "selected_text": "午前",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2053,
+    "created_at": "2025-11-16T07:44:15.579Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0740fe30-cf26-4c6f-bc4f-764a68866336",
+  "fields": {
+    "quiz_result": "d811d844-abaf-4dc3-b08d-3d86e3776480",
+    "question_order": 7,
+    "vocabulary": "d9ad17db-4cdc-4732-a596-d0ec8743b450",
+    "selected_text": "声に出して",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2051,
+    "created_at": "2025-11-18T03:23:52.626Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "081e68d9-77b0-4d80-af47-d3376e0796c3",
+  "fields": {
+    "quiz_result": "28116ca1-7dcb-445a-990a-28ac55a6ff69",
+    "question_order": 3,
+    "vocabulary": "6762cb6b-5022-4f37-9457-d6083b015f06",
+    "selected_text": "能力",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 199,
+    "created_at": "2025-11-18T14:41:45.351Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0874ef42-b4fc-4ad8-9a9d-8ebed4747f24",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 17,
+    "vocabulary": "b08ec97f-73f6-4b34-bc11-55c374f6a8c1",
+    "selected_text": "～と・・・",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 3484,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "091460e5-f4c5-4746-af19-3f28116f31a7",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 2,
+    "vocabulary": "331deee6-f8ee-4382-b05b-d9670ebf3a4c",
+    "selected_text": "すべて",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1700,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0953cd8e-09df-4837-b851-eb75dd65586f",
+  "fields": {
+    "quiz_result": "24df1bc1-8040-4984-b6d9-3f09a97c0345",
+    "question_order": 7,
+    "vocabulary": "b98444dc-6ab7-497a-9729-3fb876993aed",
+    "selected_text": "考える",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 584,
+    "created_at": "2025-11-16T07:54:27.522Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0a2ca3b2-0e48-4219-9a05-ceab48d194f2",
+  "fields": {
+    "quiz_result": "9b0d721c-ef34-4cf7-b7c8-943145c7637b",
+    "question_order": 4,
+    "vocabulary": "926dabf4-ae22-45e9-a906-7497a03bac3e",
+    "selected_text": "強い",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1319,
+    "created_at": "2025-11-16T07:42:45.611Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0b9d73ce-0631-4880-9e7f-ca16e3d97ff1",
+  "fields": {
+    "quiz_result": "d557ab50-3e2e-471e-a14c-bfade12a2071",
+    "question_order": 6,
+    "vocabulary": "4d326b9e-57a4-4a82-a527-dfd9106a1a9c",
+    "selected_text": "もう一度",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 481,
+    "created_at": "2025-11-17T16:22:24.708Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0b9f3282-91ca-4f91-88dc-9e4de5f6f817",
+  "fields": {
+    "quiz_result": "982a9ca1-7157-4bb3-848e-b6d3b797e934",
+    "question_order": 3,
+    "vocabulary": "6762cb6b-5022-4f37-9457-d6083b015f06",
+    "selected_text": "能力",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2935,
+    "created_at": "2025-11-16T07:44:19.077Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0bde996b-cb3f-4577-81fa-05e21fe682a2",
+  "fields": {
+    "quiz_result": "24df1bc1-8040-4984-b6d9-3f09a97c0345",
+    "question_order": 8,
+    "vocabulary": "ff291771-92af-4cf8-91dd-a255deee67ce",
+    "selected_text": null,
+    "is_correct": false,
+    "is_timeout": true,
+    "reaction_time_ms": 10000,
+    "created_at": "2025-11-16T07:54:38.009Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0c2c1f1e-bc04-4f32-a1ac-33d039091bb2",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 14,
+    "vocabulary": "8eb7821d-0234-47da-8e68-aa04d124d501",
+    "selected_text": "目覚まし時計",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2185,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0c969b2d-3099-4941-876f-290d7e3441de",
+  "fields": {
+    "quiz_result": "13867126-5a06-49f1-9158-26e1743ffeb8",
+    "question_order": 8,
+    "vocabulary": "1bba2e9f-a655-42d9-9694-110b990aa151",
+    "selected_text": "出席の",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 167,
+    "created_at": "2025-11-16T07:34:03.568Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0d73320d-7e90-41c1-841c-7ea3853f33bd",
+  "fields": {
+    "quiz_result": "982a9ca1-7157-4bb3-848e-b6d3b797e934",
+    "question_order": 10,
+    "vocabulary": "dd979dd7-8d2a-48a4-863f-4229b4a4d48e",
+    "selected_text": "受け入れる",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 3352,
+    "created_at": "2025-11-16T07:44:47.952Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0e53d851-48e0-4704-b6f1-f2f6aa9ab71f",
+  "fields": {
+    "quiz_result": "982a9ca1-7157-4bb3-848e-b6d3b797e934",
+    "question_order": 8,
+    "vocabulary": "1bba2e9f-a655-42d9-9694-110b990aa151",
+    "selected_text": "早退の",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 2451,
+    "created_at": "2025-11-16T07:44:39.846Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0efff229-7f91-4548-9f6a-1cca91d240b0",
+  "fields": {
+    "quiz_result": "dd1130c5-206e-468e-85ce-1ec2e5c8aa99",
+    "question_order": 3,
+    "vocabulary": "e359087b-a270-4594-8210-a431e130a21d",
+    "selected_text": "センチメートル",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1866,
+    "created_at": "2025-11-18T03:28:05.607Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "0f9d3d84-c01c-4a0f-8038-2e5bbc6f9fff",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 1,
+    "vocabulary": "e8bd8864-ca94-486f-ab07-a19d41421bb1",
+    "selected_text": "パソコン",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 2668,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "1002e8bb-6bdc-473d-a510-a131477c7c8c",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 4,
+    "vocabulary": "f678ab74-7eb2-4041-b32a-f60f21739f23",
+    "selected_text": "エアコン",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1735,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "11bbc9b1-859f-422e-9670-f33aa8422d11",
+  "fields": {
+    "quiz_result": "982a9ca1-7157-4bb3-848e-b6d3b797e934",
+    "question_order": 4,
+    "vocabulary": "926dabf4-ae22-45e9-a906-7497a03bac3e",
+    "selected_text": "〜することができる",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 4719,
+    "created_at": "2025-11-16T07:44:24.503Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "156b69e0-b3ba-4eba-ac73-125576edfbd9",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 9,
+    "vocabulary": "ebd4fba2-16cf-4d57-94be-18a21e709287",
+    "selected_text": "話す",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1034,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "16038c90-6a6e-4665-9819-45334cd9a445",
+  "fields": {
+    "quiz_result": "b554cb65-b87d-4445-8dd4-7485d141ca70",
+    "question_order": 9,
+    "vocabulary": "e648583b-0fe3-48e3-a50a-b09727a756f0",
+    "selected_text": "日記",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1656,
+    "created_at": "2025-11-18T09:15:54.403Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "19d800fe-9b65-40d7-9b53-250dbcdef906",
+  "fields": {
+    "quiz_result": "974ab0b0-8d88-4f81-93ff-b2182732fa70",
+    "question_order": 5,
+    "vocabulary": "e77f8bc1-d221-48c4-855a-c9ec4f670c01",
+    "selected_text": "〜について",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1835,
+    "created_at": "2025-11-17T14:12:13.592Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "1adfed81-a0f2-44ec-8082-f49e9e42df44",
+  "fields": {
+    "quiz_result": "982a9ca1-7157-4bb3-848e-b6d3b797e934",
+    "question_order": 9,
+    "vocabulary": "6be9aa44-fa56-435a-a755-935f287be1d8",
+    "selected_text": "学問の",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2702,
+    "created_at": "2025-11-16T07:44:43.098Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "1c8aab47-57ec-4445-b384-523f41faebb0",
+  "fields": {
+    "quiz_result": "28116ca1-7dcb-445a-990a-28ac55a6ff69",
+    "question_order": 2,
+    "vocabulary": "e67ac2a9-31cc-48ed-958b-c2dcdffbeefd",
+    "selected_text": "夕方",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 298,
+    "created_at": "2025-11-18T14:41:45.351Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "1caf0b82-2f9e-4d73-b4a3-c21003ed31dd",
+  "fields": {
+    "quiz_result": "dd1130c5-206e-468e-85ce-1ec2e5c8aa99",
+    "question_order": 10,
+    "vocabulary": "db175b84-b2a6-4dbf-9746-3081375414cf",
+    "selected_text": "鉛筆",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1682,
+    "created_at": "2025-11-18T03:28:05.607Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "1d9189a1-6e96-4602-a738-0bfe8ada83e1",
+  "fields": {
+    "quiz_result": "736e22f2-8723-4435-b177-4b25763393c7",
+    "question_order": 2,
+    "vocabulary": "5276aa75-da71-41b1-810f-d604bd1a2a73",
+    "selected_text": "遊園地",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 200,
+    "created_at": "2025-11-17T16:22:57.857Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "1e99cee3-3e37-4387-89ba-c6d7b5f54009",
+  "fields": {
+    "quiz_result": "799e28ae-56b8-4034-883d-9a215b4942d6",
+    "question_order": 3,
+    "vocabulary": "da30abb9-eb35-440a-92ca-76a050d3568b",
+    "selected_text": "だから",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 184,
+    "created_at": "2025-11-17T16:23:34.285Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "1f1169d0-7416-4ef2-a979-57f90f93b759",
+  "fields": {
+    "quiz_result": "4ac92e34-6aea-431e-ac13-1ffbc7b76446",
+    "question_order": 6,
+    "vocabulary": "e79abb9c-799d-4547-aac1-e9b619ca2dd3",
+    "selected_text": "大統領",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 184,
+    "created_at": "2025-11-17T16:22:54.501Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "1f8d6276-c5d8-45cb-8814-a020269b8165",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 7,
+    "vocabulary": "6ab38955-6a25-410b-8dc9-ce87f6711fa8",
+    "selected_text": null,
+    "is_correct": false,
+    "is_timeout": true,
+    "reaction_time_ms": 10000,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "1fde9d52-5a8d-486d-bf3d-f36dd5af2c80",
+  "fields": {
+    "quiz_result": "1ab27bd3-86b7-4cf4-8529-8c99ec8a00d9",
+    "question_order": 10,
+    "vocabulary": "2927bb39-a36d-4290-a09c-35adbb6869fe",
+    "selected_text": "～である",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2984,
+    "created_at": "2025-11-17T16:51:57.230Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "20420a3b-ef2f-4290-8d54-6b0f2634899f",
+  "fields": {
+    "quiz_result": "dd1130c5-206e-468e-85ce-1ec2e5c8aa99",
+    "question_order": 6,
+    "vocabulary": "199307c6-920c-46f3-9962-0f1bc1aa8a3f",
+    "selected_text": "パーティー",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1016,
+    "created_at": "2025-11-18T03:28:05.607Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "231e096f-5a97-4378-9f22-5dd0fbf1d98e",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 2,
+    "vocabulary": "da3ffd07-6e98-4fb5-b6c0-0241aa4f5293",
+    "selected_text": "空港",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1082,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "23226fe7-bdf1-4940-9ef7-a73b6dbcf039",
+  "fields": {
+    "quiz_result": "1a4dfba5-0944-4b28-b202-af7784e7311b",
+    "question_order": 4,
+    "vocabulary": "926dabf4-ae22-45e9-a906-7497a03bac3e",
+    "selected_text": "速い",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1017,
+    "created_at": "2025-11-16T08:31:35.068Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "26b026f4-5dd4-435b-b3cc-e2e20b326824",
+  "fields": {
+    "quiz_result": "dd1130c5-206e-468e-85ce-1ec2e5c8aa99",
+    "question_order": 8,
+    "vocabulary": "59ab2565-4c9a-4810-a010-174534a90750",
+    "selected_text": "ロープ",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 865,
+    "created_at": "2025-11-18T03:28:05.607Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "26f00807-028e-464b-bb49-fa51cf97ac87",
+  "fields": {
+    "quiz_result": "86950e1b-431d-459e-ac89-76153f1336bd",
+    "question_order": 9,
+    "vocabulary": "deaa4cd3-4d59-49f7-b2d2-399db3f19c6c",
+    "selected_text": null,
+    "is_correct": false,
+    "is_timeout": true,
+    "reaction_time_ms": 10000,
+    "created_at": "2025-11-18T09:32:41.998Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "287035c1-8dae-4198-985b-35494034630b",
+  "fields": {
+    "quiz_result": "b554cb65-b87d-4445-8dd4-7485d141ca70",
+    "question_order": 5,
+    "vocabulary": "f019b1e3-1833-494c-8d4b-5ca78f9e7309",
+    "selected_text": "発展途上の",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1616,
+    "created_at": "2025-11-18T09:15:54.403Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "29728660-d0c8-46a5-a18a-739dbeecc043",
+  "fields": {
+    "quiz_result": "78cf5cde-49c4-4d20-8ed4-84497ee05122",
+    "question_order": 9,
+    "vocabulary": "c4a5ef2d-8808-4a8e-b65f-cda44662fa56",
+    "selected_text": "活発な",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2037,
+    "created_at": "2025-11-18T02:56:07.950Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "29738314-0a5d-4fdc-a67b-30f1ebc282b5",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 15,
+    "vocabulary": "e05e79a3-a5f7-4fb1-8010-cfc32619415f",
+    "selected_text": "どこか",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 2487,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "2b0430fe-bad0-4e5d-9dfb-327df4cafb80",
+  "fields": {
+    "quiz_result": "dac28e65-1c80-4c74-9052-2b69b4928b9f",
+    "question_order": 1,
+    "vocabulary": "45cb53a6-4ba3-4708-8e8a-112597dc0663",
+    "selected_text": null,
+    "is_correct": false,
+    "is_timeout": true,
+    "reaction_time_ms": 10000,
+    "created_at": "2025-11-16T07:37:34.300Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "2c5743a7-f5ce-4989-97dc-2f188fb9a1fb",
+  "fields": {
+    "quiz_result": "799e28ae-56b8-4034-883d-9a215b4942d6",
+    "question_order": 9,
+    "vocabulary": "160920be-b7ba-4e74-8a6d-5508e6c38db5",
+    "selected_text": "隠れる",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 300,
+    "created_at": "2025-11-17T16:23:42.102Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "2c7df257-04f4-4cc8-a7e9-338d15735911",
+  "fields": {
+    "quiz_result": "736e22f2-8723-4435-b177-4b25763393c7",
+    "question_order": 7,
+    "vocabulary": "6f151cbb-ee34-45ce-a022-5aaa0642c3a0",
+    "selected_text": "楽しい",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 218,
+    "created_at": "2025-11-17T16:22:59.809Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "2e1ad52b-2194-4f8e-9678-c5a621917698",
+  "fields": {
+    "quiz_result": "769eb92f-9119-41fb-9193-71513e9a067c",
+    "question_order": 1,
+    "vocabulary": "45cb53a6-4ba3-4708-8e8a-112597dc0663",
+    "selected_text": null,
+    "is_correct": false,
+    "is_timeout": true,
+    "reaction_time_ms": 10000,
+    "created_at": "2025-11-16T07:47:21.784Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "2e53b9c1-8784-4c46-b94a-c4df43d6065e",
+  "fields": {
+    "quiz_result": "78cf5cde-49c4-4d20-8ed4-84497ee05122",
+    "question_order": 5,
+    "vocabulary": "6800dbfb-86b0-4bf9-85e2-75144ae899e5",
+    "selected_text": "達成",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 3201,
+    "created_at": "2025-11-18T02:55:58.756Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "2e846553-6fbc-42ce-8577-901d306a5c9e",
+  "fields": {
+    "quiz_result": "13867126-5a06-49f1-9158-26e1743ffeb8",
+    "question_order": 7,
+    "vocabulary": "ba5e195b-f2ed-4164-bb0a-479509849714",
+    "selected_text": "外国へ（に、で）",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 150,
+    "created_at": "2025-11-16T07:34:03.249Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "2eceb97d-c155-4d27-92b9-9004df6209bb",
+  "fields": {
+    "quiz_result": "78cf5cde-49c4-4d20-8ed4-84497ee05122",
+    "question_order": 1,
+    "vocabulary": "61181ada-b39d-4761-86d3-62ed2d6d3f52",
+    "selected_text": "接続",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 3407,
+    "created_at": "2025-11-18T02:55:45.146Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "2f622e5d-ef60-40d1-bc29-9cda0a547b0d",
+  "fields": {
+    "quiz_result": "974ab0b0-8d88-4f81-93ff-b2182732fa70",
+    "question_order": 2,
+    "vocabulary": "e67ac2a9-31cc-48ed-958b-c2dcdffbeefd",
+    "selected_text": "午前",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2200,
+    "created_at": "2025-11-17T14:12:06.839Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "2fe966cd-9f58-457a-b719-7b2bd6f04a9f",
+  "fields": {
+    "quiz_result": "8734c050-4606-48dc-9678-af1d7f73d895",
+    "question_order": 3,
+    "vocabulary": "a09bfbea-dd55-4db8-b83b-a9cbfdd3e01c",
+    "selected_text": "禁止する",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 167,
+    "created_at": "2025-11-17T16:22:45.362Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "33a745ac-a1a6-4ccf-b678-da74059f3a20",
+  "fields": {
+    "quiz_result": "4ac92e34-6aea-431e-ac13-1ffbc7b76446",
+    "question_order": 7,
+    "vocabulary": "e21a67cf-c5d8-4b46-a079-494b97688e34",
+    "selected_text": "タクシー",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 234,
+    "created_at": "2025-11-17T16:22:55.123Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "345019f9-a3c3-41c6-ba35-447cd04396dc",
+  "fields": {
+    "quiz_result": "24df1bc1-8040-4984-b6d9-3f09a97c0345",
+    "question_order": 4,
+    "vocabulary": "48a8a07c-81e5-4924-b0fd-187a824e4950",
+    "selected_text": "達成する",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1934,
+    "created_at": "2025-11-16T07:54:24.186Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "35157959-890c-402b-8ccf-edb509befc07",
+  "fields": {
+    "quiz_result": "8734c050-4606-48dc-9678-af1d7f73d895",
+    "question_order": 6,
+    "vocabulary": "0f129aa4-0701-4f32-b72b-d8f8a401654f",
+    "selected_text": "～に沿って",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 184,
+    "created_at": "2025-11-17T16:22:46.413Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "356e40f8-8c0b-4b3e-b905-6a28bd5d3438",
+  "fields": {
+    "quiz_result": "13867126-5a06-49f1-9158-26e1743ffeb8",
+    "question_order": 5,
+    "vocabulary": "e77f8bc1-d221-48c4-855a-c9ec4f670c01",
+    "selected_text": "〜について",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1786,
+    "created_at": "2025-11-16T07:34:02.649Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "36bc3d0f-fe5c-47c8-a06a-cd2cdbe6fb72",
+  "fields": {
+    "quiz_result": "1453d253-63b2-4820-ae0a-16bc5314374e",
+    "question_order": 10,
+    "vocabulary": "dd979dd7-8d2a-48a4-863f-4229b4a4d48e",
+    "selected_text": "受け入れる",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 180,
+    "created_at": "2025-11-16T07:14:36.486Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "37346926-f254-4701-bb8b-485bee31538a",
+  "fields": {
+    "quiz_result": "1ab27bd3-86b7-4cf4-8529-8c99ec8a00d9",
+    "question_order": 8,
+    "vocabulary": "39563f0d-e440-4641-8233-73b1e25521a3",
+    "selected_text": "アーチェリー",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2751,
+    "created_at": "2025-11-17T16:51:51.286Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "383da82a-0a66-4d61-8bd1-dafd3bc5aa93",
+  "fields": {
+    "quiz_result": "d557ab50-3e2e-471e-a14c-bfade12a2071",
+    "question_order": 7,
+    "vocabulary": "20349e20-6aeb-4c5d-aa86-ebc6024846f4",
+    "selected_text": "〜のそばに",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 385,
+    "created_at": "2025-11-17T16:22:25.668Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "3862fcb1-a573-4c1c-84d6-a7f02f4f62f1",
+  "fields": {
+    "quiz_result": "736e22f2-8723-4435-b177-4b25763393c7",
+    "question_order": 3,
+    "vocabulary": "94c1205e-0b46-465d-9f9f-5d0380e4f5c1",
+    "selected_text": "分析する",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 201,
+    "created_at": "2025-11-17T16:22:58.258Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "3870d96e-0f95-42b4-b491-18716ccac9b0",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 5,
+    "vocabulary": "45cb53a6-4ba3-4708-8e8a-112597dc0663",
+    "selected_text": "1つの",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1552,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "38bb440a-e1d3-465b-b791-896c18afd431",
+  "fields": {
+    "quiz_result": "d557ab50-3e2e-471e-a14c-bfade12a2071",
+    "question_order": 3,
+    "vocabulary": "db1edd40-b4c9-41f0-81b8-26fccdd2af58",
+    "selected_text": "アジア(人)の",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 152,
+    "created_at": "2025-11-17T16:22:22.361Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "3a4f1577-7948-46e2-925f-70b0685b4b2f",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 1,
+    "vocabulary": "8a9cb2f7-9250-434b-9c27-b3066ccc93dd",
+    "selected_text": "アメリカ合衆国",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2685,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "3cde3b3a-6145-4cc3-8eb7-1d13056fac4f",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 4,
+    "vocabulary": "e8bd8864-ca94-486f-ab07-a19d41421bb1",
+    "selected_text": "アプリ",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1201,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "3cfee171-fb65-4ad1-a21b-ed9f07a0e1fa",
+  "fields": {
+    "quiz_result": "d811d844-abaf-4dc3-b08d-3d86e3776480",
+    "question_order": 5,
+    "vocabulary": "fc8b3e2c-17a1-4a7a-b432-0ddc1914bee3",
+    "selected_text": "1人で",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1016,
+    "created_at": "2025-11-18T03:23:52.626Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "3d0df5f6-a5c0-444b-ab4f-fa30aeea4301",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 20,
+    "vocabulary": "a848a3ef-0be4-42a6-84e3-e9641c3b5c45",
+    "selected_text": "アドバイス",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1405,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "3d80c44f-904c-4624-b5a5-41767437bcdc",
+  "fields": {
+    "quiz_result": "8e1654cd-77a6-443c-a2b5-c929c5494790",
+    "question_order": 7,
+    "vocabulary": "da3ffd07-6e98-4fb5-b6c0-0241aa4f5293",
+    "selected_text": "港",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 185,
+    "created_at": "2025-11-17T16:22:40.446Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "408736a3-f4da-4737-b60c-fca3f61d9a42",
+  "fields": {
+    "quiz_result": "1a4dfba5-0944-4b28-b202-af7784e7311b",
+    "question_order": 1,
+    "vocabulary": "45cb53a6-4ba3-4708-8e8a-112597dc0663",
+    "selected_text": "1つの",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1174,
+    "created_at": "2025-11-16T08:31:31.297Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "408c5751-e39d-41c5-9cfc-eb5aa1f1a40f",
+  "fields": {
+    "quiz_result": "974ab0b0-8d88-4f81-93ff-b2182732fa70",
+    "question_order": 7,
+    "vocabulary": "ba5e195b-f2ed-4164-bb0a-479509849714",
+    "selected_text": "外国へ（に、で）",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2373,
+    "created_at": "2025-11-17T14:12:22.096Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "444c4dcc-f755-4643-b04a-87dd42cbd279",
+  "fields": {
+    "quiz_result": "e8e647eb-45e6-4424-a8f4-4a46735ff770",
+    "question_order": 1,
+    "vocabulary": "45cb53a6-4ba3-4708-8e8a-112597dc0663",
+    "selected_text": null,
+    "is_correct": false,
+    "is_timeout": true,
+    "reaction_time_ms": 10000,
+    "created_at": "2025-11-16T07:48:05.808Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "445802be-a7da-431d-8822-365e6c17aafb",
+  "fields": {
+    "quiz_result": "28116ca1-7dcb-445a-990a-28ac55a6ff69",
+    "question_order": 6,
+    "vocabulary": "be58fc32-3013-4a3b-b094-e48342e4dea8",
+    "selected_text": "〜の前に",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 166,
+    "created_at": "2025-11-18T14:41:45.351Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "44bc2755-70ea-4cbd-b492-82f0e3737b8e",
+  "fields": {
+    "quiz_result": "4ac92e34-6aea-431e-ac13-1ffbc7b76446",
+    "question_order": 2,
+    "vocabulary": "4b96e732-b9a3-4925-b828-856fe86ff70a",
+    "selected_text": "～ならば",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 184,
+    "created_at": "2025-11-17T16:22:53.038Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "46f5fc35-c9ab-4c4b-a907-5738d3aa1507",
+  "fields": {
+    "quiz_result": "b554cb65-b87d-4445-8dd4-7485d141ca70",
+    "question_order": 7,
+    "vocabulary": "43ece66b-bcb0-4a59-9138-d5916e221b3e",
+    "selected_text": "装置",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2849,
+    "created_at": "2025-11-18T09:15:54.403Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "46f7925c-5264-4ca0-ad7a-5049f6d23371",
+  "fields": {
+    "quiz_result": "8734c050-4606-48dc-9678-af1d7f73d895",
+    "question_order": 2,
+    "vocabulary": "331deee6-f8ee-4382-b05b-d9670ebf3a4c",
+    "selected_text": "いくつか",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 167,
+    "created_at": "2025-11-17T16:22:45.016Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "4ad7d3f8-be21-4e14-ae67-c101c6add691",
+  "fields": {
+    "quiz_result": "4ac92e34-6aea-431e-ac13-1ffbc7b76446",
+    "question_order": 8,
+    "vocabulary": "8a9cb2f7-9250-434b-9c27-b3066ccc93dd",
+    "selected_text": "カナダ",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 200,
+    "created_at": "2025-11-17T16:22:55.518Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "4b99d501-eca4-402c-ad74-deb660b031b5",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 16,
+    "vocabulary": "be58fc32-3013-4a3b-b094-e48342e4dea8",
+    "selected_text": "〜の上に(へ)",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1950,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "4b9c208f-3ce0-4882-8d4c-1ce662a6dd62",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 15,
+    "vocabulary": "30beac9d-a7d4-42e2-be2d-4746407d8995",
+    "selected_text": "人工知能",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1585,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "4bd82375-0b61-4adf-8b4b-6d85ea746b97",
+  "fields": {
+    "quiz_result": "d811d844-abaf-4dc3-b08d-3d86e3776480",
+    "question_order": 9,
+    "vocabulary": "1b561f70-015c-4b25-a39e-80fa8a3512e1",
+    "selected_text": "これから",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 733,
+    "created_at": "2025-11-18T03:23:52.626Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "4ccf60b5-92e1-4d94-9766-934c9454d723",
+  "fields": {
+    "quiz_result": "bf11e6cc-396a-46e2-a7e3-c5b83b812a96",
+    "question_order": 3,
+    "vocabulary": "6762cb6b-5022-4f37-9457-d6083b015f06",
+    "selected_text": null,
+    "is_correct": false,
+    "is_timeout": true,
+    "reaction_time_ms": 10000,
+    "created_at": "2025-11-16T07:40:17.801Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "4d1e2e85-9bae-4d40-9dba-4b18ac61fc5e",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 12,
+    "vocabulary": "880633fe-dd58-4ece-8344-aa3b60dc2114",
+    "selected_text": "大人",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1018,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "4e571ab1-688d-405a-a081-e0765953b1a2",
+  "fields": {
+    "quiz_result": "28116ca1-7dcb-445a-990a-28ac55a6ff69",
+    "question_order": 7,
+    "vocabulary": "ba5e195b-f2ed-4164-bb0a-479509849714",
+    "selected_text": "近くで",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 166,
+    "created_at": "2025-11-18T14:41:45.351Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "51cb13e5-76f1-4822-898f-0828c16c08bc",
+  "fields": {
+    "quiz_result": "8e1654cd-77a6-443c-a2b5-c929c5494790",
+    "question_order": 8,
+    "vocabulary": "99e444ca-90f2-4777-af69-7f5327af12b4",
+    "selected_text": "メッセージ",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 200,
+    "created_at": "2025-11-17T16:22:40.844Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "52ba28e6-d19f-4e0e-871d-ae2b2a01e586",
+  "fields": {
+    "quiz_result": "dd1130c5-206e-468e-85ce-1ec2e5c8aa99",
+    "question_order": 1,
+    "vocabulary": "a36d1398-660e-4011-b17c-1b5065fda009",
+    "selected_text": "セント",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2285,
+    "created_at": "2025-11-18T03:28:05.607Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "53907575-2af9-422d-81f3-7cc65ae88ded",
+  "fields": {
+    "quiz_result": "1ab27bd3-86b7-4cf4-8529-8c99ec8a00d9",
+    "question_order": 9,
+    "vocabulary": "b35aa191-1f9b-4b40-b599-8715feca66c1",
+    "selected_text": "教師",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1884,
+    "created_at": "2025-11-17T16:51:53.640Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "543a6cd1-6135-4164-b1eb-4317498fa95f",
+  "fields": {
+    "quiz_result": "8734c050-4606-48dc-9678-af1d7f73d895",
+    "question_order": 9,
+    "vocabulary": "1b561f70-015c-4b25-a39e-80fa8a3512e1",
+    "selected_text": "いつか",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 200,
+    "created_at": "2025-11-17T16:22:47.580Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "57d2eac5-b37e-4e6c-9139-ec7a1a88271b",
+  "fields": {
+    "quiz_result": "1ab27bd3-86b7-4cf4-8529-8c99ec8a00d9",
+    "question_order": 2,
+    "vocabulary": "8fc5e395-8140-47e4-ba4d-7af1146d3962",
+    "selected_text": "感謝する",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2499,
+    "created_at": "2025-11-17T16:51:35.715Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "5834f87e-149a-462e-9476-318c0dae35d0",
+  "fields": {
+    "quiz_result": "799e28ae-56b8-4034-883d-9a215b4942d6",
+    "question_order": 1,
+    "vocabulary": "9d0c61c7-96ae-4ea2-a2c5-513a3297ae1c",
+    "selected_text": "何も～ない",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1443,
+    "created_at": "2025-11-17T16:23:33.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "586948e4-abdc-4beb-a3d2-cf24eb977b2a",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 13,
+    "vocabulary": "6be9aa44-fa56-435a-a755-935f287be1d8",
+    "selected_text": "学問の",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1485,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "5ab4bc60-d43b-4e12-bef8-29e0aa21d706",
+  "fields": {
+    "quiz_result": "28116ca1-7dcb-445a-990a-28ac55a6ff69",
+    "question_order": 10,
+    "vocabulary": "dd979dd7-8d2a-48a4-863f-4229b4a4d48e",
+    "selected_text": "拒否する",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 202,
+    "created_at": "2025-11-18T14:41:45.351Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "5cf05c45-a172-48d0-9b9e-8d9ea2f07fba",
+  "fields": {
+    "quiz_result": "d557ab50-3e2e-471e-a14c-bfade12a2071",
+    "question_order": 4,
+    "vocabulary": "ff091431-a021-40d9-ab8f-6a4ffd2f87c2",
+    "selected_text": "〜の前に",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 151,
+    "created_at": "2025-11-17T16:22:22.692Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "6024d806-5583-4f0c-9656-a80b378d754a",
+  "fields": {
+    "quiz_result": "974ab0b0-8d88-4f81-93ff-b2182732fa70",
+    "question_order": 8,
+    "vocabulary": "1bba2e9f-a655-42d9-9694-110b990aa151",
+    "selected_text": null,
+    "is_correct": false,
+    "is_timeout": true,
+    "reaction_time_ms": 10000,
+    "created_at": "2025-11-17T14:12:33.674Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "60bea7d1-f7f9-4726-989a-6535c77d252c",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 10,
+    "vocabulary": "9d0c61c7-96ae-4ea2-a2c5-513a3297ae1c",
+    "selected_text": "何も～ない",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 187,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "648318b1-3d11-4335-acb2-a0465d0cc2fd",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 12,
+    "vocabulary": "6be9aa44-fa56-435a-a755-935f287be1d8",
+    "selected_text": "学問の",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1701,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "658a4d7a-830e-43f2-8ab4-48c567aee28d",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 6,
+    "vocabulary": "80995a6a-f36f-4c72-b76c-96b37dea17d6",
+    "selected_text": "動物",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1847,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "66256f37-09f2-4d9f-beb0-731d99e35939",
+  "fields": {
+    "quiz_result": "86950e1b-431d-459e-ac89-76153f1336bd",
+    "question_order": 8,
+    "vocabulary": "46856016-510d-4700-9c0a-1f7ea3bd16d0",
+    "selected_text": "振る舞う",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 4002,
+    "created_at": "2025-11-18T09:32:41.998Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "6675ef55-ea70-4430-8656-dd83342db696",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 8,
+    "vocabulary": "b0975542-86c4-45a7-b585-74d4704e0b11",
+    "selected_text": "恐れて",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 201,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "678df333-5e20-4c33-ac78-2a521b86ea7c",
+  "fields": {
+    "quiz_result": "1453d253-63b2-4820-ae0a-16bc5314374e",
+    "question_order": 5,
+    "vocabulary": "e77f8bc1-d221-48c4-855a-c9ec4f670c01",
+    "selected_text": "〜のために",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 391,
+    "created_at": "2025-11-16T07:14:34.864Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "681eb9bc-22fb-4af0-abb7-a8e525c492eb",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 19,
+    "vocabulary": "ac712f3c-9697-4581-a1ae-6b79af9c7455",
+    "selected_text": "発表",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2617,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "6847f6ce-2421-4277-8dca-c2ae87cfaffe",
+  "fields": {
+    "quiz_result": "982a9ca1-7157-4bb3-848e-b6d3b797e934",
+    "question_order": 5,
+    "vocabulary": "e77f8bc1-d221-48c4-855a-c9ec4f670c01",
+    "selected_text": "〜について",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1870,
+    "created_at": "2025-11-16T07:44:26.671Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "692248d5-034d-4bb7-8d4f-d53974532e02",
+  "fields": {
+    "quiz_result": "13867126-5a06-49f1-9158-26e1743ffeb8",
+    "question_order": 1,
+    "vocabulary": "45cb53a6-4ba3-4708-8e8a-112597dc0663",
+    "selected_text": "1つの",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 5421,
+    "created_at": "2025-11-16T07:33:48.616Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "699b9fc6-62e9-4590-8209-bc1e85290363",
+  "fields": {
+    "quiz_result": "86950e1b-431d-459e-ac89-76153f1336bd",
+    "question_order": 3,
+    "vocabulary": "178f006e-806f-49af-90ff-b2d7c918e158",
+    "selected_text": "～の前に",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1799,
+    "created_at": "2025-11-18T09:32:41.998Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "6b6bdcee-ddf1-4004-aefa-37d19e7d273f",
+  "fields": {
+    "quiz_result": "8734c050-4606-48dc-9678-af1d7f73d895",
+    "question_order": 7,
+    "vocabulary": "d9ad17db-4cdc-4732-a596-d0ec8743b450",
+    "selected_text": "早く",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 184,
+    "created_at": "2025-11-17T16:22:46.782Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "6b961dbf-0d5e-47aa-80d3-1155fe570a15",
+  "fields": {
+    "quiz_result": "28116ca1-7dcb-445a-990a-28ac55a6ff69",
+    "question_order": 9,
+    "vocabulary": "6be9aa44-fa56-435a-a755-935f287be1d8",
+    "selected_text": "運動の",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 168,
+    "created_at": "2025-11-18T14:41:45.351Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "6c3089c1-ca5b-4784-86c1-b3d8a2f2b796",
+  "fields": {
+    "quiz_result": "8e1654cd-77a6-443c-a2b5-c929c5494790",
+    "question_order": 4,
+    "vocabulary": "0c9aa6aa-b458-4c98-8e05-61127b9fef54",
+    "selected_text": "土",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 184,
+    "created_at": "2025-11-17T16:22:39.308Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "6cc87756-12ae-4660-b580-10eb781c4d37",
+  "fields": {
+    "quiz_result": "1453d253-63b2-4820-ae0a-16bc5314374e",
+    "question_order": 4,
+    "vocabulary": "926dabf4-ae22-45e9-a906-7497a03bac3e",
+    "selected_text": "強い",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 405,
+    "created_at": "2025-11-16T07:14:34.430Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "6d0008bb-9ed8-4eab-8694-186d612acc7e",
+  "fields": {
+    "quiz_result": "b554cb65-b87d-4445-8dd4-7485d141ca70",
+    "question_order": 2,
+    "vocabulary": "de2e8dae-7c57-496a-9f22-a4e0086d74bc",
+    "selected_text": "破壊する",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1599,
+    "created_at": "2025-11-18T09:15:54.403Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "6de3274c-861d-4918-91dd-7b65f3e3cf09",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 6,
+    "vocabulary": "5d34c9a6-903a-4857-8f90-52257d510bc3",
+    "selected_text": "誰でも",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 6038,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "6ec18005-3e95-43a1-8931-f9a0a09ebceb",
+  "fields": {
+    "quiz_result": "974ab0b0-8d88-4f81-93ff-b2182732fa70",
+    "question_order": 3,
+    "vocabulary": "6762cb6b-5022-4f37-9457-d6083b015f06",
+    "selected_text": "能力",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1897,
+    "created_at": "2025-11-17T14:12:09.633Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "70d1f971-c79e-40d6-801a-5df3de91bb9a",
+  "fields": {
+    "quiz_result": "d557ab50-3e2e-471e-a14c-bfade12a2071",
+    "question_order": 8,
+    "vocabulary": "c14dc942-7290-4854-a0ec-cbd7a6f9e538",
+    "selected_text": "場所",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 218,
+    "created_at": "2025-11-17T16:22:26.297Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "73cdaaf8-6844-4ee1-8975-5b3832d97e39",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 8,
+    "vocabulary": "2c930904-8339-49e7-bbf7-c0117acf1759",
+    "selected_text": "アルファベット",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 836,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "7498ac53-d37f-4a95-84fd-a24f1e352ee8",
+  "fields": {
+    "quiz_result": "d811d844-abaf-4dc3-b08d-3d86e3776480",
+    "question_order": 3,
+    "vocabulary": "a09bfbea-dd55-4db8-b83b-a9cbfdd3e01c",
+    "selected_text": "許す",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 164,
+    "created_at": "2025-11-18T03:23:52.626Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "755829ce-304a-4cd6-a07f-e7819af4f8b6",
+  "fields": {
+    "quiz_result": "dd1130c5-206e-468e-85ce-1ec2e5c8aa99",
+    "question_order": 4,
+    "vocabulary": "9b677177-4d72-4db8-86ff-b09ed236c690",
+    "selected_text": "中央の",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1349,
+    "created_at": "2025-11-18T03:28:05.607Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "7720de02-d721-4e6b-b502-a386e11e13ca",
+  "fields": {
+    "quiz_result": "86950e1b-431d-459e-ac89-76153f1336bd",
+    "question_order": 7,
+    "vocabulary": "86e8426b-3352-40d8-a7e1-36764969dabd",
+    "selected_text": "始まり",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2589,
+    "created_at": "2025-11-18T09:32:41.998Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "7872036e-d476-4ba4-ab50-9978fd837cce",
+  "fields": {
+    "quiz_result": "799e28ae-56b8-4034-883d-9a215b4942d6",
+    "question_order": 8,
+    "vocabulary": "e8bd8864-ca94-486f-ab07-a19d41421bb1",
+    "selected_text": "ゲーム",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 549,
+    "created_at": "2025-11-17T16:23:41.421Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "7aff6e24-f037-4466-aace-e7ebe3c3f099",
+  "fields": {
+    "quiz_result": "799e28ae-56b8-4034-883d-9a215b4942d6",
+    "question_order": 4,
+    "vocabulary": "e05e79a3-a5f7-4fb1-8010-cfc32619415f",
+    "selected_text": "ここ",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 182,
+    "created_at": "2025-11-17T16:23:34.654Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "7b7d35e5-b814-4f61-866d-393d40ed407d",
+  "fields": {
+    "quiz_result": "86950e1b-431d-459e-ac89-76153f1336bd",
+    "question_order": 10,
+    "vocabulary": "46c5c4a6-7bff-4724-b370-e8837c25e1a1",
+    "selected_text": "～の中に",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 5001,
+    "created_at": "2025-11-18T09:32:41.998Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "7bc53928-5c1f-4514-816e-b13f8169ac87",
+  "fields": {
+    "quiz_result": "78cf5cde-49c4-4d20-8ed4-84497ee05122",
+    "question_order": 6,
+    "vocabulary": "f068af91-2892-49ab-bd90-d3ca49eab1db",
+    "selected_text": "〜を横切って",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1469,
+    "created_at": "2025-11-18T02:56:00.593Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "7e4683c7-1ec1-4575-9434-70eff04c8b0a",
+  "fields": {
+    "quiz_result": "736e22f2-8723-4435-b177-4b25763393c7",
+    "question_order": 9,
+    "vocabulary": "a4cb5dbb-5eb8-4394-bd36-4b0e7e81b6d6",
+    "selected_text": "音楽",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 251,
+    "created_at": "2025-11-17T16:23:00.678Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "7ee6a07f-85cd-4336-9ef2-18e798144147",
+  "fields": {
+    "quiz_result": "1a4dfba5-0944-4b28-b202-af7784e7311b",
+    "question_order": 8,
+    "vocabulary": "1bba2e9f-a655-42d9-9694-110b990aa151",
+    "selected_text": "出席の",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 367,
+    "created_at": "2025-11-16T08:31:39.189Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "81a7c07b-36d9-48ce-a7ee-09d751a89f73",
+  "fields": {
+    "quiz_result": "13867126-5a06-49f1-9158-26e1743ffeb8",
+    "question_order": 6,
+    "vocabulary": "be58fc32-3013-4a3b-b094-e48342e4dea8",
+    "selected_text": "〜の上に(へ)",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 150,
+    "created_at": "2025-11-16T07:34:02.950Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "81fe689c-7087-4593-8c40-19e535997a9f",
+  "fields": {
+    "quiz_result": "1453d253-63b2-4820-ae0a-16bc5314374e",
+    "question_order": 8,
+    "vocabulary": "1bba2e9f-a655-42d9-9694-110b990aa151",
+    "selected_text": "出席の",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 341,
+    "created_at": "2025-11-16T07:14:35.954Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "83aee61b-e24b-4ff7-8936-ba1636e21945",
+  "fields": {
+    "quiz_result": "8e1654cd-77a6-443c-a2b5-c929c5494790",
+    "question_order": 5,
+    "vocabulary": "f678ab74-7eb2-4041-b32a-f60f21739f23",
+    "selected_text": "ヒーター",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 167,
+    "created_at": "2025-11-17T16:22:39.673Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "83de673f-6050-4140-b4b6-d7851157641d",
+  "fields": {
+    "quiz_result": "4ac92e34-6aea-431e-ac13-1ffbc7b76446",
+    "question_order": 1,
+    "vocabulary": "1c01a774-d12c-4a47-beaf-fa833f464baa",
+    "selected_text": "体育の先生",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 671,
+    "created_at": "2025-11-17T16:22:52.691Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "84946d62-5c67-4701-9567-5fc4c85b0fc4",
+  "fields": {
+    "quiz_result": "8e1654cd-77a6-443c-a2b5-c929c5494790",
+    "question_order": 3,
+    "vocabulary": "30beac9d-a7d4-42e2-be2d-4746407d8995",
+    "selected_text": "人工知能",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 201,
+    "created_at": "2025-11-17T16:22:38.957Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "866f7656-d7c0-43f1-bac6-50984b4b0a7c",
+  "fields": {
+    "quiz_result": "dd1130c5-206e-468e-85ce-1ec2e5c8aa99",
+    "question_order": 5,
+    "vocabulary": "32087596-082b-4966-b8b8-38f6d40114f8",
+    "selected_text": "世紀",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2067,
+    "created_at": "2025-11-18T03:28:05.607Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "89f5f951-6fc1-470f-84c3-b028a97d6203",
+  "fields": {
+    "quiz_result": "24df1bc1-8040-4984-b6d9-3f09a97c0345",
+    "question_order": 2,
+    "vocabulary": "449f6a59-78d8-4854-92cc-5320f8fae8ff",
+    "selected_text": "事件",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 2969,
+    "created_at": "2025-11-16T07:54:18.635Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "8aeefb10-4ee1-4055-b771-3f13c1a103c3",
+  "fields": {
+    "quiz_result": "78cf5cde-49c4-4d20-8ed4-84497ee05122",
+    "question_order": 7,
+    "vocabulary": "b98444dc-6ab7-497a-9729-3fb876993aed",
+    "selected_text": "行動する",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1517,
+    "created_at": "2025-11-18T02:56:02.593Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "8b382af0-c8b9-41b6-a1f9-7112066cc0ad",
+  "fields": {
+    "quiz_result": "dd1130c5-206e-468e-85ce-1ec2e5c8aa99",
+    "question_order": 9,
+    "vocabulary": "3c12d03c-3564-4736-97b7-40add1363a38",
+    "selected_text": "テーブル",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 816,
+    "created_at": "2025-11-18T03:28:05.607Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "8bf64e6a-0f11-41cf-a52f-cc2f7b017467",
+  "fields": {
+    "quiz_result": "d557ab50-3e2e-471e-a14c-bfade12a2071",
+    "question_order": 1,
+    "vocabulary": "b0975542-86c4-45a7-b585-74d4704e0b11",
+    "selected_text": "怒っている",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1370,
+    "created_at": "2025-11-17T16:22:21.719Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "8c17acb4-6f9f-4770-8d2f-de048cc3f960",
+  "fields": {
+    "quiz_result": "4ac92e34-6aea-431e-ac13-1ffbc7b76446",
+    "question_order": 4,
+    "vocabulary": "8c8a6e3b-8bb7-41ae-ac5d-767b7bffee73",
+    "selected_text": "～である",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 184,
+    "created_at": "2025-11-17T16:22:53.721Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "8fe4f149-98c5-411f-afa5-cf7de90732db",
+  "fields": {
+    "quiz_result": "28116ca1-7dcb-445a-990a-28ac55a6ff69",
+    "question_order": 4,
+    "vocabulary": "926dabf4-ae22-45e9-a906-7497a03bac3e",
+    "selected_text": "賢い",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 169,
+    "created_at": "2025-11-18T14:41:45.351Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "93ba74ac-6bf7-4ea7-a68c-43bba3afe3cf",
+  "fields": {
+    "quiz_result": "d811d844-abaf-4dc3-b08d-3d86e3776480",
+    "question_order": 1,
+    "vocabulary": "ca1a39c2-8624-4ded-9b60-ec3da29ceede",
+    "selected_text": "生きて",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1146,
+    "created_at": "2025-11-18T03:23:52.626Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "9607d9bc-ee1d-4ed3-b2e4-45c5c0dcec54",
+  "fields": {
+    "quiz_result": "799e28ae-56b8-4034-883d-9a215b4942d6",
+    "question_order": 10,
+    "vocabulary": "dc332a0b-732b-4e2b-891c-3e743652addf",
+    "selected_text": "オレンジ",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 416,
+    "created_at": "2025-11-17T16:23:42.882Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "97561a9b-7874-4a95-ac68-93c0fd60f0fe",
+  "fields": {
+    "quiz_result": "78cf5cde-49c4-4d20-8ed4-84497ee05122",
+    "question_order": 8,
+    "vocabulary": "ff291771-92af-4cf8-91dd-a255deee67ce",
+    "selected_text": "行動",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2737,
+    "created_at": "2025-11-18T02:56:05.613Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "98bba52d-ff77-44f9-a6a8-7faadca1de0a",
+  "fields": {
+    "quiz_result": "799e28ae-56b8-4034-883d-9a215b4942d6",
+    "question_order": 7,
+    "vocabulary": "e5529bef-1ee3-41b7-b143-45c1200a308e",
+    "selected_text": "感謝する",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 382,
+    "created_at": "2025-11-17T16:23:40.498Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "98bd1e54-9da8-4b08-8f41-037a9cf68d3f",
+  "fields": {
+    "quiz_result": "799e28ae-56b8-4034-883d-9a215b4942d6",
+    "question_order": 5,
+    "vocabulary": "4b508481-e631-4e85-9b8c-48039e263cdd",
+    "selected_text": "離れて",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 3435,
+    "created_at": "2025-11-17T16:23:39.002Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "993c946e-69de-496f-ba4c-034549c2c22a",
+  "fields": {
+    "quiz_result": "1a4dfba5-0944-4b28-b202-af7784e7311b",
+    "question_order": 10,
+    "vocabulary": "dd979dd7-8d2a-48a4-863f-4229b4a4d48e",
+    "selected_text": "送る",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 416,
+    "created_at": "2025-11-16T08:31:40.771Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "9cebffd1-8652-419b-9ced-4250110f26d1",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 11,
+    "vocabulary": "ca1a39c2-8624-4ded-9b60-ec3da29ceede",
+    "selected_text": "生きて",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1282,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "9d0316d6-1390-4f84-ac49-10a4eff79fff",
+  "fields": {
+    "quiz_result": "24df1bc1-8040-4984-b6d9-3f09a97c0345",
+    "question_order": 3,
+    "vocabulary": "2d233f34-68af-4089-b2ba-f06df38d214d",
+    "selected_text": "〜によれば",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2550,
+    "created_at": "2025-11-16T07:54:21.703Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "9e1c500c-06aa-476b-902c-d2bdd6f27ad8",
+  "fields": {
+    "quiz_result": "78cf5cde-49c4-4d20-8ed4-84497ee05122",
+    "question_order": 10,
+    "vocabulary": "ceced185-f938-4149-95be-85fc15581f62",
+    "selected_text": "活動",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1986,
+    "created_at": "2025-11-18T02:56:10.219Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "9e557e0a-ab21-42fc-99b4-d4cf872ddb5c",
+  "fields": {
+    "quiz_result": "1453d253-63b2-4820-ae0a-16bc5314374e",
+    "question_order": 3,
+    "vocabulary": "6762cb6b-5022-4f37-9457-d6083b015f06",
+    "selected_text": "知識",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 432,
+    "created_at": "2025-11-16T07:14:33.982Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "9fa64026-042f-4dee-97c6-60b0f0f472fc",
+  "fields": {
+    "quiz_result": "8734c050-4606-48dc-9678-af1d7f73d895",
+    "question_order": 10,
+    "vocabulary": "a08aab47-432d-4264-822b-f95435b207d2",
+    "selected_text": "しかし",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 268,
+    "created_at": "2025-11-17T16:22:48.064Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "a277c917-d1ab-4052-b361-770d68a093a6",
+  "fields": {
+    "quiz_result": "28116ca1-7dcb-445a-990a-28ac55a6ff69",
+    "question_order": 8,
+    "vocabulary": "1bba2e9f-a655-42d9-9694-110b990aa151",
+    "selected_text": "早退の",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 168,
+    "created_at": "2025-11-18T14:41:45.351Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "a29bd9a4-62f2-4d72-8d0b-231db9d10523",
+  "fields": {
+    "quiz_result": "4ac92e34-6aea-431e-ac13-1ffbc7b76446",
+    "question_order": 5,
+    "vocabulary": "faa21bb0-f5a8-4cae-a78f-83739ce75bde",
+    "selected_text": "悲しい",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 183,
+    "created_at": "2025-11-17T16:22:54.103Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "a551bf41-4e9f-4164-8c2e-96e53bd058af",
+  "fields": {
+    "quiz_result": "8734c050-4606-48dc-9678-af1d7f73d895",
+    "question_order": 8,
+    "vocabulary": "2c930904-8339-49e7-bbf7-c0117acf1759",
+    "selected_text": "数字",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 202,
+    "created_at": "2025-11-17T16:22:47.198Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "a7b329b7-f83c-4c67-831e-842172223517",
+  "fields": {
+    "quiz_result": "799e28ae-56b8-4034-883d-9a215b4942d6",
+    "question_order": 6,
+    "vocabulary": "25bba583-ee63-46f7-8f43-d1dc7e2e1a68",
+    "selected_text": "アパート",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 350,
+    "created_at": "2025-11-17T16:23:39.720Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "a7c2ab2e-736f-4e37-9ab5-df6afbd7e03d",
+  "fields": {
+    "quiz_result": "d811d844-abaf-4dc3-b08d-3d86e3776480",
+    "question_order": 6,
+    "vocabulary": "0f129aa4-0701-4f32-b72b-d8f8a401654f",
+    "selected_text": "～の中に",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1384,
+    "created_at": "2025-11-18T03:23:52.626Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "a7c99b2c-f807-4af0-bf02-efcc243c38d8",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 11,
+    "vocabulary": "e5529bef-1ee3-41b7-b143-45c1200a308e",
+    "selected_text": "許す",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 384,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "a83166a6-27b2-4e26-9016-cc3751a92de4",
+  "fields": {
+    "quiz_result": "78cf5cde-49c4-4d20-8ed4-84497ee05122",
+    "question_order": 2,
+    "vocabulary": "449f6a59-78d8-4854-92cc-5320f8fae8ff",
+    "selected_text": "事故",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2667,
+    "created_at": "2025-11-18T02:55:48.416Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "a87100f0-ba67-47d9-9a12-f94c90fd1ed8",
+  "fields": {
+    "quiz_result": "1a4dfba5-0944-4b28-b202-af7784e7311b",
+    "question_order": 7,
+    "vocabulary": "ba5e195b-f2ed-4164-bb0a-479509849714",
+    "selected_text": "国内で",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 282,
+    "created_at": "2025-11-16T08:31:38.534Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "a8732b8c-779b-4ca2-ab80-b568a0cd4d39",
+  "fields": {
+    "quiz_result": "78cf5cde-49c4-4d20-8ed4-84497ee05122",
+    "question_order": 4,
+    "vocabulary": "48a8a07c-81e5-4924-b0fd-187a824e4950",
+    "selected_text": "失敗する",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1917,
+    "created_at": "2025-11-18T02:55:54.853Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "a8ba4846-5bdd-447d-a6da-ceef9a30a335",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 10,
+    "vocabulary": "2e7265a7-804a-4341-b47c-5711b386f9b7",
+    "selected_text": "反対する",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1984,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "a97276cc-898b-40f4-aab3-67f4d999bea5",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 3,
+    "vocabulary": "a08aab47-432d-4264-822b-f95435b207d2",
+    "selected_text": "～もまた",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1353,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "abda0abe-fa7b-418d-b488-44adcb599360",
+  "fields": {
+    "quiz_result": "1a4dfba5-0944-4b28-b202-af7784e7311b",
+    "question_order": 5,
+    "vocabulary": "e77f8bc1-d221-48c4-855a-c9ec4f670c01",
+    "selected_text": "〜の中に",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 651,
+    "created_at": "2025-11-16T08:31:36.270Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "ac22592c-22d6-4c7c-8958-6e2f0dd47ee8",
+  "fields": {
+    "quiz_result": "574de570-b94e-420e-80b2-237baae8acc7",
+    "question_order": 1,
+    "vocabulary": "45cb53a6-4ba3-4708-8e8a-112597dc0663",
+    "selected_text": null,
+    "is_correct": false,
+    "is_timeout": true,
+    "reaction_time_ms": 10000,
+    "created_at": "2025-11-16T07:42:03.962Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "acfdd3e4-5a9f-476c-8073-cccf9d8833cf",
+  "fields": {
+    "quiz_result": "28116ca1-7dcb-445a-990a-28ac55a6ff69",
+    "question_order": 1,
+    "vocabulary": "45cb53a6-4ba3-4708-8e8a-112597dc0663",
+    "selected_text": "1つの",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1037,
+    "created_at": "2025-11-18T14:41:45.351Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "adc0a842-77a5-44b6-b136-915e05596798",
+  "fields": {
+    "quiz_result": "1ab27bd3-86b7-4cf4-8529-8c99ec8a00d9",
+    "question_order": 6,
+    "vocabulary": "3e068856-8d35-436a-be46-783198d88b7b",
+    "selected_text": "水族館",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2534,
+    "created_at": "2025-11-17T16:51:45.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "b06f503d-7994-421b-82b4-4b8a891ddf3d",
+  "fields": {
+    "quiz_result": "974ab0b0-8d88-4f81-93ff-b2182732fa70",
+    "question_order": 1,
+    "vocabulary": "45cb53a6-4ba3-4708-8e8a-112597dc0663",
+    "selected_text": "1つの",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2170,
+    "created_at": "2025-11-17T14:12:03.729Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "b0972f15-95f0-4a03-8898-559e4eff8c24",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 14,
+    "vocabulary": "6f6cb4b6-78ee-4a0d-a7ee-ca240e5fb7a2",
+    "selected_text": "～の間に（で、の）",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2736,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "b0d4257e-ec56-4d9c-9a70-01d32d0f385e",
+  "fields": {
+    "quiz_result": "1453d253-63b2-4820-ae0a-16bc5314374e",
+    "question_order": 9,
+    "vocabulary": "6be9aa44-fa56-435a-a755-935f287be1d8",
+    "selected_text": "運動の",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 268,
+    "created_at": "2025-11-16T07:14:36.273Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "b2c1b1b2-5f33-44fc-9305-ecc4704471cb",
+  "fields": {
+    "quiz_result": "9b0d721c-ef34-4cf7-b7c8-943145c7637b",
+    "question_order": 2,
+    "vocabulary": "e67ac2a9-31cc-48ed-958b-c2dcdffbeefd",
+    "selected_text": "夕方",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1315,
+    "created_at": "2025-11-16T07:42:06.491Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "b3f5a286-8851-4211-b255-9263bd7b64f8",
+  "fields": {
+    "quiz_result": "86950e1b-431d-459e-ac89-76153f1336bd",
+    "question_order": 6,
+    "vocabulary": "a0743d7d-f3a0-4d3a-a054-96f5ac7e2feb",
+    "selected_text": "初心者",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1709,
+    "created_at": "2025-11-18T09:32:41.998Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "b5ed4d05-935f-42f2-adac-08bfbd5c9292",
+  "fields": {
+    "quiz_result": "982a9ca1-7157-4bb3-848e-b6d3b797e934",
+    "question_order": 7,
+    "vocabulary": "ba5e195b-f2ed-4164-bb0a-479509849714",
+    "selected_text": "外国へ（に、で）",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1301,
+    "created_at": "2025-11-16T07:44:37.108Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "b6dd51f9-22f6-4d41-b0d2-57968300f84a",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 13,
+    "vocabulary": "2e7265a7-804a-4341-b47c-5711b386f9b7",
+    "selected_text": "賛成する",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1937,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "b811c25a-211d-414e-917a-56cb7dbcb44a",
+  "fields": {
+    "quiz_result": "8734c050-4606-48dc-9678-af1d7f73d895",
+    "question_order": 5,
+    "vocabulary": "fc8b3e2c-17a1-4a7a-b432-0ddc1914bee3",
+    "selected_text": "こっそり",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 167,
+    "created_at": "2025-11-17T16:22:46.047Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "b8d6987a-2099-40a9-9d55-f3b35a988146",
+  "fields": {
+    "quiz_result": "1a4dfba5-0944-4b28-b202-af7784e7311b",
+    "question_order": 2,
+    "vocabulary": "e67ac2a9-31cc-48ed-958b-c2dcdffbeefd",
+    "selected_text": "夜",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 651,
+    "created_at": "2025-11-16T08:31:32.819Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "b8e28ddd-4fcd-44a1-853a-855db5993420",
+  "fields": {
+    "quiz_result": "28116ca1-7dcb-445a-990a-28ac55a6ff69",
+    "question_order": 5,
+    "vocabulary": "e77f8bc1-d221-48c4-855a-c9ec4f670c01",
+    "selected_text": "〜について",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 183,
+    "created_at": "2025-11-18T14:41:45.351Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "b939065c-d7e9-47a4-a215-d95d7335fd29",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 7,
+    "vocabulary": "e6f624b8-52ee-45c1-837c-cb03312f4741",
+    "selected_text": "アジア",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 201,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "bb1b5748-e91b-4de3-8676-a103b4baf4b9",
+  "fields": {
+    "quiz_result": "d811d844-abaf-4dc3-b08d-3d86e3776480",
+    "question_order": 10,
+    "vocabulary": "a08aab47-432d-4264-822b-f95435b207d2",
+    "selected_text": "～もまた",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1084,
+    "created_at": "2025-11-18T03:23:52.626Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "bbbc5119-c7ca-46d1-9504-a0cca4eaad1b",
+  "fields": {
+    "quiz_result": "b554cb65-b87d-4445-8dd4-7485d141ca70",
+    "question_order": 8,
+    "vocabulary": "a0cc72a7-9d7a-421f-bc0e-4025ac129de6",
+    "selected_text": "ダイヤモンド",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1767,
+    "created_at": "2025-11-18T09:15:54.403Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "bc662105-975b-4a38-bdd4-b6372a499068",
+  "fields": {
+    "quiz_result": "b554cb65-b87d-4445-8dd4-7485d141ca70",
+    "question_order": 6,
+    "vocabulary": "11dd50a0-2e59-479d-a1ab-f22e7ea8ac41",
+    "selected_text": "発達した",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1982,
+    "created_at": "2025-11-18T09:15:54.403Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "bf02ce42-3906-4264-a3f7-7394d8972875",
+  "fields": {
+    "quiz_result": "d557ab50-3e2e-471e-a14c-bfade12a2071",
+    "question_order": 10,
+    "vocabulary": "2e7265a7-804a-4341-b47c-5711b386f9b7",
+    "selected_text": "考える",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 366,
+    "created_at": "2025-11-17T16:22:27.620Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "c15a1850-9964-46f6-9b62-2bd2ac2287a9",
+  "fields": {
+    "quiz_result": "b554cb65-b87d-4445-8dd4-7485d141ca70",
+    "question_order": 10,
+    "vocabulary": "4131d115-af0f-4432-9417-3b719cc82b1b",
+    "selected_text": "辞書",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2332,
+    "created_at": "2025-11-18T09:15:54.403Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "c23581ff-c3ca-41b2-b237-8cfaf8975c9a",
+  "fields": {
+    "quiz_result": "d557ab50-3e2e-471e-a14c-bfade12a2071",
+    "question_order": 2,
+    "vocabulary": "e6f624b8-52ee-45c1-837c-cb03312f4741",
+    "selected_text": "アメリカ",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 150,
+    "created_at": "2025-11-17T16:22:22.030Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "c4b898ba-8238-4c8c-91ae-62dff77ee2c9",
+  "fields": {
+    "quiz_result": "736e22f2-8723-4435-b177-4b25763393c7",
+    "question_order": 6,
+    "vocabulary": "1460986a-162a-4f0d-96ec-b4b8684307f0",
+    "selected_text": "魔女",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 201,
+    "created_at": "2025-11-17T16:22:59.390Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "c4e5154f-7d1d-497a-bd5f-0d6f6e3909e5",
+  "fields": {
+    "quiz_result": "13867126-5a06-49f1-9158-26e1743ffeb8",
+    "question_order": 9,
+    "vocabulary": "6be9aa44-fa56-435a-a755-935f287be1d8",
+    "selected_text": "学問の",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 218,
+    "created_at": "2025-11-16T07:34:03.984Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "c4e82ba9-7cf3-4d7f-8ad1-379500c7e2ac",
+  "fields": {
+    "quiz_result": "13867126-5a06-49f1-9158-26e1743ffeb8",
+    "question_order": 4,
+    "vocabulary": "926dabf4-ae22-45e9-a906-7497a03bac3e",
+    "selected_text": "速い",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 6089,
+    "created_at": "2025-11-16T07:34:00.487Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "c67bbc39-ce05-4618-bc76-1a783e964523",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 5,
+    "vocabulary": "8497d02f-55ee-4beb-acec-755b259968f4",
+    "selected_text": "アメリカ(人)の",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1875,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "c6cb5e94-b855-4700-bb80-69c51eca53b0",
+  "fields": {
+    "quiz_result": "13867126-5a06-49f1-9158-26e1743ffeb8",
+    "question_order": 2,
+    "vocabulary": "e67ac2a9-31cc-48ed-958b-c2dcdffbeefd",
+    "selected_text": "夜",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1584,
+    "created_at": "2025-11-16T07:33:50.740Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "c82c720f-17e2-489d-829a-9d80012ea1b4",
+  "fields": {
+    "quiz_result": "8e1654cd-77a6-443c-a2b5-c929c5494790",
+    "question_order": 1,
+    "vocabulary": "4bce3fcf-8c73-4b20-9cae-c2411e0eaef9",
+    "selected_text": "農業",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1675,
+    "created_at": "2025-11-17T16:22:38.179Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "c99c4251-d664-4d95-8c6b-dd22cd3bfd43",
+  "fields": {
+    "quiz_result": "24df1bc1-8040-4984-b6d9-3f09a97c0345",
+    "question_order": 6,
+    "vocabulary": "f068af91-2892-49ab-bd90-d3ca49eab1db",
+    "selected_text": "〜の上に",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 235,
+    "created_at": "2025-11-16T07:54:26.740Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "cbf7632d-2459-4027-9086-3a9f41a89562",
+  "fields": {
+    "quiz_result": "736e22f2-8723-4435-b177-4b25763393c7",
+    "question_order": 5,
+    "vocabulary": "b08ec97f-73f6-4b34-bc11-55c374f6a8c1",
+    "selected_text": "または",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 201,
+    "created_at": "2025-11-17T16:22:59.012Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "cd3bcc46-7b4e-49b7-bb79-12560f6ff1c2",
+  "fields": {
+    "quiz_result": "78cf5cde-49c4-4d20-8ed4-84497ee05122",
+    "question_order": 3,
+    "vocabulary": "2d233f34-68af-4089-b2ba-f06df38d214d",
+    "selected_text": "〜によれば",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 3336,
+    "created_at": "2025-11-18T02:55:52.404Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "ce1b3614-a5c1-4ec4-bdfb-8ac3e8aae5ed",
+  "fields": {
+    "quiz_result": "86950e1b-431d-459e-ac89-76153f1336bd",
+    "question_order": 1,
+    "vocabulary": "454496ef-b24e-4ea0-8f0a-1e27dcb1fa69",
+    "selected_text": "牛肉",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1948,
+    "created_at": "2025-11-18T09:32:41.998Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "d0dbd39a-74df-4966-8dcb-23f879943611",
+  "fields": {
+    "quiz_result": "799e28ae-56b8-4034-883d-9a215b4942d6",
+    "question_order": 2,
+    "vocabulary": "01e77963-1a44-409a-b6cd-1f19334db951",
+    "selected_text": "めったに",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 232,
+    "created_at": "2025-11-17T16:23:33.917Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "d1b22276-9fa9-4fb8-8a2c-7a7a412a07a0",
+  "fields": {
+    "quiz_result": "1a4dfba5-0944-4b28-b202-af7784e7311b",
+    "question_order": 3,
+    "vocabulary": "6762cb6b-5022-4f37-9457-d6083b015f06",
+    "selected_text": "知識",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 449,
+    "created_at": "2025-11-16T08:31:33.670Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "d3be49fd-5055-4921-ad5c-8a736effd425",
+  "fields": {
+    "quiz_result": "1a4dfba5-0944-4b28-b202-af7784e7311b",
+    "question_order": 9,
+    "vocabulary": "6be9aa44-fa56-435a-a755-935f287be1d8",
+    "selected_text": "仕事の",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 383,
+    "created_at": "2025-11-16T08:31:39.914Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "d3c02080-67ab-4533-bad1-2fe1c7e36e76",
+  "fields": {
+    "quiz_result": "dd1130c5-206e-468e-85ce-1ec2e5c8aa99",
+    "question_order": 7,
+    "vocabulary": "31c0a10e-f277-4aaf-a70d-b06fd018e308",
+    "selected_text": "いつも",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 314,
+    "created_at": "2025-11-18T03:28:05.607Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "d3eb610c-402d-4ada-9e1f-f8a345ccd205",
+  "fields": {
+    "quiz_result": "9b0d721c-ef34-4cf7-b7c8-943145c7637b",
+    "question_order": 3,
+    "vocabulary": "6762cb6b-5022-4f37-9457-d6083b015f06",
+    "selected_text": "能力",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1069,
+    "created_at": "2025-11-16T07:42:43.745Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "d4e67c9a-5278-4382-9fed-e5de323baadb",
+  "fields": {
+    "quiz_result": "4ac92e34-6aea-431e-ac13-1ffbc7b76446",
+    "question_order": 9,
+    "vocabulary": "8497d02f-55ee-4beb-acec-755b259968f4",
+    "selected_text": "中国人",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 200,
+    "created_at": "2025-11-17T16:22:55.934Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "d6668080-f631-43f3-ab1a-dce3e851c2e1",
+  "fields": {
+    "quiz_result": "d557ab50-3e2e-471e-a14c-bfade12a2071",
+    "question_order": 5,
+    "vocabulary": "e1b6502d-385e-47e2-ba91-5cb86c0ae118",
+    "selected_text": "午前",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 600,
+    "created_at": "2025-11-17T16:22:23.498Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "d70606f5-a93e-4543-9ccc-10e6d9b22cde",
+  "fields": {
+    "quiz_result": "24df1bc1-8040-4984-b6d9-3f09a97c0345",
+    "question_order": 9,
+    "vocabulary": "c4a5ef2d-8808-4a8e-b65f-cda44662fa56",
+    "selected_text": "活発な",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2401,
+    "created_at": "2025-11-16T07:54:42.330Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "da1ae632-0ab1-4f8d-b129-31d334b10dd9",
+  "fields": {
+    "quiz_result": "24df1bc1-8040-4984-b6d9-3f09a97c0345",
+    "question_order": 1,
+    "vocabulary": "61181ada-b39d-4761-86d3-62ed2d6d3f52",
+    "selected_text": "入口",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 2510,
+    "created_at": "2025-11-16T07:54:15.149Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "dafc941f-9304-4f91-954f-51f70cf5e771",
+  "fields": {
+    "quiz_result": "974ab0b0-8d88-4f81-93ff-b2182732fa70",
+    "question_order": 10,
+    "vocabulary": "dd979dd7-8d2a-48a4-863f-4229b4a4d48e",
+    "selected_text": "受け入れる",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 3057,
+    "created_at": "2025-11-17T14:12:42.316Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "dce8aea6-38ff-46bc-b7ee-d61a075fa431",
+  "fields": {
+    "quiz_result": "1453d253-63b2-4820-ae0a-16bc5314374e",
+    "question_order": 7,
+    "vocabulary": "ba5e195b-f2ed-4164-bb0a-479509849714",
+    "selected_text": "遠くで",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 303,
+    "created_at": "2025-11-16T07:14:35.568Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "dee72714-9205-4d71-8d93-46eb8aa3f53f",
+  "fields": {
+    "quiz_result": "8e1654cd-77a6-443c-a2b5-c929c5494790",
+    "question_order": 6,
+    "vocabulary": "a5cb62e9-1beb-45a8-84a9-e39509ba1c64",
+    "selected_text": "電車",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 184,
+    "created_at": "2025-11-17T16:22:40.059Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "e1da15a3-460a-4414-9cb9-20c5365d23b1",
+  "fields": {
+    "quiz_result": "8e1654cd-77a6-443c-a2b5-c929c5494790",
+    "question_order": 9,
+    "vocabulary": "8eb7821d-0234-47da-8e68-aa04d124d501",
+    "selected_text": "壁掛け時計",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 233,
+    "created_at": "2025-11-17T16:22:41.359Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "e208f21a-d796-467b-92bf-9befb797cb0d",
+  "fields": {
+    "quiz_result": "86950e1b-431d-459e-ac89-76153f1336bd",
+    "question_order": 4,
+    "vocabulary": "afb86fc7-5bce-4b82-8d80-2c2c6f14c8d3",
+    "selected_text": "始まった",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2266,
+    "created_at": "2025-11-18T09:32:41.998Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "e36e3aba-a33b-40bc-86cd-3f5166078808",
+  "fields": {
+    "quiz_result": "1a4dfba5-0944-4b28-b202-af7784e7311b",
+    "question_order": 6,
+    "vocabulary": "be58fc32-3013-4a3b-b094-e48342e4dea8",
+    "selected_text": "〜の隣に",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 951,
+    "created_at": "2025-11-16T08:31:37.737Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "e40a8d1a-9e1a-438b-bab9-0793eb8cb01c",
+  "fields": {
+    "quiz_result": "8734c050-4606-48dc-9678-af1d7f73d895",
+    "question_order": 1,
+    "vocabulary": "ca1a39c2-8624-4ded-9b60-ec3da29ceede",
+    "selected_text": "生きて",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 840,
+    "created_at": "2025-11-17T16:22:44.643Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "e588ca18-1aa2-4e6d-973e-ab53786a2bb0",
+  "fields": {
+    "quiz_result": "b554cb65-b87d-4445-8dd4-7485d141ca70",
+    "question_order": 3,
+    "vocabulary": "e71d6189-751a-4a3f-8141-e10ebffb7306",
+    "selected_text": "結果",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 4122,
+    "created_at": "2025-11-18T09:15:54.403Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "e5f3a7ba-f080-4c32-9ced-2ce21fe2992d",
+  "fields": {
+    "quiz_result": "974ab0b0-8d88-4f81-93ff-b2182732fa70",
+    "question_order": 9,
+    "vocabulary": "6be9aa44-fa56-435a-a755-935f287be1d8",
+    "selected_text": "運動の",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 4601,
+    "created_at": "2025-11-17T14:12:38.409Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "e62a089d-27ee-4142-aa61-bc6e6482e558",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 18,
+    "vocabulary": "20349e20-6aeb-4c5d-aa86-ebc6024846f4",
+    "selected_text": "〜に対して",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 8940,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "e6abd97f-5fcd-459c-88af-1dd10e66b809",
+  "fields": {
+    "quiz_result": "d811d844-abaf-4dc3-b08d-3d86e3776480",
+    "question_order": 2,
+    "vocabulary": "331deee6-f8ee-4382-b05b-d9670ebf3a4c",
+    "selected_text": "すべて",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 165,
+    "created_at": "2025-11-18T03:23:52.626Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "e6b48119-e003-48a3-acae-f27c09535ed6",
+  "fields": {
+    "quiz_result": "1453d253-63b2-4820-ae0a-16bc5314374e",
+    "question_order": 1,
+    "vocabulary": "45cb53a6-4ba3-4708-8e8a-112597dc0663",
+    "selected_text": "1つの",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 3573,
+    "created_at": "2025-11-16T07:14:31.987Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "e88bfe20-de1b-444a-a914-10ec669faeb2",
+  "fields": {
+    "quiz_result": "1453d253-63b2-4820-ae0a-16bc5314374e",
+    "question_order": 6,
+    "vocabulary": "be58fc32-3013-4a3b-b094-e48342e4dea8",
+    "selected_text": "〜の下に",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 308,
+    "created_at": "2025-11-16T07:14:35.217Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "e90cd56a-66f5-405c-8dbc-c35450bfdc29",
+  "fields": {
+    "quiz_result": "974ab0b0-8d88-4f81-93ff-b2182732fa70",
+    "question_order": 6,
+    "vocabulary": "be58fc32-3013-4a3b-b094-e48342e4dea8",
+    "selected_text": "〜の上に(へ)",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 4666,
+    "created_at": "2025-11-17T14:12:18.880Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "ea13733d-7ca5-4c37-99c5-58c99257619b",
+  "fields": {
+    "quiz_result": "4ac92e34-6aea-431e-ac13-1ffbc7b76446",
+    "question_order": 3,
+    "vocabulary": "6372d716-09bd-4182-a033-e3fe77ff2e2a",
+    "selected_text": "時々",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 168,
+    "created_at": "2025-11-17T16:22:53.352Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "ea955163-1035-4b8c-b6f3-1a0c6d79f2b4",
+  "fields": {
+    "quiz_result": "b554cb65-b87d-4445-8dd4-7485d141ca70",
+    "question_order": 1,
+    "vocabulary": "bf604e41-32b6-451c-aeaf-86e07a48dbc0",
+    "selected_text": "デザート",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1646,
+    "created_at": "2025-11-18T09:15:54.403Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "eafadb8b-4746-488c-b25a-dc6dbb33bcc6",
+  "fields": {
+    "quiz_result": "86950e1b-431d-459e-ac89-76153f1336bd",
+    "question_order": 5,
+    "vocabulary": "7d2f36e4-c52d-48e9-856f-1caf42e320c2",
+    "selected_text": "始める",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2133,
+    "created_at": "2025-11-18T09:32:41.998Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "eb93afa5-6c32-438c-8e0f-e6b049583c0e",
+  "fields": {
+    "quiz_result": "736e22f2-8723-4435-b177-4b25763393c7",
+    "question_order": 8,
+    "vocabulary": "80995a6a-f36f-4c72-b76c-96b37dea17d6",
+    "selected_text": "植物",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 200,
+    "created_at": "2025-11-17T16:23:00.208Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "ec915bf7-0039-4940-b159-27f655655fa2",
+  "fields": {
+    "quiz_result": "dd1130c5-206e-468e-85ce-1ec2e5c8aa99",
+    "question_order": 2,
+    "vocabulary": "9be56c57-8c02-4c58-a3f3-13f170354b14",
+    "selected_text": "中心",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1783,
+    "created_at": "2025-11-18T03:28:05.607Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "ecd16515-215d-417b-8d75-fae81d232995",
+  "fields": {
+    "quiz_result": "86950e1b-431d-459e-ac89-76153f1336bd",
+    "question_order": 2,
+    "vocabulary": "3db2914a-0432-4b9d-8bab-ceb85a86514d",
+    "selected_text": "beの過去分詞",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 4479,
+    "created_at": "2025-11-18T09:32:41.998Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "ed5a4eec-1b5a-4125-94fa-4b3309b9df6c",
+  "fields": {
+    "quiz_result": "736e22f2-8723-4435-b177-4b25763393c7",
+    "question_order": 10,
+    "vocabulary": "e8552e81-4e72-457a-bb4e-3734181be6a9",
+    "selected_text": "漫画",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 316,
+    "created_at": "2025-11-17T16:23:01.279Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "ee6e4130-2287-45b0-a30b-654db22f8bbb",
+  "fields": {
+    "quiz_result": "974ab0b0-8d88-4f81-93ff-b2182732fa70",
+    "question_order": 4,
+    "vocabulary": "926dabf4-ae22-45e9-a906-7497a03bac3e",
+    "selected_text": "〜することができる",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1324,
+    "created_at": "2025-11-17T14:12:11.383Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "ef27e8a5-5a18-4c30-87a7-6a1b4633cb1b",
+  "fields": {
+    "quiz_result": "1ab27bd3-86b7-4cf4-8529-8c99ec8a00d9",
+    "question_order": 5,
+    "vocabulary": "d4aa0d68-93b5-41f0-bbd4-5566fadb8a51",
+    "selected_text": "エプロン",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 2703,
+    "created_at": "2025-11-17T16:51:42.528Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "ef4e07c5-990a-4c24-b529-a1de2d34f2ac",
+  "fields": {
+    "quiz_result": "b554cb65-b87d-4445-8dd4-7485d141ca70",
+    "question_order": 4,
+    "vocabulary": "77af5dfb-0bad-4b60-b3d3-daac9b063b5a",
+    "selected_text": "発展させる",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1795,
+    "created_at": "2025-11-18T09:15:54.403Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "ef685ffd-dfb4-4d2f-bb53-5d560839ed05",
+  "fields": {
+    "quiz_result": "13867126-5a06-49f1-9158-26e1743ffeb8",
+    "question_order": 10,
+    "vocabulary": "dd979dd7-8d2a-48a4-863f-4229b4a4d48e",
+    "selected_text": "送る",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 219,
+    "created_at": "2025-11-16T07:34:04.440Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "f103cd44-b02e-4a66-921a-dae3f1f77e48",
+  "fields": {
+    "quiz_result": "d811d844-abaf-4dc3-b08d-3d86e3776480",
+    "question_order": 4,
+    "vocabulary": "fded7a65-058f-44a5-8265-3fb2f909ba38",
+    "selected_text": "ほとんど",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 317,
+    "created_at": "2025-11-18T03:23:52.626Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "f35fb988-d5aa-4aa5-905e-3fe6be5edb7e",
+  "fields": {
+    "quiz_result": "24df1bc1-8040-4984-b6d9-3f09a97c0345",
+    "question_order": 5,
+    "vocabulary": "6800dbfb-86b0-4bf9-85e2-75144ae899e5",
+    "selected_text": "失敗",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 1551,
+    "created_at": "2025-11-16T07:54:26.270Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "f412ee1f-0120-4027-b9ca-11b7b307050e",
+  "fields": {
+    "quiz_result": "736e22f2-8723-4435-b177-4b25763393c7",
+    "question_order": 1,
+    "vocabulary": "fe5d0132-a793-4350-adef-bd316efc8948",
+    "selected_text": "重さ",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 76,
+    "created_at": "2025-11-17T16:22:56.982Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "f5aba173-1a6b-4271-8392-ae4edce8e8a5",
+  "fields": {
+    "quiz_result": "45a35a9b-a822-4525-89a0-bcaa7a6388ca",
+    "question_order": 9,
+    "vocabulary": "fc8b3e2c-17a1-4a7a-b432-0ddc1914bee3",
+    "selected_text": "一緒に",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 167,
+    "created_at": "2025-11-18T15:50:04.726Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "f8489729-e6b8-4828-81f4-c278bdb95c1a",
+  "fields": {
+    "quiz_result": "b57b1315-14e8-4124-824e-877908a174d7",
+    "question_order": 3,
+    "vocabulary": "94c1205e-0b46-465d-9f9f-5d0380e4f5c1",
+    "selected_text": "分析する",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1587,
+    "created_at": "2025-11-18T15:29:52.417Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "f8ac7c37-15d3-4428-bcb0-01e61caceef3",
+  "fields": {
+    "quiz_result": "8734c050-4606-48dc-9678-af1d7f73d895",
+    "question_order": 4,
+    "vocabulary": "fded7a65-058f-44a5-8265-3fb2f909ba38",
+    "selected_text": "決して",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 168,
+    "created_at": "2025-11-17T16:22:45.701Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "f8be74b1-862c-45cb-8c57-6fcc8de51bcb",
+  "fields": {
+    "quiz_result": "8e1654cd-77a6-443c-a2b5-c929c5494790",
+    "question_order": 10,
+    "vocabulary": "e788c858-e21a-4eaf-b913-f4ec66373ec6",
+    "selected_text": "雑誌",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 317,
+    "created_at": "2025-11-17T16:22:41.920Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "f9d0f9f9-ddda-4e71-b811-477430250e8c",
+  "fields": {
+    "quiz_result": "13867126-5a06-49f1-9158-26e1743ffeb8",
+    "question_order": 3,
+    "vocabulary": "6762cb6b-5022-4f37-9457-d6083b015f06",
+    "selected_text": "可能性",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 917,
+    "created_at": "2025-11-16T07:33:52.603Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "fb312961-56f8-4a1f-8515-610c476ebe1a",
+  "fields": {
+    "quiz_result": "8e1654cd-77a6-443c-a2b5-c929c5494790",
+    "question_order": 2,
+    "vocabulary": "663d1ff9-8eb9-465d-b7af-e451dc9a6835",
+    "selected_text": "さようなら",
+    "is_correct": false,
+    "is_timeout": false,
+    "reaction_time_ms": 184,
+    "created_at": "2025-11-17T16:22:38.574Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "fc58f7d7-1d20-4f11-93da-707b40ca86e6",
+  "fields": {
+    "quiz_result": "1453d253-63b2-4820-ae0a-16bc5314374e",
+    "question_order": 2,
+    "vocabulary": "e67ac2a9-31cc-48ed-958b-c2dcdffbeefd",
+    "selected_text": "午前",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1481,
+    "created_at": "2025-11-16T07:14:33.507Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "fcbc02b2-be71-41d6-898b-1ddd58619c85",
+  "fields": {
+    "quiz_result": "1ab27bd3-86b7-4cf4-8529-8c99ec8a00d9",
+    "question_order": 3,
+    "vocabulary": "5563375d-b977-47de-8f1c-c7d312e54f22",
+    "selected_text": "近づく",
+    "is_correct": true,
+    "is_timeout": false,
+    "reaction_time_ms": 1817,
+    "created_at": "2025-11-17T16:51:37.867Z"
+  }
+},
+{
+  "model": "quiz.quizresultdetail",
+  "pk": "fdf40100-1bf8-4331-a7d7-3a574d9925c1",
+  "fields": {
+    "quiz_result": "bf11e6cc-396a-46e2-a7e3-c5b83b812a96",
+    "question_order": 2,
+    "vocabulary": "e67ac2a9-31cc-48ed-958b-c2dcdffbeefd",
+    "selected_text": null,
+    "is_correct": false,
+    "is_timeout": true,
+    "reaction_time_ms": 10000,
+    "created_at": "2025-11-16T07:38:48.828Z"
+  }
+}
+]
