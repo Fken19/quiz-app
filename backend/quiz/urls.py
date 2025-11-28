@@ -38,6 +38,8 @@ urlpatterns = [
     path("", include(router.urls)),
     path("avatar-upload/", views.AvatarUploadView.as_view(), name="avatar-upload"),
     path("student/dashboard-summary/", views.StudentDashboardSummaryView.as_view(), name="student-dashboard-summary"),
+    path("student/vocab/", views.StudentVocabListView.as_view(), name="student-vocab-list"),
+    path("student/vocab/<uuid:id>/", views.StudentVocabDetailView.as_view(), name="student-vocab-detail"),
     path(
         "teacher/groups/<uuid:folder_id>/member-summaries/",
         views.TeacherGroupMemberSummaryView.as_view(),

@@ -411,3 +411,57 @@ export type PaginatedResponse<T> = {
   previous: string | null;
   results: T[];
 };
+
+// 学習者用語彙API専用型
+export interface StudentVocabUserStatus {
+  status: 'unlearned' | 'weak' | 'learning' | 'mastered';
+  total_answer_count: number;
+  total_correct_count: number;
+  correct_rate: number | null;
+  recent_correct_streak: number;
+  last_result: 'correct' | 'incorrect' | 'timeout' | null;
+  last_answered_at: string | null;
+}
+
+export interface StudentVocabListItem {
+  id: string;
+  text_en: string;
+  part_of_speech: string | null;
+  visibility: 'private' | 'public';
+  status: 'draft' | 'proposed' | 'published' | 'archived';
+  primary_translation: string | null;
+  user_status: StudentVocabUserStatus | null;
+}
+
+export interface StudentVocabAlias {
+  id: string;
+  text_en: string;
+}
+
+export interface StudentVocabTranslation {
+  id: string;
+  text_ja: string;
+  is_primary: boolean;
+}
+
+export interface StudentVocabChoice {
+  id: string;
+  text_ja: string;
+  is_correct: boolean;
+}
+
+export interface StudentVocabDetail {
+  id: string;
+  text_en: string;
+  part_of_speech: string | null;
+  explanation: string | null;
+  example_en: string | null;
+  example_ja: string | null;
+  alias_of: StudentVocabAlias | null;
+  aliases: StudentVocabAlias[];
+  translations: StudentVocabTranslation[];
+  choices: StudentVocabChoice[];
+  user_status: StudentVocabUserStatus | null;
+  quiz_count: number;
+}
+

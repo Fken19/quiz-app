@@ -2525,6 +2525,126 @@ def debug_create_user(request):
     return Response(data)
 
 
+# ---------------------------------------------------------------------------
+# 学習者用語彙API
+# ---------------------------------------------------------------------------
+
+
+class StudentVocabListView(APIView):
+    """
+    学習者用語彙一覧API
+    
+    クエリパラメータ:
+    - page: ページ番号（1始まり、デフォルト1）
+    - page_size: 1ページあたり件数（デフォルト50、最大100）
+    - q: 検索文字列（英単語/日本語訳の部分一致）
+    - status: 学習ステータスフィルタ（unlearned/weak/learning/mastered）
+    - head: 頭文字フィルタ（a-z）
+    - ordering: ソートキー（デフォルトsort_key）
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = PageNumberPagination
+
+    def get(self, request):
+        user = request.user
+        
+        # 基本クエリセット（公開済みの語彙のみ）
+        qs = models.Vocabulary.objects.filter(
+            visibility=models.VocabVisibility.PUBLIC,
+            status=models.VocabStatus.PUBLISHED,
+        )
+
+        # 検索
+        q = request.query_params.get("q", "").strip()
+        if q:
+            qs = qs.filter(
+                Q(text_en__icontains=q) | Q(translations__text_ja__icontains=q)
+            ).distinct()
+
+        # 学習ステータスフィルタ
+        status_filter = request.query_params.get("status", "").strip()
+        if status_filter and status_filter in [choice[0] for choice in models.LearningStatus.choices]:
+            qs = qs.filter(
+                user_statuses__user=user,
+                user_statuses__status=status_filter,
+            )
+
+        # 頭文字フィルタ
+        head = request.query_params.get("head", "").strip().lower()
+        if head and len(head) == 1 and head.isalpha():
+            qs = qs.filter(head_letter=head)
+
+        # ソート
+        ordering = request.query_params.get("ordering", "sort_key")
+        qs = qs.order_by(ordering)
+
+        # prefetch関連（パフォーマンス最適化）
+        qs = qs.prefetch_related(
+            Prefetch(
+                "translations",
+                queryset=models.VocabTranslation.objects.filter(is_primary=True),
+                to_attr="primary_translation_list",
+            ),
+            Prefetch(
+                "user_statuses",
+                queryset=models.UserVocabStatus.objects.filter(user=user),
+                to_attr="user_status_list",
+            ),
+        )
+
+        # ページング
+        paginator = self.pagination_class()
+        page_size = request.query_params.get("page_size", "50")
+        try:
+            page_size_int = int(page_size)
+            paginator.page_size = min(max(1, page_size_int), 100)
+        except ValueError:
+            paginator.page_size = 50
+
+        page = paginator.paginate_queryset(qs, request)
+        serializer = serializers.StudentVocabListSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+class StudentVocabDetailView(APIView):
+    """
+    学習者用語彙詳細API
+    
+    パス: /api/student/vocab/<uuid:id>/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, id):
+        user = request.user
+
+        # 公開済みの語彙のみ取得
+        try:
+            vocab = models.Vocabulary.objects.filter(
+                visibility=models.VocabVisibility.PUBLIC,
+                status=models.VocabStatus.PUBLISHED,
+            ).prefetch_related(
+                "translations",
+                "choices",
+                "aliases",
+                Prefetch(
+                    "user_statuses",
+                    queryset=models.UserVocabStatus.objects.filter(user=user),
+                    to_attr="user_status_list",
+                ),
+            ).annotate(
+                quiz_question_count=Count("quiz_questions", distinct=True),
+                test_question_count=Count("test_questions", distinct=True),
+            ).get(pk=id)
+        except models.Vocabulary.DoesNotExist:
+            return Response(
+                {"detail": "指定された語彙が見つかりません。"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = serializers.StudentVocabDetailSerializer(vocab)
+        return Response(serializer.data)
+
+
 __all__ = [
     "UserViewSet",
     "UserProfileViewSet",
@@ -2549,6 +2669,8 @@ __all__ = [
     "QuizResultDetailViewSet",
     "StudentDashboardSummaryView",
     "StudentLearningStatusView",
+    "StudentVocabListView",
+    "StudentVocabDetailView",
     "UserVocabStatusViewSet",
     "TestViewSet",
     "TestQuestionViewSet",
