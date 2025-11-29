@@ -22,8 +22,10 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import logging
 
 from . import models, serializers
+logger = logging.getLogger(__name__)
 from .utils import is_teacher_whitelisted, parse_date_param
 from django.db import transaction
 
@@ -1282,20 +1284,56 @@ class StudentDashboardSummaryView(APIView):
             )
 
         # Streak
-        # Streak（直近の連続日数を計算し直す）
-        streak_entries = list(
-            models.LearningSummaryDaily.objects.filter(user=user)
-            .order_by("-activity_date")
-            .values_list("activity_date", flat=True)
+        # 仕様:
+        # - 今日解いていない場合: 昨日から遡った連続日数（昨日も解いていなければ 0）
+        # - 今日解いている場合: 今日を含めて遡った連続日数
+        #   学習日とは、LearningSummaryDaily のいずれかのカウントが正の値の日
+        recent_summaries = list(
+            models.LearningSummaryDaily.objects.filter(user=user, activity_date__gte=today - timedelta(days=370))
+            .values("activity_date", "correct_count", "incorrect_count", "timeout_count", "total_time_ms")
         )
+        active_dates = {
+            row["activity_date"]
+            for row in recent_summaries
+            if (row.get("correct_count", 0) or 0)
+            + (row.get("incorrect_count", 0) or 0)
+            + (row.get("timeout_count", 0) or 0)
+            > 0
+        }
+
+        # アンカー日（起点）を決定
+        if today in active_dates:
+            anchor = today
+        elif (today - timedelta(days=1)) in active_dates:
+            anchor = today - timedelta(days=1)
+        else:
+            anchor = None
+
         current_streak = 0
-        if streak_entries:
-            current_streak = 1
-            for prev, nxt in zip(streak_entries, streak_entries[1:]):
-                if (prev - nxt).days == 1:
-                    current_streak += 1
-                else:
-                    break
+        if anchor is not None:
+            d = anchor
+            while d in active_dates:
+                current_streak += 1
+                d = d - timedelta(days=1)
+
+        # 追加デバッグログ（クエリ param `debug_streak=1` もしくは DEBUG のとき）
+        try:
+            debug_flag = str(request.query_params.get("debug_streak", "0")).lower() in {"1", "true", "yes"}
+        except Exception:
+            debug_flag = False
+        if debug_flag or settings.DEBUG:
+            try:
+                logger.info(
+                    "streak_debug user=%s today=%s tz=%s active_dates=%s anchor=%s current=%s",
+                    getattr(user, "id", None),
+                    today,
+                    getattr(settings, "TIME_ZONE", None),
+                    sorted(list(active_dates)),
+                    anchor,
+                    current_streak,
+                )
+            except Exception:
+                pass
         best_streak = (
             models.LearningSummaryDaily.objects.filter(user=user).aggregate(best=Max("streak_count"))["best"] or 0
         )
