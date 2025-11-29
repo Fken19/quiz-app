@@ -2839,7 +2839,10 @@ class StudentVocabReportView(APIView):
         ]
         body = "\n".join(body_lines)
 
-        email_to = getattr(settings, "VOCAB_REPORT_EMAIL_TO", "adm19fk@gmail.com")
+        email_to = getattr(settings, "VOCAB_REPORT_EMAIL_TO", None)
+        if not email_to:
+            logger.warning("VOCAB_REPORT_EMAIL_TO is not configured")
+            return Response({"detail": "Email reporting is not configured"}, status=500)
         send_mail(
             subject,
             body,

@@ -260,7 +260,7 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@example.com')
 
 # Vocabulary report settings
-VOCAB_REPORT_EMAIL_TO = config('VOCAB_REPORT_EMAIL_TO', default='adm19fk@gmail.com')
+VOCAB_REPORT_EMAIL_TO = config('VOCAB_REPORT_EMAIL_TO', default=None)
 VOCAB_REPORT_SLACK_WEBHOOK_URL = config('VOCAB_REPORT_SLACK_WEBHOOK_URL', default=None)
 
 # Environment
