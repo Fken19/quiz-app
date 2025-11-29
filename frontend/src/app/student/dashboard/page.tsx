@@ -84,7 +84,9 @@ export default function DashboardPage() {
     for (let i = MAX_HEATMAP_DAYS - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(today.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
+      // タイムゾーン補正したローカル日付キー（YYYY-MM-DD, JST基準）
+      const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+      const key = local.toISOString().slice(0, 10);
       const src = map.get(key);
       days.push(
         src || {
@@ -272,49 +274,47 @@ export default function DashboardPage() {
     return { correct, incorrect, total, timeout: summary.weekly_summary.timeout_count };
   }, [summary.weekly_summary]);
 
+  // ローカル日付(JST)ベースで recent_daily のみから週次データを生成
+  const formatDateKey = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const dailyTotalsByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    const chart = summary.recent_daily?.chart ?? [];
+    for (const row of chart) {
+      const key = (row.date ?? '').slice(0, 10);
+      if (!key) continue;
+      const total = (row.correct_count ?? 0) + (row.incorrect_count ?? 0) + (row.timeout_count ?? 0);
+      map.set(key, total);
+    }
+    return map;
+  }, [summary.recent_daily]);
+
   const weeklyChartData = useMemo(() => {
-    const weekLabels = ['月', '火', '水', '木', '金', '土', '日'];
-
-    // 今日が所属するISO週の月曜〜日曜を算出
     const today = new Date();
-    const day = today.getDay(); // 0:日〜6:土
-    const diffToMonday = (day + 6) % 7;
+    today.setHours(0, 0, 0, 0);
+    const dayOfWeek = today.getDay(); // 0:日〜6:土
+    const diffFromMonday = (dayOfWeek + 6) % 7; // 月曜=0
     const monday = new Date(today);
-    monday.setDate(today.getDate() - diffToMonday);
-    monday.setHours(0, 0, 0, 0);
+    monday.setDate(today.getDate() - diffFromMonday);
 
-    const dates: string[] = [];
-    for (let i = 0; i < 7; i++) {
+    const weekdayShort = ['日', '月', '火', '水', '木', '金', '土'];
+    return Array.from({ length: 7 }, (_, i) => {
       const d = new Date(monday);
       d.setDate(monday.getDate() + i);
-      dates.push(d.toISOString().slice(0, 10));
-    }
-
-    // weekly_chart があれば対応する日付にマップ、なければ heatmapDays から拾う
-    const source = summary.weekly_chart?.chart;
-    const byDate = new Map<string, number>();
-    if (source && source.length) {
-      source.forEach((d) => {
-        const dateKey = d.from_date || d.period || d.label || '';
-        const total = d.correct_count + d.incorrect_count + d.timeout_count;
-        byDate.set(dateKey, total);
-      });
-    } else {
-      // heatmapDays は todayから371日分なので、dateキーで引く
-      const map = new Map<string, number>();
-      heatmapDays.forEach((d) => {
-        const total = d.correct_count + d.incorrect_count + d.timeout_count;
-        map.set(d.date, total);
-      });
-      map.forEach((v, k) => byDate.set(k, v));
-    }
-
-    return dates.map((dateKey, idx) => ({
-      label: weekLabels[idx],
-      total: byDate.get(dateKey) ?? 0,
-      date: dateKey,
-    }));
-  }, [summary.weekly_chart, heatmapDays]);
+      const key = formatDateKey(d);
+      const total = dailyTotalsByDate.get(key) ?? 0;
+      return {
+        label: `${d.getMonth() + 1}/${d.getDate()} (${weekdayShort[d.getDay()]})`,
+        total,
+        date: key,
+      };
+    });
+  }, [dailyTotalsByDate]);
 
   const streakDerived = useMemo(() => {
     const flags = heatmapDays.map(
@@ -388,7 +388,7 @@ export default function DashboardPage() {
         </div>
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-sm font-semibold text-slate-500">連続学習日数</h2>
-          <p className="mt-3 font-bold text-indigo-600 text-3xl md:text-4xl">{streakDerived.current} 日</p>
+          <p className="mt-3 font-bold text-indigo-600 text-3xl md:text-4xl">{summary.streak.current} 日</p>
           <p className="mt-1 text-sm md:text-base text-slate-500">自己ベスト {summary.streak.best} 日</p>
           <p className="mt-1 text-sm md:text-base text-slate-500">累計学習日数 {streakDerived.totalActiveDays} 日</p>
           <p className="mt-2 text-xs text-slate-500">

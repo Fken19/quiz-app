@@ -22,8 +22,10 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import logging
 
 from . import models, serializers
+logger = logging.getLogger(__name__)
 from .utils import is_teacher_whitelisted, parse_date_param
 from django.db import transaction
 
@@ -1282,20 +1284,56 @@ class StudentDashboardSummaryView(APIView):
             )
 
         # Streak
-        # Streak（直近の連続日数を計算し直す）
-        streak_entries = list(
-            models.LearningSummaryDaily.objects.filter(user=user)
-            .order_by("-activity_date")
-            .values_list("activity_date", flat=True)
+        # 仕様:
+        # - 今日解いていない場合: 昨日から遡った連続日数（昨日も解いていなければ 0）
+        # - 今日解いている場合: 今日を含めて遡った連続日数
+        #   学習日とは、LearningSummaryDaily のいずれかのカウントが正の値の日
+        recent_summaries = list(
+            models.LearningSummaryDaily.objects.filter(user=user, activity_date__gte=today - timedelta(days=370))
+            .values("activity_date", "correct_count", "incorrect_count", "timeout_count", "total_time_ms")
         )
+        active_dates = {
+            row["activity_date"]
+            for row in recent_summaries
+            if (row.get("correct_count", 0) or 0)
+            + (row.get("incorrect_count", 0) or 0)
+            + (row.get("timeout_count", 0) or 0)
+            > 0
+        }
+
+        # アンカー日（起点）を決定
+        if today in active_dates:
+            anchor = today
+        elif (today - timedelta(days=1)) in active_dates:
+            anchor = today - timedelta(days=1)
+        else:
+            anchor = None
+
         current_streak = 0
-        if streak_entries:
-            current_streak = 1
-            for prev, nxt in zip(streak_entries, streak_entries[1:]):
-                if (prev - nxt).days == 1:
-                    current_streak += 1
-                else:
-                    break
+        if anchor is not None:
+            d = anchor
+            while d in active_dates:
+                current_streak += 1
+                d = d - timedelta(days=1)
+
+        # 追加デバッグログ（クエリ param `debug_streak=1` もしくは DEBUG のとき）
+        try:
+            debug_flag = str(request.query_params.get("debug_streak", "0")).lower() in {"1", "true", "yes"}
+        except Exception:
+            debug_flag = False
+        if debug_flag or settings.DEBUG:
+            try:
+                logger.info(
+                    "streak_debug user=%s today=%s tz=%s active_dates=%s anchor=%s current=%s",
+                    getattr(user, "id", None),
+                    today,
+                    getattr(settings, "TIME_ZONE", None),
+                    sorted(list(active_dates)),
+                    anchor,
+                    current_streak,
+                )
+            except Exception:
+                pass
         best_streak = (
             models.LearningSummaryDaily.objects.filter(user=user).aggregate(best=Max("streak_count"))["best"] or 0
         )
@@ -2525,6 +2563,328 @@ def debug_create_user(request):
     return Response(data)
 
 
+# ---------------------------------------------------------------------------
+# 学習者用語彙API
+# ---------------------------------------------------------------------------
+
+
+class StudentVocabListView(APIView):
+    """
+    学習者用語彙一覧API
+    
+    クエリパラメータ:
+    - page: ページ番号（1始まり、デフォルト1）
+    - page_size: 1ページあたり件数（デフォルト50、最大100）
+    - q: 検索文字列（英単語/日本語訳の部分一致）
+    - status: 学習ステータスフィルタ（unlearned/weak/learning/mastered）
+    - head: 頭文字フィルタ（a-z）
+    - ordering: ソートキー（デフォルトsort_key）
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = PageNumberPagination
+
+    def get(self, request):
+        user = request.user
+        
+        # 基本クエリセット（公開済みの語彙のみ）
+        qs = models.Vocabulary.objects.filter(
+            visibility=models.VocabVisibility.PUBLIC,
+            status=models.VocabStatus.PUBLISHED,
+        )
+
+        # 検索
+        q = request.query_params.get("q", "").strip()
+        if q:
+            qs = qs.filter(
+                Q(text_en__icontains=q) | Q(translations__text_ja__icontains=q)
+            ).distinct()
+
+        # 学習ステータスフィルタ
+        status_filter = request.query_params.get("status", "").strip()
+        if status_filter and status_filter in [choice[0] for choice in models.LearningStatus.choices]:
+            qs = qs.filter(
+                user_statuses__user=user,
+                user_statuses__status=status_filter,
+            )
+
+        # 頭文字フィルタ
+        head = request.query_params.get("head", "").strip().lower()
+        if head and len(head) == 1 and head.isalpha():
+            qs = qs.filter(head_letter=head)
+
+        # ソート
+        ordering = request.query_params.get("ordering", "sort_key")
+        qs = qs.order_by(ordering)
+
+        # prefetch関連（パフォーマンス最適化）
+        qs = qs.prefetch_related(
+            Prefetch(
+                "translations",
+                queryset=models.VocabTranslation.objects.filter(is_primary=True),
+                to_attr="primary_translation_list",
+            ),
+            Prefetch(
+                "user_statuses",
+                queryset=models.UserVocabStatus.objects.filter(user=user),
+                to_attr="user_status_list",
+            ),
+        )
+
+        # ページング
+        paginator = self.pagination_class()
+        page_size = request.query_params.get("page_size", "50")
+        try:
+            page_size_int = int(page_size)
+            paginator.page_size = min(max(1, page_size_int), 100)
+        except ValueError:
+            paginator.page_size = 50
+
+        page = paginator.paginate_queryset(qs, request)
+        serializer = serializers.StudentVocabListSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+class StudentVocabDetailView(APIView):
+    """
+    学習者用語彙詳細API
+    
+    パス: /api/student/vocab/<uuid:id>/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, id):
+        user = request.user
+
+        # 公開済みの語彙のみ取得
+        try:
+            vocab = models.Vocabulary.objects.filter(
+                visibility=models.VocabVisibility.PUBLIC,
+                status=models.VocabStatus.PUBLISHED,
+            ).prefetch_related(
+                "translations",
+                "choices",
+                "aliases",
+                Prefetch(
+                    "user_statuses",
+                    queryset=models.UserVocabStatus.objects.filter(user=user),
+                    to_attr="user_status_list",
+                ),
+            ).annotate(
+                quiz_question_count=Count("quiz_questions", distinct=True),
+                test_question_count=Count("test_questions", distinct=True),
+            ).get(pk=id)
+        except models.Vocabulary.DoesNotExist:
+            return Response(
+                {"detail": "指定された語彙が見つかりません。"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = serializers.StudentVocabDetailSerializer(vocab)
+        return Response(serializer.data)
+
+
+class StudentVocabReportView(APIView):
+    """
+    語彙誤り報告API
+    
+    パス: POST /api/student/vocab/<uuid:id>/report/
+    
+    開発者にメール(Gmail)とSlack通知を送信
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    # カテゴリラベル
+    MAIN_CATEGORY_LABELS = {
+        "translation": "訳の修正",
+        "part_of_speech": "品詞の修正",
+        "example_sentence": "例文の修正",
+        "choice_text": "選択肢テキストの修正",
+        "spelling": "スペルの修正",
+        "other": "その他",
+    }
+
+    DETAIL_CATEGORY_LABELS = {
+        "wrong_meaning": "意味が間違っている",
+        "missing_sense": "語義が不足している",
+        "unnatural_ja": "日本語が不自然",
+        "typo": "誤字・脱字",
+        "format_issue": "レイアウト・表記の問題",
+        "other": "その他",
+    }
+
+    def post(self, request, id):
+        import json
+        import logging
+        import requests
+        from django.core.mail import send_mail
+        from django.core.cache import cache
+        from datetime import timedelta
+
+        logger = logging.getLogger(__name__)
+
+        user = request.user
+        
+        # レート制限チェック（1時間以内100件）
+        cache_key = f"vocab_report_count_{user.id}"
+        report_count = cache.get(cache_key, 0)
+        
+        if report_count >= 100:
+            return Response(
+                {"detail": "報告の送信回数が制限を超えています。しばらく時間をおいてから再度お試しください。"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        # 語彙の存在・公開確認
+        vocab = get_object_or_404(
+            models.Vocabulary,
+            id=id,
+            visibility=models.VocabVisibility.PUBLIC,
+            status=models.VocabStatus.PUBLISHED,
+        )
+
+        # バリデーション
+        serializer = serializers.VocabReportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        now = timezone.now()
+        
+        # JSTに変換（UTC+9）
+        jst_now = now + timedelta(hours=9)
+
+        main_label = self.MAIN_CATEGORY_LABELS.get(
+            data["main_category"], data["main_category"]
+        )
+        detail_label = self.DETAIL_CATEGORY_LABELS.get(
+            data["detail_category"], data["detail_category"]
+        )
+
+        # 報告データ構成（最小限の情報のみ）
+        report = {
+            "user_id": str(user.id),
+            "user_email": getattr(user, "email", ""),
+            "vocabulary_id": str(vocab.id),
+            "vocabulary_text_en": vocab.text_en,
+            "reported_text_en": data["reported_text_en"],
+            "main_category": data["main_category"],
+            "main_category_label": main_label,
+            "detail_category": data["detail_category"],
+            "detail_category_label": detail_label,
+            "detail_text": data["detail_text"],
+            "requested_at_jst": jst_now.strftime("%Y-%m-%d %H:%M:%S"),
+            "environment": getattr(settings, "ENVIRONMENT", "production"),
+        }
+
+        # レート制限カウンタ更新
+        cache.set(cache_key, report_count + 1, 3600)  # 1時間有効
+
+        # 1. Gmail送信
+        try:
+            self._send_gmail(report)
+        except Exception:
+            logger.exception("Failed to send vocab report email")
+
+        # 2. Slack通知
+        try:
+            self._send_slack(report)
+        except Exception:
+            logger.exception("Failed to send vocab report to Slack")
+
+        return Response(
+            {"detail": "報告を送信しました。ご協力ありがとうございます。"},
+            status=status.HTTP_201_CREATED,
+        )
+
+    def _send_gmail(self, report: dict):
+        """Gmail送信（最小限の情報のみ）"""
+        from django.core.mail import send_mail
+
+        subject = (
+            f"[語彙誤り報告] {report['vocabulary_text_en']} / "
+            f"{report['main_category_label']}"
+        )
+
+        body_lines = [
+            "語彙の誤り報告を受け付けました。",
+            "",
+            "=" * 60,
+            "■ 基本情報",
+            "=" * 60,
+            f"報告受付日時 (JST): {report['requested_at_jst']}",
+            f"環境: {report['environment']}",
+            "",
+            "=" * 60,
+            "■ ユーザー情報",
+            "=" * 60,
+            f"User ID: {report['user_id']}",
+            f"メールアドレス: {report['user_email']}",
+            "",
+            "=" * 60,
+            "■ 対象語彙情報",
+            "=" * 60,
+            f"Vocabulary ID: {report['vocabulary_id']}",
+            f"英単語 (DB): {report['vocabulary_text_en']}",
+            f"英単語 (ユーザー入力): {report['reported_text_en']}",
+            "",
+            "※ DBの英単語とユーザー入力が異なる場合はスペルミスなどの可能性があります。",
+            "",
+            "=" * 60,
+            "■ 報告内容",
+            "=" * 60,
+            f"大分類: {report['main_category_label']} ({report['main_category']})",
+            f"小分類: {report['detail_category_label']} ({report['detail_category']})",
+            "",
+            "詳細コメント:",
+            report["detail_text"],
+        ]
+        body = "\n".join(body_lines)
+
+        email_to = getattr(settings, "VOCAB_REPORT_EMAIL_TO", "adm19fk@gmail.com")
+        send_mail(
+            subject,
+            body,
+            settings.DEFAULT_FROM_EMAIL,
+            [email_to],
+            fail_silently=False,
+        )
+
+    def _send_slack(self, report: dict):
+        """Slack通知（メールアドレスは含めない）"""
+        import json
+        import requests
+
+        webhook_url = getattr(settings, "VOCAB_REPORT_SLACK_WEBHOOK_URL", None)
+        if not webhook_url:
+            return  # Slack未設定時はスキップ
+
+        # 詳細コメント抜粋（300文字まで）
+        detail_excerpt = report["detail_text"][:300]
+        if len(report["detail_text"]) > 300:
+            detail_excerpt += "..."
+
+        text_lines = [
+            ":incoming_envelope: *語彙誤り報告を受信しました*",
+            "",
+            f"*単語*: `{report['vocabulary_text_en']}`  (ID: {report['vocabulary_id']})",
+            "*報告種別*:",
+            f"- 大分類: {report['main_category_label']} ({report['main_category']})",
+            f"- 小分類: {report['detail_category_label']} ({report['detail_category']})",
+            "",
+            "*ユーザー*: ",
+                f"- User ID: {report['user_id']}",
+            "",
+                "*詳細コメント (抜粋)*:",
+            detail_excerpt,
+            "",
+            "*メタ情報*: ",
+                f"- 受付日時 (JST): {report['requested_at_jst']}",
+            f"- 環境: {report['environment']}",
+        ]
+        payload = {"text": "\n".join(text_lines)}
+
+        requests.post(webhook_url, data=json.dumps(payload), timeout=5)
+
+
 __all__ = [
     "UserViewSet",
     "UserProfileViewSet",
@@ -2549,6 +2909,9 @@ __all__ = [
     "QuizResultDetailViewSet",
     "StudentDashboardSummaryView",
     "StudentLearningStatusView",
+    "StudentVocabListView",
+    "StudentVocabDetailView",
+    "StudentVocabReportView",
     "UserVocabStatusViewSet",
     "TestViewSet",
     "TestQuestionViewSet",
@@ -2560,3 +2923,4 @@ __all__ = [
     "TeacherStudentProgressViewSet",
     "TeacherGroupMemberSummaryView",
 ]
+

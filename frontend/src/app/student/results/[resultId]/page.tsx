@@ -155,7 +155,24 @@ export default function QuizResultDetailPage() {
         {rows.map((row) => (
           <div
             key={row.detail.quiz_result_detail_id}
-            className="grid grid-cols-5 gap-4 px-6 py-3 text-sm text-slate-700 border-t border-slate-100 first:border-t-0"
+            onClick={() => {
+              const vid = row.vocabulary?.vocabulary_id || row.detail.vocabulary;
+              if (vid) {
+                router.push(`/student/vocab/${vid}?fromResult=${params.resultId}`);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                const vid = row.vocabulary?.vocabulary_id || row.detail.vocabulary;
+                if (vid) {
+                  e.preventDefault();
+                  router.push(`/student/vocab/${vid}?fromResult=${params.resultId}`);
+                }
+              }
+            }}
+            className="grid grid-cols-5 gap-4 px-6 py-3 text-sm text-slate-700 border-t border-slate-100 first:border-t-0 cursor-pointer hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
             <span>{row.detail.question_order}</span>
             <span className={row.detail.is_correct ? 'text-slate-900' : 'text-red-600'}>

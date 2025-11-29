@@ -666,3 +666,191 @@ class TestResultDetailSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["created_at"]
+
+
+# ---------------------------------------------------------------------------
+# 学習者用語彙API専用シリアライザー
+# ---------------------------------------------------------------------------
+
+
+class StudentVocabUserStatusSerializer(serializers.Serializer):
+    """学習者の語彙学習ステータス（埋め込み用）"""
+    status = serializers.CharField()
+    total_answer_count = serializers.IntegerField()
+    total_correct_count = serializers.IntegerField()
+    correct_rate = serializers.IntegerField(allow_null=True)
+    recent_correct_streak = serializers.IntegerField()
+    last_result = serializers.CharField(allow_null=True)
+    last_answered_at = serializers.DateTimeField(allow_null=True)
+
+
+class StudentVocabListSerializer(serializers.ModelSerializer):
+    """学習者用語彙一覧シリアライザー"""
+    id = serializers.UUIDField(source="pk", read_only=True)
+    primary_translation = serializers.SerializerMethodField()
+    user_status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.Vocabulary
+        fields = [
+            "id",
+            "text_en",
+            "part_of_speech",
+            "visibility",
+            "status",
+            "primary_translation",
+            "user_status",
+        ]
+
+    def get_primary_translation(self, obj) -> str | None:
+        """主訳を取得（prefetchされた primary_translation_list を利用）"""
+        primary_list = getattr(obj, "primary_translation_list", None)
+        if primary_list and len(primary_list) > 0:
+            return primary_list[0].text_ja
+        return None
+
+    def get_user_status(self, obj) -> dict | None:
+        """ユーザーの学習ステータスを取得（prefetchされた user_status_list を利用）"""
+        user_status_list = getattr(obj, "user_status_list", None)
+        if not user_status_list or len(user_status_list) == 0:
+            return None
+
+        status_obj = user_status_list[0]
+        total_answer_count = status_obj.total_answer_count or 0
+        total_correct_count = status_obj.total_correct_count or 0
+        correct_rate = None
+        if total_answer_count > 0:
+            correct_rate = round((total_correct_count / total_answer_count) * 100)
+
+        return {
+            "status": status_obj.status,
+            "total_answer_count": total_answer_count,
+            "total_correct_count": total_correct_count,
+            "correct_rate": correct_rate,
+            "recent_correct_streak": status_obj.recent_correct_streak or 0,
+            "last_result": status_obj.last_result,
+            "last_answered_at": status_obj.last_answered_at,
+        }
+
+
+class StudentVocabAliasSerializer(serializers.ModelSerializer):
+    """エイリアス語彙の簡易表現"""
+    id = serializers.UUIDField(source="pk", read_only=True)
+
+    class Meta:
+        model = models.Vocabulary
+        fields = ["id", "text_en"]
+
+
+class StudentVocabTranslationSerializer(serializers.ModelSerializer):
+    """語彙詳細用の翻訳シリアライザー"""
+    id = serializers.UUIDField(source="pk", read_only=True)
+
+    class Meta:
+        model = models.VocabTranslation
+        fields = ["id", "text_ja", "is_primary"]
+
+
+class StudentVocabChoiceSerializer(serializers.ModelSerializer):
+    """語彙詳細用の選択肢シリアライザー"""
+    id = serializers.UUIDField(source="pk", read_only=True)
+
+    class Meta:
+        model = models.VocabChoice
+        fields = ["id", "text_ja", "is_correct"]
+
+
+class StudentVocabDetailSerializer(serializers.ModelSerializer):
+    """学習者用語彙詳細シリアライザー"""
+    id = serializers.UUIDField(source="pk", read_only=True)
+    alias_of = StudentVocabAliasSerializer(read_only=True)
+    aliases = StudentVocabAliasSerializer(many=True, read_only=True)
+    translations = StudentVocabTranslationSerializer(many=True, read_only=True)
+    choices = StudentVocabChoiceSerializer(many=True, read_only=True)
+    user_status = serializers.SerializerMethodField()
+    quiz_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.Vocabulary
+        fields = [
+            "id",
+            "text_en",
+            "part_of_speech",
+            "explanation",
+            "example_en",
+            "example_ja",
+            "alias_of",
+            "aliases",
+            "translations",
+            "choices",
+            "user_status",
+            "quiz_count",
+        ]
+
+    def get_user_status(self, obj) -> dict | None:
+        """ユーザーの学習ステータスを取得"""
+        user_status_list = getattr(obj, "user_status_list", None)
+        if not user_status_list or len(user_status_list) == 0:
+            return None
+
+        status_obj = user_status_list[0]
+        total_answer_count = status_obj.total_answer_count or 0
+        total_correct_count = status_obj.total_correct_count or 0
+        correct_rate = None
+        if total_answer_count > 0:
+            correct_rate = round((total_correct_count / total_answer_count) * 100)
+
+        return {
+            "status": status_obj.status,
+            "total_answer_count": total_answer_count,
+            "total_correct_count": total_correct_count,
+            "correct_rate": correct_rate,
+            "recent_correct_streak": status_obj.recent_correct_streak or 0,
+            "last_result": status_obj.last_result,
+            "last_answered_at": status_obj.last_answered_at,
+        }
+
+    def get_quiz_count(self, obj) -> int:
+        """クイズ/テストでの出題回数"""
+        quiz_count = getattr(obj, "quiz_question_count", 0) or 0
+        test_count = getattr(obj, "test_question_count", 0) or 0
+        return quiz_count + test_count
+
+
+class VocabReportSerializer(serializers.Serializer):
+    """語彙誤り報告用シリアライザ"""
+
+    reported_text_en = serializers.CharField(
+        max_length=120,
+        required=True,
+        help_text="問題のある単語（ユーザー視点）",
+    )
+    main_category = serializers.ChoiceField(
+        choices=[
+            "translation",
+            "part_of_speech",
+            "example_sentence",
+            "choice_text",
+            "spelling",
+            "other",
+        ],
+        required=True,
+        help_text="報告の大分類",
+    )
+    detail_category = serializers.ChoiceField(
+        choices=[
+            "wrong_meaning",
+            "missing_sense",
+            "unnatural_ja",
+            "typo",
+            "format_issue",
+            "other",
+        ],
+        required=True,
+        help_text="報告の詳細分類",
+    )
+    detail_text = serializers.CharField(
+        max_length=2000,
+        required=True,
+        help_text="詳細コメント",
+    )
