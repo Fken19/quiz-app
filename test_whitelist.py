@@ -17,8 +17,8 @@ def test_whitelist_function():
         
         # テストケース
         test_emails = [
-            'kentaf0926@gmail.com',
-            'KENTAF0926@GMAIL.COM',  # 大文字小文字のテスト
+            'test@example.com',
+            'TEST@EXAMPLE.COM',  # 大文字小文字のテスト
             'other@example.com',
             '',
             None
