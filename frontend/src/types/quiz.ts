@@ -465,3 +465,31 @@ export interface StudentVocabDetail {
   quiz_count: number;
 }
 
+// Vocabulary report types
+export type VocabReportMainCategory =
+  | "translation"
+  | "part_of_speech"
+  | "example_sentence"
+  | "choice_text"
+  | "spelling"
+  | "other";
+
+export type VocabReportDetailCategory =
+  | "wrong_meaning"
+  | "missing_sense"
+  | "unnatural_ja"
+  | "typo"
+  | "format_issue"
+  | "other";
+
+export interface VocabReportRequest {
+  reported_text_en: string;
+  main_category: VocabReportMainCategory;
+  detail_category: VocabReportDetailCategory;
+  detail_text: string;
+}
+
+export interface VocabReportResponse {
+  detail: string;
+}
+

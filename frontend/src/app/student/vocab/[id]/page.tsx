@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiGet } from '@/lib/api-utils';
+import VocabReportForm from '@/components/student/VocabReportForm';
 import type { StudentVocabDetail } from '@/types/quiz';
 
 const STATUS_LABELS = {
@@ -28,6 +29,7 @@ export default function VocabDetailPage() {
   const [vocab, setVocab] = useState<StudentVocabDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showReportForm, setShowReportForm] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -271,13 +273,26 @@ export default function VocabDetailPage() {
       {/* 将来の拡張用ボタン領域 */}
       <div className="bg-slate-50 border border-slate-200 rounded-lg p-6">
         <p className="text-sm text-slate-500 mb-4">この単語で復習クイズを開始（準備中）</p>
-        <button
-          disabled
-          className="px-6 py-3 bg-slate-300 text-slate-500 rounded-md font-medium cursor-not-allowed"
-        >
-          復習クイズを開始
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            disabled
+            className="px-6 py-3 bg-slate-300 text-slate-500 rounded-md font-medium cursor-not-allowed"
+          >
+            復習クイズを開始（準備中）
+          </button>
+          <button
+            className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+            onClick={() => setShowReportForm((v) => !v)}
+          >
+            {showReportForm ? "報告フォームを閉じる" : "誤りを報告（フォームを展開）"}
+          </button>
+        </div>
       </div>
+
+      {/* 語彙誤り報告フォーム（インライン） */}
+      {showReportForm && (
+        <VocabReportForm vocabId={vocab.id} vocabTextEn={vocab.text_en} />
+      )}
     </div>
   );
 }

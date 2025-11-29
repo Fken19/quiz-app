@@ -2645,6 +2645,208 @@ class StudentVocabDetailView(APIView):
         return Response(serializer.data)
 
 
+class StudentVocabReportView(APIView):
+    """
+    語彙誤り報告API
+    
+    パス: POST /api/student/vocab/<uuid:id>/report/
+    
+    開発者にメール(Gmail)とSlack通知を送信
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    # カテゴリラベル
+    MAIN_CATEGORY_LABELS = {
+        "translation": "訳の修正",
+        "part_of_speech": "品詞の修正",
+        "example_sentence": "例文の修正",
+        "choice_text": "選択肢テキストの修正",
+        "spelling": "スペルの修正",
+        "other": "その他",
+    }
+
+    DETAIL_CATEGORY_LABELS = {
+        "wrong_meaning": "意味が間違っている",
+        "missing_sense": "語義が不足している",
+        "unnatural_ja": "日本語が不自然",
+        "typo": "誤字・脱字",
+        "format_issue": "レイアウト・表記の問題",
+        "other": "その他",
+    }
+
+    def post(self, request, id):
+        import json
+        import logging
+        import requests
+        from django.core.mail import send_mail
+        from django.core.cache import cache
+        from datetime import timedelta
+
+        logger = logging.getLogger(__name__)
+
+        user = request.user
+        
+        # レート制限チェック（1時間以内100件）
+        cache_key = f"vocab_report_count_{user.id}"
+        report_count = cache.get(cache_key, 0)
+        
+        if report_count >= 100:
+            return Response(
+                {"detail": "報告の送信回数が制限を超えています。しばらく時間をおいてから再度お試しください。"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        # 語彙の存在・公開確認
+        vocab = get_object_or_404(
+            models.Vocabulary,
+            id=id,
+            visibility=models.VocabVisibility.PUBLIC,
+            status=models.VocabStatus.PUBLISHED,
+        )
+
+        # バリデーション
+        serializer = serializers.VocabReportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        now = timezone.now()
+        
+        # JSTに変換（UTC+9）
+        jst_now = now + timedelta(hours=9)
+
+        main_label = self.MAIN_CATEGORY_LABELS.get(
+            data["main_category"], data["main_category"]
+        )
+        detail_label = self.DETAIL_CATEGORY_LABELS.get(
+            data["detail_category"], data["detail_category"]
+        )
+
+        # 報告データ構成（最小限の情報のみ）
+        report = {
+            "user_id": str(user.id),
+            "user_email": getattr(user, "email", ""),
+            "vocabulary_id": str(vocab.id),
+            "vocabulary_text_en": vocab.text_en,
+            "reported_text_en": data["reported_text_en"],
+            "main_category": data["main_category"],
+            "main_category_label": main_label,
+            "detail_category": data["detail_category"],
+            "detail_category_label": detail_label,
+            "detail_text": data["detail_text"],
+            "requested_at_jst": jst_now.strftime("%Y-%m-%d %H:%M:%S"),
+            "environment": getattr(settings, "ENVIRONMENT", "production"),
+        }
+
+        # レート制限カウンタ更新
+        cache.set(cache_key, report_count + 1, 3600)  # 1時間有効
+
+        # 1. Gmail送信
+        try:
+            self._send_gmail(report)
+        except Exception:
+            logger.exception("Failed to send vocab report email")
+
+        # 2. Slack通知
+        try:
+            self._send_slack(report)
+        except Exception:
+            logger.exception("Failed to send vocab report to Slack")
+
+        return Response(
+            {"detail": "報告を送信しました。ご協力ありがとうございます。"},
+            status=status.HTTP_201_CREATED,
+        )
+
+    def _send_gmail(self, report: dict):
+        """Gmail送信（最小限の情報のみ）"""
+        from django.core.mail import send_mail
+
+        subject = (
+            f"[語彙誤り報告] {report['vocabulary_text_en']} / "
+            f"{report['main_category_label']}"
+        )
+
+        body_lines = [
+            "語彙の誤り報告を受け付けました。",
+            "",
+            "=" * 60,
+            "■ 基本情報",
+            "=" * 60,
+            f"報告受付日時 (JST): {report['requested_at_jst']}",
+            f"環境: {report['environment']}",
+            "",
+            "=" * 60,
+            "■ ユーザー情報",
+            "=" * 60,
+            f"User ID: {report['user_id']}",
+            f"メールアドレス: {report['user_email']}",
+            "",
+            "=" * 60,
+            "■ 対象語彙情報",
+            "=" * 60,
+            f"Vocabulary ID: {report['vocabulary_id']}",
+            f"英単語 (DB): {report['vocabulary_text_en']}",
+            f"英単語 (ユーザー入力): {report['reported_text_en']}",
+            "",
+            "※ DBの英単語とユーザー入力が異なる場合はスペルミスなどの可能性があります。",
+            "",
+            "=" * 60,
+            "■ 報告内容",
+            "=" * 60,
+            f"大分類: {report['main_category_label']} ({report['main_category']})",
+            f"小分類: {report['detail_category_label']} ({report['detail_category']})",
+            "",
+            "詳細コメント:",
+            report["detail_text"],
+        ]
+        body = "\n".join(body_lines)
+
+        email_to = getattr(settings, "VOCAB_REPORT_EMAIL_TO", "adm19fk@gmail.com")
+        send_mail(
+            subject,
+            body,
+            settings.DEFAULT_FROM_EMAIL,
+            [email_to],
+            fail_silently=False,
+        )
+
+    def _send_slack(self, report: dict):
+        """Slack通知（メールアドレスは含めない）"""
+        import json
+        import requests
+
+        webhook_url = getattr(settings, "VOCAB_REPORT_SLACK_WEBHOOK_URL", None)
+        if not webhook_url:
+            return  # Slack未設定時はスキップ
+
+        # 詳細コメント抜粋（300文字まで）
+        detail_excerpt = report["detail_text"][:300]
+        if len(report["detail_text"]) > 300:
+            detail_excerpt += "..."
+
+        text_lines = [
+            ":incoming_envelope: *語彙誤り報告を受信しました*",
+            "",
+            f"*単語*: `{report['vocabulary_text_en']}`  (ID: {report['vocabulary_id']})",
+            "*報告種別*:",
+            f"- 大分類: {report['main_category_label']} ({report['main_category']})",
+            f"- 小分類: {report['detail_category_label']} ({report['detail_category']})",
+            "",
+            "*ユーザー*: ",
+                f"- User ID: {report['user_id']}",
+            "",
+                "*詳細コメント (抜粋)*:",
+            detail_excerpt,
+            "",
+            "*メタ情報*: ",
+                f"- 受付日時 (JST): {report['requested_at_jst']}",
+            f"- 環境: {report['environment']}",
+        ]
+        payload = {"text": "\n".join(text_lines)}
+
+        requests.post(webhook_url, data=json.dumps(payload), timeout=5)
+
+
 __all__ = [
     "UserViewSet",
     "UserProfileViewSet",
@@ -2671,6 +2873,7 @@ __all__ = [
     "StudentLearningStatusView",
     "StudentVocabListView",
     "StudentVocabDetailView",
+    "StudentVocabReportView",
     "UserVocabStatusViewSet",
     "TestViewSet",
     "TestQuestionViewSet",
@@ -2682,3 +2885,4 @@ __all__ = [
     "TeacherStudentProgressViewSet",
     "TeacherGroupMemberSummaryView",
 ]
+

@@ -815,3 +815,42 @@ class StudentVocabDetailSerializer(serializers.ModelSerializer):
         quiz_count = getattr(obj, "quiz_question_count", 0) or 0
         test_count = getattr(obj, "test_question_count", 0) or 0
         return quiz_count + test_count
+
+
+class VocabReportSerializer(serializers.Serializer):
+    """語彙誤り報告用シリアライザ"""
+
+    reported_text_en = serializers.CharField(
+        max_length=120,
+        required=True,
+        help_text="問題のある単語（ユーザー視点）",
+    )
+    main_category = serializers.ChoiceField(
+        choices=[
+            "translation",
+            "part_of_speech",
+            "example_sentence",
+            "choice_text",
+            "spelling",
+            "other",
+        ],
+        required=True,
+        help_text="報告の大分類",
+    )
+    detail_category = serializers.ChoiceField(
+        choices=[
+            "wrong_meaning",
+            "missing_sense",
+            "unnatural_ja",
+            "typo",
+            "format_issue",
+            "other",
+        ],
+        required=True,
+        help_text="報告の詳細分類",
+    )
+    detail_text = serializers.CharField(
+        max_length=2000,
+        required=True,
+        help_text="詳細コメント",
+    )

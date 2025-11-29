@@ -40,6 +40,7 @@ urlpatterns = [
     path("student/dashboard-summary/", views.StudentDashboardSummaryView.as_view(), name="student-dashboard-summary"),
     path("student/vocab/", views.StudentVocabListView.as_view(), name="student-vocab-list"),
     path("student/vocab/<uuid:id>/", views.StudentVocabDetailView.as_view(), name="student-vocab-detail"),
+    path("student/vocab/<uuid:id>/report/", views.StudentVocabReportView.as_view(), name="student-vocab-report"),
     path(
         "teacher/groups/<uuid:folder_id>/member-summaries/",
         views.TeacherGroupMemberSummaryView.as_view(),

@@ -120,12 +120,12 @@ export default function VocabularyPage() {
           検索（英単語 or 日本語訳）
         </label>
         <input
-          id="search"
-          type="text"
-          value={searchQuery}
-          onChange={handleSearchChange}
-          placeholder="例: apple, りんご"
-          className="w-full border border-slate-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+           id="search"
+           type="text"
+           value={searchQuery}
+           onChange={handleSearchChange}
+           placeholder="例: apple, りんご"
+           className="w-full border border-slate-400 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-700 text-gray-900 font-bold placeholder-gray-400"
         />
       </div>
 
