@@ -48,6 +48,7 @@ type ResultDetailRow = {
   correct_text: string | null;
   is_correct: boolean;
   reaction_time_ms: number | null;
+  vocabulary_id?: string | null; // 追加: 語彙詳細遷移用
 };
 
 type JudgeState =
@@ -260,6 +261,7 @@ export default function QuizPlayPage() {
             a.question.choices.find((c: any) => (c as any).is_correct)?.text_ja || null,
           is_correct: a.isCorrect,
           reaction_time_ms: a.reactionTimeMs,
+          vocabulary_id: a.question.vocabulary.vocabulary_id,
         }));
       setCompletedDetails(detailRows);
       setCompletedResult(
@@ -394,7 +396,19 @@ export default function QuizPlayPage() {
           {completedDetails.map((row) => (
             <div
               key={`${row.quiz_result_detail_id || row.question_order}`}
-              className="grid grid-cols-5 gap-3 px-4 py-3 text-sm text-slate-700 border-t border-slate-100 first:border-t-0"
+              onClick={() => {
+                const vid = row.vocabulary_id;
+                if (vid) router.push(`/student/vocab/${vid}?fromResult=${completedResult?.quiz_result_id || ''}`);
+              }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if ((e.key === 'Enter' || e.key === ' ') && row.vocabulary_id) {
+                  e.preventDefault();
+                  router.push(`/student/vocab/${row.vocabulary_id}?fromResult=${completedResult?.quiz_result_id || ''}`);
+                }
+              }}
+              className="grid grid-cols-5 gap-3 px-4 py-3 text-sm text-slate-700 border-t border-slate-100 first:border-t-0 cursor-pointer hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <span>{row.question_order}</span>
               <span className={row.is_correct ? 'text-slate-900' : 'text-red-600'}>

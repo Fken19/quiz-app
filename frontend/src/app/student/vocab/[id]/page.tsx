@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiGet } from '@/lib/api-utils';
 import VocabReportForm from '@/components/student/VocabReportForm';
@@ -24,7 +24,9 @@ const STATUS_COLORS = {
 export default function VocabDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const search = useSearchParams();
   const id = params.id as string;
+  const fromResult = search?.get('fromResult');
 
   const [vocab, setVocab] = useState<StudentVocabDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,9 +90,26 @@ export default function VocabDetailPage() {
             </span>
           )}
         </div>
-        <Link href="/student/vocab" className="text-indigo-600 font-semibold hover:text-indigo-800">
-          ← 語彙一覧へ戻る
-        </Link>
+        {fromResult ? (
+          <button
+            type="button"
+            onClick={() => {
+              // 履歴があれば戻る。なければ結果詳細へ直接遷移
+              if (typeof window !== 'undefined' && window.history.length > 1) {
+                router.back();
+              } else {
+                router.push(`/student/results/${fromResult}`);
+              }
+            }}
+            className="text-indigo-600 font-semibold hover:text-indigo-800"
+          >
+            ← 結果詳細へ戻る
+          </button>
+        ) : (
+          <Link href="/student/vocab" className="text-indigo-600 font-semibold hover:text-indigo-800">
+            ← 語彙一覧へ戻る
+          </Link>
+        )}
       </div>
 
       {/* 主訳 */}
