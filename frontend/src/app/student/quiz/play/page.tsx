@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiGet, apiPost } from '@/lib/api-utils';
@@ -80,6 +80,32 @@ export default function QuizPlayPage() {
   const [judge, setJudge] = useState<JudgeState>(null);
   const [nextQuizId, setNextQuizId] = useState<string | null>(null);
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
+  const [isTimerResetting, setIsTimerResetting] = useState(false);
+  const resetAnimationFrameRef = useRef<number | null>(null);
+
+  const triggerInstantTimerReset = useCallback((durationMs: number) => {
+    setIsTimerResetting(true);
+    setTimeLeftMs(durationMs);
+    if (typeof window !== 'undefined') {
+      if (resetAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(resetAnimationFrameRef.current);
+      }
+      resetAnimationFrameRef.current = window.requestAnimationFrame(() => {
+        setIsTimerResetting(false);
+        resetAnimationFrameRef.current = null;
+      });
+    } else {
+      setIsTimerResetting(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && resetAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(resetAnimationFrameRef.current);
+      }
+    };
+  }, []);
 
   const startSession = useCallback(async () => {
     if (!quizId) {
@@ -113,7 +139,7 @@ export default function QuizPlayPage() {
       setQuestions(qList);
       const timer = sessionData?.timer_seconds || (quizData.timer_seconds ?? 10) || 10;
       setTimerSeconds(timer);
-      setTimeLeftMs(timer * 1000);
+      triggerInstantTimerReset(timer * 1000);
       setProgress({
         currentIndex: 0,
         startedAt: Date.now(),
@@ -136,7 +162,7 @@ export default function QuizPlayPage() {
     } finally {
       setLoading(false);
     }
-  }, [quizId]);
+  }, [quizId, router, triggerInstantTimerReset]);
 
   useEffect(() => {
     startSession();
@@ -223,7 +249,7 @@ export default function QuizPlayPage() {
       currentIndex: nextIndex,
       startedAt: Date.now(),
     });
-    setTimeLeftMs(timerSeconds * 1000);
+    triggerInstantTimerReset(timerSeconds * 1000);
   };
 
   const completeSession = async (finalAnswers?: AnswerLog[]) => {
@@ -293,8 +319,8 @@ export default function QuizPlayPage() {
 
   useEffect(() => {
     if (!progress || judge || submitting || answering) return;
-    setTimeLeftMs(timerSeconds * 1000);
-  }, [progress?.currentIndex, timerSeconds, judge, submitting, answering]);
+    triggerInstantTimerReset(timerSeconds * 1000);
+  }, [progress?.currentIndex, timerSeconds, judge, submitting, answering, triggerInstantTimerReset]);
 
   useEffect(() => {
     if (!progress || judge || submitting || answering) return;
@@ -345,6 +371,15 @@ export default function QuizPlayPage() {
   }
 
   if (completedResult) {
+    const resultReturnParam = completedResult.quiz_result_id
+      ? encodeURIComponent(`/student/results/${completedResult.quiz_result_id}`)
+      : null;
+    const vocabLinkFromResult = (vocabId?: string | null) => {
+      if (!vocabId) return null;
+      return resultReturnParam
+        ? `/student/vocab/${vocabId}?fromResult=${resultReturnParam}`
+        : `/student/vocab/${vocabId}`;
+    };
     return (
       <div className="max-w-xl mx-auto py-12 space-y-6 px-4">
         <h1 className="text-3xl font-bold text-slate-900">結果</h1>
@@ -397,15 +432,16 @@ export default function QuizPlayPage() {
             <div
               key={`${row.quiz_result_detail_id || row.question_order}`}
               onClick={() => {
-                const vid = row.vocabulary_id;
-                if (vid) router.push(`/student/vocab/${vid}?fromResult=${completedResult?.quiz_result_id || ''}`);
+                const link = vocabLinkFromResult(row.vocabulary_id);
+                if (link) router.push(link);
               }}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
-                if ((e.key === 'Enter' || e.key === ' ') && row.vocabulary_id) {
+                if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  router.push(`/student/vocab/${row.vocabulary_id}?fromResult=${completedResult?.quiz_result_id || ''}`);
+                  const link = vocabLinkFromResult(row.vocabulary_id);
+                  if (link) router.push(link);
                 }
               }}
               className="grid grid-cols-5 gap-3 px-4 py-3 text-sm text-slate-700 border-t border-slate-100 first:border-t-0 cursor-pointer hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -457,7 +493,9 @@ export default function QuizPlayPage() {
         <div className="flex items-center justify-center gap-2">
           <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden">
             <div
-              className="h-full bg-indigo-500 transition-[width] duration-100"
+              className={`h-full bg-indigo-500 ${
+                isTimerResetting ? 'transition-none' : 'transition-[width] duration-100 ease-linear'
+              }`}
               style={{ width: `${timeRatio * 100}%` }}
             />
           </div>
