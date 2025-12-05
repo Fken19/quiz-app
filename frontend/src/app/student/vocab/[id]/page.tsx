@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiGet } from '@/lib/api-utils';
@@ -27,6 +27,21 @@ export default function VocabDetailPage() {
   const search = useSearchParams();
   const id = params.id as string;
   const fromResult = search?.get('fromResult');
+  const resultReturnPath = useMemo(() => {
+    if (!fromResult) return null;
+    try {
+      const decoded = decodeURIComponent(fromResult);
+      if (decoded.startsWith('/') && !decoded.startsWith('//')) {
+        return decoded;
+      }
+      if (/^[A-Za-z0-9-]+$/.test(decoded)) {
+        return `/student/results/${decoded}`;
+      }
+    } catch (err) {
+      console.warn('Invalid fromResult parameter', err);
+    }
+    return null;
+  }, [fromResult]);
 
   const [vocab, setVocab] = useState<StudentVocabDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,17 +105,10 @@ export default function VocabDetailPage() {
             </span>
           )}
         </div>
-        {fromResult ? (
+        {resultReturnPath ? (
           <button
             type="button"
-            onClick={() => {
-              // 履歴があれば戻る。なければ結果詳細へ直接遷移
-              if (typeof window !== 'undefined' && window.history.length > 1) {
-                router.back();
-              } else {
-                router.push(`/student/results/${fromResult}`);
-              }
-            }}
+            onClick={() => router.push(resultReturnPath)}
             className="text-indigo-600 font-semibold hover:text-indigo-800"
           >
             ← 結果詳細へ戻る

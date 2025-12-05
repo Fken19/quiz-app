@@ -14,6 +14,15 @@ interface DetailRow {
 export default function QuizResultDetailPage() {
   const params = useParams<{ resultId: string }>();
   const router = useRouter();
+  const resultReturnParam = params?.resultId
+    ? encodeURIComponent(`/student/results/${params.resultId}`)
+    : null;
+  const vocabLinkFromResult = (vocabId?: string | null) => {
+    if (!vocabId) return null;
+    return resultReturnParam
+      ? `/student/vocab/${vocabId}?fromResult=${resultReturnParam}`
+      : `/student/vocab/${vocabId}`;
+  };
   const [result, setResult] = useState<QuizResult | null>(null);
   const [rows, setRows] = useState<DetailRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -157,8 +166,9 @@ export default function QuizResultDetailPage() {
             key={row.detail.quiz_result_detail_id}
             onClick={() => {
               const vid = row.vocabulary?.vocabulary_id || row.detail.vocabulary;
-              if (vid) {
-                router.push(`/student/vocab/${vid}?fromResult=${params.resultId}`);
+              const link = vocabLinkFromResult(vid);
+              if (link) {
+                router.push(link);
               }
             }}
             role="button"
@@ -166,9 +176,10 @@ export default function QuizResultDetailPage() {
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 const vid = row.vocabulary?.vocabulary_id || row.detail.vocabulary;
-                if (vid) {
+                const link = vocabLinkFromResult(vid);
+                if (link) {
                   e.preventDefault();
-                  router.push(`/student/vocab/${vid}?fromResult=${params.resultId}`);
+                  router.push(link);
                 }
               }
             }}
