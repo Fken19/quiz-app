@@ -261,11 +261,39 @@ docker-compose down
 
 ## 🧪 テスト・CI/CD
 
-### GitHub Actions
+### GitHub Actions → GCP Cloud Run 自動デプロイ
 
-- **Full Stack Tests** — バックエンド（スキーマ、マイグレーション）+ フロントエンド（TypeScriptビルド）
-- **Backend Integration Tests** — PostgreSQL統合テスト、モデル検証
-- **Deploy to GCP** — Cloud Runへの自動デプロイ（`main`ブランチ）
+`main` ブランチへの push（PR マージ）時に `deploy.yml` が起動し、本番環境へ自動デプロイします。
+
+#### デプロイフロー
+
+- GitHub Secrets に登録した `GCP_SERVICE_ACCOUNT_KEY` を使用して、GCP のサービスアカウント `github-actions-deployer` で認証
+- `gcloud run deploy` により、ソースコードから直接デプロイ：
+  - `backend/` → Cloud Run サービス `quiz-backend`
+  - `frontend/` → Cloud Run サービス `quiz-frontend`
+- Cloud Build / Artifact Registry / Cloud Storage を経由してコンテナがビルドされるため、手動での `gcloud run deploy` 作業は不要
+- **PR マージだけで本番環境が更新される**ワンクリックデプロイを実現
+- 認証情報やプロジェクト ID はすべて Secrets / 環境変数で管理し、リポジトリにはハードコードしない運用
+
+#### CI（Full Stack CI/CD Tests）
+
+`test.yml` で、PR 作成時と `main` / `migration/**` ブランチへの push 時に以下のチェックを自動実行：
+
+**1. Backend Schema & API Check**
+- GitHub Actions 上で PostgreSQL（Docker）を起動し、`quiz_app` DB を作成
+- `backend/` で依存パッケージをインストールし、`python manage.py migrate` を実行
+- `manage.py check` やモデルの import、`sqlmigrate` を実行して、**Django プロジェクトが実際に起動可能か／マイグレーションに破綻がないか**を事前に検証
+
+**2. Frontend Build & Type Check**
+- Node.js 20 環境で `npm ci` を実行し、ロックファイルベースで依存関係を固定
+- `npm run build` を流して Next.js の型エラー・ビルドエラーを検知
+- 成功時には `.next` ディレクトリの生成を確認し、将来的にビルドエラーで CI を落とせるよう、ログ出力を優先する形で運用
+
+**3. Docker Build Validation**
+- `backend` / `frontend` の 2 サービスを matrix で回し、それぞれ `Dockerfile.dev` を用いて `docker build` を実行
+- ローカル開発用の Docker イメージが常にビルド可能な状態かどうかを CI で確認し、**環境依存のビルド崩壊を早期に検知**
+
+この構成により、**PR 作成時にはアプリ全体の動作・ビルドをチェックし、PR を main にマージすると自動的に GCP の Cloud Run へデプロイされる**一連のフローを実現しています。
 
 ### ローカルテスト
 
