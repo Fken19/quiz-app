@@ -1949,28 +1949,13 @@ class FocusQuizSessionStartView(APIView):
             },
         )
 
-        # reuse or create quiz with same set to avoid clutter
-        existing_quiz = (
-            models.Quiz.objects.filter(
-                quiz_collection=focus_collection,
-                question_count=len(ordered_vocabs),
-                section_label__isnull=True,
-            )
-            .order_by("created_at")
-            .first()
+        max_seq = focus_collection.quizzes.aggregate(max_seq=Max("sequence_no"))["max_seq"] or 0
+        quiz = models.Quiz.objects.create(
+            quiz_collection=focus_collection,
+            sequence_no=max_seq + 1,
+            title=f"フォーカス({timezone.localtime().strftime('%m/%d %H:%M')})",
+            timer_seconds=10,
         )
-
-        if existing_quiz:
-            quiz = existing_quiz
-            quiz.questions.all().delete()
-        else:
-            max_seq = focus_collection.quizzes.aggregate(max_seq=Max("sequence_no"))["max_seq"] or 0
-            quiz = models.Quiz.objects.create(
-                quiz_collection=focus_collection,
-                sequence_no=max_seq + 1,
-                title=f"フォーカス({timezone.localtime().strftime('%m/%d %H:%M')})",
-                timer_seconds=10,
-            )
 
         quiz_questions = [
             models.QuizQuestion(

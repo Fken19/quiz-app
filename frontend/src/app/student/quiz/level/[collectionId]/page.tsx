@@ -5,20 +5,12 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { apiGet, apiPost } from '@/lib/api-utils';
 import type { Quiz, QuizCollection, QuizQuestion } from '@/types/quiz';
+import { buildFocusQuestionOptions, buildNumberOptions, FOCUS_MAX_LIMIT } from '@/lib/focus-utils';
 
 interface QuizRow {
   quiz: Quiz;
   questionCount: number;
 }
-
-const buildOptions = (min: number, max: number, step: number) => {
-  const list: number[] = [];
-  for (let v = min; v <= max; v += step) {
-    list.push(v);
-  }
-  if (list[list.length - 1] !== max) list.push(max);
-  return Array.from(new Set(list)).sort((a, b) => a - b);
-};
 
 export default function QuizLevelDetailPage() {
   const params = useParams<{ collectionId: string }>();
@@ -43,14 +35,12 @@ export default function QuizLevelDetailPage() {
   const totalQuestions = useMemo(() => (quizzes || []).reduce((sum, r) => sum + r.questionCount, 0), [quizzes]);
   const randomOptions = useMemo(() => {
     const max = Math.max(totalQuestions, 10);
-    return buildOptions(Math.min(10, max), max, 10);
+    return buildNumberOptions(Math.min(10, max), max, 10);
   }, [totalQuestions]);
   const focusTotal = focusIds.length;
   const focusOptions = useMemo(() => {
     if (focusTotal === 0) return [];
-    const min = focusTotal >= 10 ? 10 : 1;
-    const step = focusTotal >= 10 ? 5 : 1;
-    return buildOptions(min, focusTotal, step);
+    return buildFocusQuestionOptions(Math.min(focusTotal, FOCUS_MAX_LIMIT));
   }, [focusTotal]);
 
   useEffect(() => {
