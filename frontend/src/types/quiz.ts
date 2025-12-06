@@ -82,6 +82,11 @@ export interface StudentTeacherLink {
   kana_for_sort?: string | null;
   color?: string | null;
   updated_at: string;
+  student_display_name?: string;
+  student_grade?: string | null;
+  student_self_intro?: string | null;
+  student_avatar_url?: string | null;
+  student_profile_updated_at?: string | null;
 }
 
 export interface RosterFolder {
@@ -492,4 +497,3 @@ export interface VocabReportRequest {
 export interface VocabReportResponse {
   detail: string;
 }
-

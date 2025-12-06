@@ -235,6 +235,61 @@ class InvitationCodeViewSet(BaseModelViewSet):
         invite.save(update_fields=["revoked", "revoked_at"])
         return Response({"detail": "招待コードを失効しました。"})
 
+    def _serialize_teacher_profile(self, teacher):
+        profile = getattr(teacher, "profile", None)
+        data = {
+            "teacher_id": teacher.id,
+            "display_name": profile.display_name if profile and profile.display_name else teacher.email,
+            "affiliation": profile.affiliation if profile and profile.affiliation else None,
+            "avatar_url": profile.avatar_url if profile and profile.avatar_url else None,
+            "bio": profile.bio if profile and profile.bio else None,
+            "updated_at": profile.updated_at if profile else teacher.updated_at,
+        }
+        serializer = serializers.StudentTeacherPublicProfileSerializer(data)
+        return serializer.data
+
+    @action(detail=False, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="preview")
+    def preview(self, request):
+        """招待コードの講師情報を確認する"""
+        user = request.user
+        ip_addr = request.META.get("REMOTE_ADDR", "unknown")
+        if not self._rate_limit(f"invite_preview_ip:{ip_addr}", limit=15, window_seconds=300):
+            return Response({"detail": "短時間の招待コード試行回数を超えました。しばらくしてから再試行してください。"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        if not self._rate_limit(f"invite_preview_user:{user.id}", limit=15, window_seconds=600):
+            return Response({"detail": "短時間の招待コード試行回数を超えました。しばらくしてから再試行してください。"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        code_str = (request.data.get("invitation_code") or "").strip()
+        if not code_str:
+            return Response({"detail": "招待コードを入力してください。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        now = timezone.now()
+        code = models.InvitationCode.objects.filter(
+            invitation_code=code_str,
+            revoked=False,
+        ).select_related("issued_by__profile").first()
+        if not code:
+            return Response({"detail": "招待コードが無効です。"}, status=status.HTTP_400_BAD_REQUEST)
+        if code.expires_at and code.expires_at < now:
+            return Response({"detail": "招待コードの有効期限が切れています。"}, status=status.HTTP_400_BAD_REQUEST)
+        if code.used_at:
+            return Response({"detail": "この招待コードは使用済みです。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        existing_link = models.StudentTeacherLink.objects.filter(
+            teacher=code.issued_by,
+            student=user,
+        ).first()
+        existing_status = existing_link.status if existing_link else None
+        can_redeem = not (existing_link and existing_link.status in [models.LinkStatus.PENDING, models.LinkStatus.ACTIVE])
+
+        teacher_profile = self._serialize_teacher_profile(code.issued_by)
+        return Response(
+            {
+                "teacher_profile": teacher_profile,
+                "existing_link_status": existing_status,
+                "can_redeem": can_redeem,
+            }
+        )
+
     @action(detail=False, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="redeem")
     def redeem(self, request):
         """生徒が招待コードを利用してリンクを作成する"""
@@ -254,7 +309,7 @@ class InvitationCodeViewSet(BaseModelViewSet):
         code = models.InvitationCode.objects.filter(
             invitation_code=code_str,
             revoked=False,
-        ).first()
+        ).select_related("issued_by__profile").first()
         if not code:
             return Response({"detail": "招待コードが無効です。"}, status=status.HTTP_400_BAD_REQUEST)
         if code.expires_at and code.expires_at < now:
@@ -310,7 +365,10 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
 
     def get_queryset(self):  # type: ignore[override]
         user = self.request.user
-        qs = models.StudentTeacherLink.objects.select_related("teacher", "student").order_by("-linked_at")
+        qs = (
+            models.StudentTeacherLink.objects.select_related("teacher", "student", "student__profile")
+            .order_by("-linked_at")
+        )
 
         status_param = self.request.query_params.get("status")
         if status_param:
@@ -365,6 +423,27 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
         link.custom_display_name = alias_str or None
         link.save(update_fields=["custom_display_name", "updated_at"])
         return Response(serializers.StudentTeacherLinkSerializer(link).data)
+
+    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="teacher-profile")
+    def teacher_profile(self, request, pk=None):
+        """生徒向けに講師プロフィールを返す"""
+        link = self.get_object()
+        if link.student_id != request.user.id:
+            raise PermissionDenied("閲覧権限がありません。")
+        if link.status not in [models.LinkStatus.PENDING, models.LinkStatus.ACTIVE]:
+            return Response({"detail": "この講師との紐付けは現在ありません。"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = getattr(link.teacher, "profile", None)
+        data = {
+            "teacher_id": link.teacher_id,
+            "display_name": (profile.display_name if profile and profile.display_name else "名前未設定"),
+            "affiliation": profile.affiliation if profile and profile.affiliation else None,
+            "avatar_url": profile.avatar_url if profile and profile.avatar_url else None,
+            "bio": profile.bio if profile and profile.bio else None,
+            "updated_at": (profile.updated_at if profile else link.teacher.updated_at),
+        }
+        serializer = serializers.StudentTeacherPublicProfileSerializer(data)
+        return Response(serializer.data)
 
     @action(detail=False, methods=["get", "patch"], permission_classes=[permissions.IsAuthenticated], url_path="by-teacher")
     def list_by_teacher(self, request):

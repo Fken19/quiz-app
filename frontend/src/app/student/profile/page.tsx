@@ -28,6 +28,21 @@ const getTeacherStatusLabel = (status: StudentTeacherLink['status']) => {
   return status;
 };
 
+interface TeacherInviteProfile {
+  teacher_id: string;
+  display_name: string;
+  affiliation?: string | null;
+  avatar_url?: string | null;
+  bio?: string | null;
+  updated_at: string;
+}
+
+interface InvitePreviewResult {
+  teacher_profile: TeacherInviteProfile;
+  existing_link_status?: StudentTeacherLink['status'] | null;
+  can_redeem: boolean;
+}
+
 export default function ProfilePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -45,6 +60,9 @@ export default function ProfilePage() {
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [invitePreview, setInvitePreview] = useState<InvitePreviewResult | null>(null);
+  const [previewingInvite, setPreviewingInvite] = useState(false);
+  const [redeemingInvite, setRedeemingInvite] = useState(false);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -188,22 +206,59 @@ export default function ProfilePage() {
     }
   };
 
-  const handleRedeem = async () => {
+  const handlePreviewRedeem = async () => {
     if (!inviteCode.trim()) {
       setLinkMessage('招待コードを入力してください。');
       return;
     }
     try {
+      setPreviewingInvite(true);
       setLinkMessage(null);
+      const preview = await apiPost<InvitePreviewResult>('/api/invitation-codes/preview/', { invitation_code: inviteCode.trim() });
+      setInvitePreview(preview);
+    } catch (err) {
+      console.error(err);
+      setLinkMessage('招待コードの確認に失敗しました。');
+    } finally {
+      setPreviewingInvite(false);
+    }
+  };
+
+  const handleConfirmRedeem = async () => {
+    if (!inviteCode.trim()) return;
+    try {
+      setRedeemingInvite(true);
       await apiPost('/api/invitation-codes/redeem/', { invitation_code: inviteCode.trim() });
+      setInvitePreview(null);
       setInviteCode('');
       await refreshLinks();
       setLinkMessage('承認待ちとして送信しました。');
     } catch (err) {
       console.error(err);
       setLinkMessage('招待コードの登録に失敗しました。');
+    } finally {
+      setRedeemingInvite(false);
     }
   };
+
+  const closeInvitePreview = () => {
+    setInvitePreview(null);
+  };
+
+  const invitePreviewProfile = invitePreview?.teacher_profile;
+  let inviteStatusMessage: string | null = null;
+  if (invitePreview) {
+    if (invitePreview.existing_link_status === 'pending') {
+      inviteStatusMessage = 'この講師とは既に承認待ちです。';
+    } else if (invitePreview.existing_link_status === 'active') {
+      inviteStatusMessage = 'この講師とは既に紐付け済みです。';
+    } else if (invitePreview.existing_link_status === 'revoked') {
+      inviteStatusMessage = '以前解除した講師です。申請すると再度紐付けされます。';
+    }
+    if (!invitePreview.can_redeem && !inviteStatusMessage) {
+      inviteStatusMessage = 'この招待コードでは現在申請できません。';
+    }
+  }
 
   const decodeQrWithBarcodeDetector = async (image: HTMLImageElement) => {
     // BarcodeDetectorは対応ブラウザのみ利用
@@ -377,10 +432,11 @@ export default function ProfilePage() {
           />
           <button
             type="button"
-            onClick={handleRedeem}
-            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+            onClick={handlePreviewRedeem}
+            disabled={previewingInvite}
+            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            登録
+            {previewingInvite ? '確認中...' : '確認'}
           </button>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -412,30 +468,112 @@ export default function ProfilePage() {
           ) : (
             <div className="divide-y">
               {summary.teacherLinks.map((link) => (
-                <TeacherLinkRow key={link.student_teacher_link_id} link={link} onRevoke={handleRevoke} />
+                <TeacherLinkRow
+                  key={link.student_teacher_link_id}
+                  link={link}
+                  onRevoke={handleRevoke}
+                  onViewProfile={() => router.push(`/student/teachers/${link.student_teacher_link_id}`)}
+                />
               ))}
             </div>
           )}
         </div>
       </section>
 
+      {invitePreview && invitePreviewProfile && (
+        <div className="fixed inset-0 bg-black/50 z-30 flex items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 space-y-5 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">講師プロフィールを確認</h3>
+              <button
+                type="button"
+                onClick={closeInvitePreview}
+                className="text-slate-500 hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex flex-col items-center text-center gap-3">
+              {invitePreviewProfile.avatar_url ? (
+                <img
+                  src={invitePreviewProfile.avatar_url}
+                  alt={`${invitePreviewProfile.display_name}のアイコン`}
+                  className="w-20 h-20 rounded-full object-cover border border-slate-200"
+                />
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-slate-200 flex items-center justify-center text-2xl text-slate-500">
+                  👩‍🏫
+                </div>
+              )}
+              <div>
+                <p className="text-xl font-bold text-slate-900">{invitePreviewProfile.display_name}</p>
+                <p className="text-sm text-slate-600 mt-1">
+                  {invitePreviewProfile.affiliation || '所属情報は未設定です'}
+                </p>
+              </div>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-700 max-h-40 overflow-y-auto whitespace-pre-wrap">
+              {invitePreviewProfile.bio || '自己紹介はまだ登録されていません。'}
+            </div>
+            <p className="text-xs text-slate-500 text-right">
+              最終更新: {new Date(invitePreviewProfile.updated_at).toLocaleString('ja-JP')}
+            </p>
+            {inviteStatusMessage && (
+              <p className="text-sm text-center text-slate-600">{inviteStatusMessage}</p>
+            )}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={closeInvitePreview}
+                className="flex-1 rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRedeem}
+                disabled={!invitePreview.can_redeem || redeemingInvite}
+                className="flex-1 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {redeemingInvite ? '申請中...' : 'この講師に申請する'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
 
-function TeacherLinkRow({ link, onRevoke }: { link: StudentTeacherLink; onRevoke: (link: StudentTeacherLink) => void }) {
+type TeacherLinkRowProps = {
+  link: StudentTeacherLink;
+  onRevoke: (link: StudentTeacherLink) => void;
+  onViewProfile: () => void;
+};
+
+function TeacherLinkRow({ link, onRevoke, onViewProfile }: TeacherLinkRowProps) {
   const displayName = getTeacherDisplayName(link);
   const isRevoked = link.status === 'revoked';
   const statusLabel = getTeacherStatusLabel(link.status);
 
   return (
-    <div className="py-2 flex items-center justify-between">
-      <div>
-        <p className={`text-sm font-semibold ${isRevoked ? 'text-slate-400' : 'text-slate-900'}`}>
-          {displayName}
-        </p>
+    <div className="py-2 flex items-center justify-between gap-3">
+      <button
+        type="button"
+        onClick={() => {
+          if (isRevoked) return;
+          onViewProfile();
+        }}
+        className={`flex-1 rounded-md px-3 py-2 text-left transition ${
+          isRevoked
+            ? 'bg-slate-100 text-slate-400 cursor-default'
+            : 'bg-slate-50 text-slate-900 hover:bg-slate-100'
+        }`}
+      >
+        <p className="text-sm font-semibold">{displayName}</p>
         <p className={`text-xs ${isRevoked ? 'text-slate-400' : 'text-slate-600'}`}>状態: {statusLabel}</p>
-      </div>
+      </button>
       <button
         type="button"
         onClick={() => {

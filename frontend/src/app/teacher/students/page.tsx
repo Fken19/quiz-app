@@ -35,8 +35,16 @@ export default function TeacherStudentsPage() {
     kana_for_sort: '',
     color: '',
   });
-  const [aliasModalId, setAliasModalId] = useState<string | null>(null);
-  const [aliasValue, setAliasValue] = useState('');
+const [aliasModalId, setAliasModalId] = useState<string | null>(null);
+const [aliasValue, setAliasValue] = useState('');
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+  const [quickSetupLink, setQuickSetupLink] = useState<TeacherStudent | null>(null);
+  const [quickSetupForm, setQuickSetupForm] = useState({
+    custom_display_name: '',
+    local_student_code: '',
+    tags: '',
+    private_note: '',
+  });
 
   const fetchStudents = async () => {
     try {
@@ -44,9 +52,11 @@ export default function TeacherStudentsPage() {
       const response = await apiGet('/api/teacher/students/').catch(() => []);
       const list: TeacherStudent[] = Array.isArray(response) ? response : [];
       setRows(list);
+      return list;
     } catch (err) {
       console.error(err);
       setError('生徒一覧の取得に失敗しました');
+      return undefined;
     } finally {
       setLoading(false);
     }
@@ -61,7 +71,17 @@ export default function TeacherStudentsPage() {
       setActionMessage(null);
       await apiPost(`/api/student-teacher-links/${id}/approve/`, {});
       setActionMessage('承認しました');
-      await fetchStudents();
+      const updated = await fetchStudents();
+      const target = (updated || rows).find((row) => row.student_teacher_link_id === id) || null;
+      if (target) {
+        setQuickSetupLink(target);
+        setQuickSetupForm({
+          custom_display_name: target.custom_display_name || target.display_name || '',
+          local_student_code: target.local_student_code || '',
+          tags: (target.tags || []).join(','),
+          private_note: target.private_note || '',
+        });
+      }
     } catch (err) {
       console.error(err);
       setActionMessage('承認に失敗しました');
@@ -265,7 +285,7 @@ export default function TeacherStudentsPage() {
                     )}
                     <button
                       type="button"
-                      onClick={() => handleRevoke(row.student_teacher_link_id)}
+                      onClick={() => setConfirmRevokeId(row.student_teacher_link_id)}
                       className="px-3 py-1 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
                     >
                       解除
@@ -427,6 +447,130 @@ export default function TeacherStudentsPage() {
                 className="px-3 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
               >
                 保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmRevokeId && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-40 px-4">
+          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-slate-900">紐付けを解除しますか？</h3>
+            <p className="text-sm text-slate-700">
+              解除すると、この生徒との紐付けは無効になり、再度申請が必要になります。
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmRevokeId(null)}
+                className="px-4 py-2 text-sm rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const id = confirmRevokeId;
+                  setConfirmRevokeId(null);
+                  if (id) await handleRevoke(id);
+                }}
+                className="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
+              >
+                解除する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {quickSetupLink && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">承認した生徒の設定</h3>
+              <button
+                type="button"
+                onClick={() => setQuickSetupLink(null)}
+                className="text-slate-500 hover:text-slate-700 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-slate-600">
+              表示名やタグ、メモをすぐに登録できます。後から生徒一覧でも編集できます。
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium text-slate-800">表示名</label>
+                <input
+                  type="text"
+                  className="w-full border rounded-md px-3 py-2 text-sm text-slate-900"
+                  value={quickSetupForm.custom_display_name}
+                  onChange={(e) => setQuickSetupForm({ ...quickSetupForm, custom_display_name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-800">ローカルコード</label>
+                <input
+                  type="text"
+                  className="w-full border rounded-md px-3 py-2 text-sm text-slate-900"
+                  value={quickSetupForm.local_student_code}
+                  onChange={(e) => setQuickSetupForm({ ...quickSetupForm, local_student_code: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-800">タグ（カンマ区切り）</label>
+                <input
+                  type="text"
+                  className="w-full border rounded-md px-3 py-2 text-sm text-slate-900"
+                  value={quickSetupForm.tags}
+                  onChange={(e) => setQuickSetupForm({ ...quickSetupForm, tags: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-800">メモ</label>
+                <textarea
+                  className="w-full border rounded-md px-3 py-2 text-sm text-slate-900"
+                  rows={3}
+                  value={quickSetupForm.private_note}
+                  onChange={(e) => setQuickSetupForm({ ...quickSetupForm, private_note: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setQuickSetupLink(null)}
+                className="flex-1 px-4 py-2 text-sm rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                後で設定する
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!quickSetupLink) return;
+                  setActionMessage(null);
+                  try {
+                    await apiPatch('/api/teacher/students/', {
+                      student_teacher_link_id: quickSetupLink.student_teacher_link_id,
+                      custom_display_name: quickSetupForm.custom_display_name,
+                      local_student_code: quickSetupForm.local_student_code,
+                      tags: quickSetupForm.tags
+                        .split(',')
+                        .map((t) => t.trim())
+                        .filter(Boolean),
+                      private_note: quickSetupForm.private_note,
+                    });
+                    setActionMessage('生徒情報を更新しました');
+                    setQuickSetupLink(null);
+                    fetchStudents();
+                  } catch (err) {
+                    console.error(err);
+                    setActionMessage('生徒情報の更新に失敗しました');
+                  }
+                }}
+                className="flex-1 px-4 py-2 text-sm rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                保存する
               </button>
             </div>
           </div>
