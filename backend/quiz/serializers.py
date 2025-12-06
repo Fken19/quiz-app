@@ -147,6 +147,15 @@ class StudentTeacherLinkSerializer(serializers.ModelSerializer):
         return obj.teacher.email
 
 
+class StudentTeacherPublicProfileSerializer(serializers.Serializer):
+    teacher_id = serializers.UUIDField(read_only=True)
+    display_name = serializers.CharField(read_only=True)
+    affiliation = serializers.CharField(allow_null=True, allow_blank=True, read_only=True)
+    avatar_url = serializers.CharField(allow_null=True, allow_blank=True, read_only=True)
+    bio = serializers.CharField(allow_null=True, allow_blank=True, read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+
 class TeacherStudentListSerializer(serializers.ModelSerializer):
     student_teacher_link_id = serializers.UUIDField(source="id", read_only=True)
     display_name = serializers.SerializerMethodField()

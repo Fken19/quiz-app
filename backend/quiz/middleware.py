@@ -97,6 +97,7 @@ class TeacherAccessControlMiddleware:
     STUDENT_OPEN_PATHS = [
         '/api/student-teacher-links/',
         '/api/invitation-codes/redeem',
+        '/api/invitation-codes/preview',
     ]
     
     def __init__(self, get_response):
