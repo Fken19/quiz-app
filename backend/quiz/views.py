@@ -262,19 +262,40 @@ class InvitationCodeViewSet(BaseModelViewSet):
         if code.used_at:
             return Response({"detail": "この招待コードは使用済みです。"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 既に同じ組み合わせがある場合は再利用せず既存を返す
         existing_link = models.StudentTeacherLink.objects.filter(
             teacher=code.issued_by,
             student=user,
-            status__in=[models.LinkStatus.PENDING, models.LinkStatus.ACTIVE],
         ).first()
         if existing_link:
-            return Response({"detail": "既に招待済みです。", "link_id": str(existing_link.id)}, status=status.HTTP_200_OK)
+            if existing_link.status in [models.LinkStatus.PENDING, models.LinkStatus.ACTIVE]:
+                return Response({"detail": "既に招待済みです。", "link_id": str(existing_link.id)}, status=status.HTTP_200_OK)
+            # 解除済みのリンクは再利用して pending に戻す
+            existing_link.status = models.LinkStatus.PENDING
+            existing_link.linked_at = timezone.now()
+            existing_link.revoked_at = None
+            existing_link.revoked_by_teacher = None
+            existing_link.revoked_by_student = None
+            existing_link.invitation = code
+            existing_link.save(
+                update_fields=[
+                    "status",
+                    "linked_at",
+                    "revoked_at",
+                    "revoked_by_teacher",
+                    "revoked_by_student",
+                    "invitation",
+                ]
+            )
+            code.used_by = user
+            code.used_at = now
+            code.save(update_fields=["used_by", "used_at"])
+            return Response({"detail": "承認待ちとして登録しました。", "link_id": str(existing_link.id)}, status=status.HTTP_200_OK)
 
         models.StudentTeacherLink.objects.create(
             teacher=code.issued_by,
             student=user,
             status=models.LinkStatus.PENDING,
+            linked_at=timezone.now(),
             invitation=code,
         )
         code.used_by = user
@@ -2926,4 +2947,3 @@ __all__ = [
     "TeacherStudentProgressViewSet",
     "TeacherGroupMemberSummaryView",
 ]
-
