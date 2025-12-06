@@ -18,6 +18,16 @@ const initialSummary: ProfileSummary = {
   teacherLinks: [],
 };
 
+const getTeacherDisplayName = (link: StudentTeacherLink) =>
+  link.teacher_display_name || link.custom_display_name || link.teacher_email || link.teacher;
+
+const getTeacherStatusLabel = (status: StudentTeacherLink['status']) => {
+  if (status === 'pending') return '承認待ち';
+  if (status === 'active') return '承認済み';
+  if (status === 'revoked') return '解除済み';
+  return status;
+};
+
 export default function ProfilePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -259,12 +269,17 @@ export default function ProfilePage() {
     }
   };
 
-  const hiddenFileInputId = 'qr-file-input';
-
-  const handleRevoke = async (linkId: string) => {
+  const handleRevoke = async (link: StudentTeacherLink) => {
+    if (link.status === 'revoked') return;
+    const teacherName = getTeacherDisplayName(link);
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(`${teacherName}との紐付けを解除しますか？`);
+      if (!confirmed) return;
+    }
     try {
-      await apiPost(`/api/student-teacher-links/${linkId}/revoke/`, {});
+      await apiPost(`/api/student-teacher-links/${link.student_teacher_link_id}/revoke/`, {});
       await refreshLinks();
+      setLinkMessage('講師との紐付けを解除しました。');
     } catch (err) {
       console.error(err);
       setLinkMessage('リンク解除に失敗しました。');
@@ -370,12 +385,10 @@ export default function ProfilePage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <label
-            htmlFor={hiddenFileInputId}
             className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 cursor-pointer"
           >
             カメラ/画像から読み取る
             <input
-              id={hiddenFileInputId}
               type="file"
               accept="image/*"
               capture="environment"
@@ -383,21 +396,9 @@ export default function ProfilePage() {
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) handleScanFile(file);
+                e.target.value = '';
               }}
-            />
-          </label>
-          <label
-            className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 cursor-pointer"
-          >
-            画像から読み取る
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleScanFile(file);
-              }}
+              disabled={scanning}
             />
           </label>
         </div>
@@ -422,22 +423,29 @@ export default function ProfilePage() {
   );
 }
 
-function TeacherLinkRow({ link, onRevoke }: { link: StudentTeacherLink; onRevoke: (id: string) => void }) {
-  const displayName = link.teacher_display_name || link.custom_display_name || link.teacher_email || link.teacher;
+function TeacherLinkRow({ link, onRevoke }: { link: StudentTeacherLink; onRevoke: (link: StudentTeacherLink) => void }) {
+  const displayName = getTeacherDisplayName(link);
+  const isRevoked = link.status === 'revoked';
+  const statusLabel = getTeacherStatusLabel(link.status);
 
   return (
     <div className="py-2 flex items-center justify-between">
       <div>
-        <p className="text-sm font-semibold text-slate-900">{displayName}</p>
-        {link.teacher_email && <p className="text-xs text-slate-600">{link.teacher_email}</p>}
-        <p className="text-xs text-slate-600">状態: {link.status}</p>
+        <p className={`text-sm font-semibold ${isRevoked ? 'text-slate-400' : 'text-slate-900'}`}>
+          {displayName}
+        </p>
+        <p className={`text-xs ${isRevoked ? 'text-slate-400' : 'text-slate-600'}`}>状態: {statusLabel}</p>
       </div>
       <button
         type="button"
-        onClick={() => onRevoke(link.student_teacher_link_id)}
-        className="text-xs text-red-600 hover:underline"
+        onClick={() => {
+          if (isRevoked) return;
+          onRevoke(link);
+        }}
+        className={`text-xs ${isRevoked ? 'text-slate-400 cursor-default' : 'text-red-600 hover:underline'}`}
+        disabled={isRevoked}
       >
-        解除
+        {isRevoked ? '解除済み' : '解除'}
       </button>
     </div>
   );
