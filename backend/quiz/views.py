@@ -365,7 +365,10 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
 
     def get_queryset(self):  # type: ignore[override]
         user = self.request.user
-        qs = models.StudentTeacherLink.objects.select_related("teacher", "student").order_by("-linked_at")
+        qs = (
+            models.StudentTeacherLink.objects.select_related("teacher", "student", "student__profile")
+            .order_by("-linked_at")
+        )
 
         status_param = self.request.query_params.get("status")
         if status_param:

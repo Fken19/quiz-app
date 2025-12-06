@@ -115,6 +115,11 @@ class StudentTeacherLinkSerializer(serializers.ModelSerializer):
     student_teacher_link_id = serializers.UUIDField(source="id", read_only=True)
     teacher_email = serializers.EmailField(source="teacher.email", read_only=True)
     teacher_display_name = serializers.SerializerMethodField()
+    student_display_name = serializers.SerializerMethodField()
+    student_grade = serializers.SerializerMethodField()
+    student_self_intro = serializers.SerializerMethodField()
+    student_avatar_url = serializers.SerializerMethodField()
+    student_profile_updated_at = serializers.SerializerMethodField()
 
     class Meta:
         model = models.StudentTeacherLink
@@ -137,6 +142,11 @@ class StudentTeacherLinkSerializer(serializers.ModelSerializer):
             "kana_for_sort",
             "color",
             "updated_at",
+            "student_display_name",
+            "student_grade",
+            "student_self_intro",
+            "student_avatar_url",
+            "student_profile_updated_at",
         ]
         read_only_fields = ["linked_at", "updated_at"]
 
@@ -145,6 +155,34 @@ class StudentTeacherLinkSerializer(serializers.ModelSerializer):
         if profile and profile.display_name:
             return profile.display_name
         return obj.teacher.email
+
+    def _student_profile(self, obj):
+        try:
+            return obj.student.profile
+        except Exception:
+            return None
+
+    def get_student_display_name(self, obj):
+        profile = self._student_profile(obj)
+        if profile and profile.display_name:
+            return profile.display_name
+        return ""
+
+    def get_student_grade(self, obj):
+        profile = self._student_profile(obj)
+        return profile.grade if profile else None
+
+    def get_student_self_intro(self, obj):
+        profile = self._student_profile(obj)
+        return profile.self_intro if profile else None
+
+    def get_student_avatar_url(self, obj):
+        profile = self._student_profile(obj)
+        return profile.avatar_url if profile else None
+
+    def get_student_profile_updated_at(self, obj):
+        profile = self._student_profile(obj)
+        return profile.updated_at if profile else None
 
 
 class StudentTeacherPublicProfileSerializer(serializers.Serializer):

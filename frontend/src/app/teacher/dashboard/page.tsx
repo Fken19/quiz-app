@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { apiGet, ApiError } from '@/lib/api-utils';
-import type { Test, TestResult } from '@/types/quiz';
+import { apiGet, apiPost, apiPatch, ApiError } from '@/lib/api-utils';
+import type { Test, TestResult, StudentTeacherLink } from '@/types/quiz';
 import { 
   ClipboardDocumentListIcon, 
   UserGroupIcon, 
@@ -34,6 +34,44 @@ export default function TeacherDashboardPage() {
   const [recentResults, setRecentResults] = useState<TestResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingLinks, setPendingLinks] = useState<StudentTeacherLink[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [selectedPending, setSelectedPending] = useState<StudentTeacherLink | null>(null);
+  const [pendingActionError, setPendingActionError] = useState<string | null>(null);
+  const [pendingActionLoading, setPendingActionLoading] = useState(false);
+  const [initialSetupLink, setInitialSetupLink] = useState<StudentTeacherLink | null>(null);
+  const [initialSetupForm, setInitialSetupForm] = useState({
+    custom_display_name: '',
+    local_student_code: '',
+    tags: '',
+    private_note: '',
+    kana_for_sort: '',
+    color: '',
+  });
+  const [initialSetupSaving, setInitialSetupSaving] = useState(false);
+  const [initialSetupError, setInitialSetupError] = useState<string | null>(null);
+
+  const handleTeacherApiError = useCallback((err: unknown) => {
+    if (err instanceof ApiError && err.status === 403) {
+      router.replace('/teacher/access-denied');
+      return true;
+    }
+    return false;
+  }, [router]);
+
+  const fetchPendingLinks = useCallback(async () => {
+    try {
+      setPendingLoading(true);
+      const response = await apiGet('/api/student-teacher-links/?status=pending&page_size=50');
+      const list: StudentTeacherLink[] = Array.isArray(response) ? response : response?.results || [];
+      setPendingLinks(list);
+    } catch (err) {
+      console.error('Pending links fetch error:', err);
+      if (handleTeacherApiError(err)) return;
+    } finally {
+      setPendingLoading(false);
+    }
+  }, [handleTeacherApiError]);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -65,14 +103,7 @@ export default function TeacherDashboardPage() {
         setRecentResults(results);
       } catch (err) {
         console.error('Dashboard fetch error:', err);
-        
-        // ApiErrorの場合、403エラーはホワイトリスト未登録
-        if (err instanceof ApiError && err.status === 403) {
-          console.warn('Access denied (403) - redirecting to access-denied page');
-          router.replace('/teacher/access-denied');
-          return;
-        }
-        
+        if (handleTeacherApiError(err)) return;
         setError('ダッシュボード情報の取得に失敗しました');
       } finally {
         setLoading(false);
@@ -80,7 +111,70 @@ export default function TeacherDashboardPage() {
     };
 
     fetchStats();
-  }, [router]);
+    fetchPendingLinks();
+  }, [router, handleTeacherApiError, fetchPendingLinks]);
+
+  const openPendingModal = (link: StudentTeacherLink | null) => {
+    setPendingActionError(null);
+    setSelectedPending(link);
+  };
+
+  const refreshPending = async () => {
+    await fetchPendingLinks();
+  };
+
+  const handleApprovePending = async () => {
+    if (!selectedPending) return;
+    try {
+      const approvedLink = selectedPending;
+      setPendingActionLoading(true);
+      setPendingActionError(null);
+      await apiPost(`/api/student-teacher-links/${selectedPending.student_teacher_link_id}/approve/`, {});
+      await refreshPending();
+      setSelectedPending(null);
+      setInitialSetupLink(approvedLink);
+      setInitialSetupForm({
+        custom_display_name: approvedLink.custom_display_name || approvedLink.student_display_name || '',
+        local_student_code: approvedLink.local_student_code || '',
+        tags: (approvedLink.tags || []).join(','),
+        private_note: approvedLink.private_note || '',
+        kana_for_sort: approvedLink.kana_for_sort || '',
+        color: approvedLink.color || '',
+      });
+    } catch (err) {
+      console.error('Approve pending error:', err);
+      if (handleTeacherApiError(err)) return;
+      setPendingActionError('承認に失敗しました。時間をおいて再試行してください。');
+    } finally {
+      setPendingActionLoading(false);
+    }
+  };
+
+  const handleRejectPending = async () => {
+    if (!selectedPending) return;
+    try {
+      setPendingActionLoading(true);
+      setPendingActionError(null);
+      await apiPost(`/api/student-teacher-links/${selectedPending.student_teacher_link_id}/revoke/`, {});
+      await refreshPending();
+      setSelectedPending(null);
+    } catch (err) {
+      console.error('Reject pending error:', err);
+      if (handleTeacherApiError(err)) return;
+      setPendingActionError('拒否に失敗しました。時間をおいて再試行してください。');
+    } finally {
+      setPendingActionLoading(false);
+    }
+  };
+
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return '---';
+    try {
+      return new Date(value).toLocaleString('ja-JP');
+    } catch {
+      return value;
+    }
+  };
 
   if (loading) {
     return (
@@ -182,6 +276,59 @@ export default function TeacherDashboardPage() {
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 bg-gradient-to-r from-emerald-50 to-green-50 border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <UserGroupIcon className="h-5 w-5 text-emerald-600" />
+              <h2 className="text-lg font-semibold text-slate-900">紐付け申請</h2>
+            </div>
+            <span className="bg-emerald-100 text-emerald-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+              {pendingLinks.length} 件
+            </span>
+          </div>
+          <div className="p-6 space-y-4">
+            {pendingLoading ? (
+              <div className="text-center text-sm text-slate-500">読み込み中...</div>
+            ) : pendingLinks.length === 0 ? (
+              <p className="text-sm text-slate-500">現在、紐付け申請はありません。</p>
+            ) : (
+              <>
+                <ul className="divide-y">
+                  {pendingLinks.slice(0, 3).map((link) => (
+                    <li key={link.student_teacher_link_id}>
+                      <button
+                        type="button"
+                        onClick={() => openPendingModal(link)}
+                        className="w-full text-left py-3 flex items-center justify-between gap-3 hover:bg-emerald-50 rounded-lg px-2 transition"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {link.student_display_name || '名前未設定'}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            申請日時: {formatDateTime(link.linked_at)}
+                          </p>
+                        </div>
+                        <span className="text-xs font-semibold text-emerald-700">
+                          詳細 →
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {pendingLinks.length > 3 && (
+                  <button
+                    type="button"
+                    onClick={() => openPendingModal(pendingLinks[0])}
+                    className="text-sm text-emerald-700 font-semibold hover:underline"
+                  >
+                    すべての申請を見る →
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </section>
         {/* Active Tests */}
         <section className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 flex items-center justify-between">
@@ -294,6 +441,200 @@ export default function TeacherDashboardPage() {
           </div>
         </section>
       </div>
+
+      {selectedPending && (
+        <div className="fixed inset-0 bg-black/60 z-40 flex items-center justify-center px-4 py-10">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">申請内容の確認</h3>
+              <button
+                type="button"
+                onClick={() => openPendingModal(null)}
+                className="text-slate-500 hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex flex-col items-center text-center gap-3">
+              {selectedPending.student_avatar_url ? (
+                <img
+                  src={selectedPending.student_avatar_url}
+                  alt={`${selectedPending.student_display_name || '生徒'}のアイコン`}
+                  className="w-24 h-24 rounded-full object-cover border border-slate-200"
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-slate-200 flex items-center justify-center text-3xl text-slate-500">
+                  👤
+                </div>
+              )}
+              <div>
+                <p className="text-2xl font-bold text-slate-900">
+                  {selectedPending.student_display_name || '名前未設定'}
+                </p>
+                <p className="text-sm text-slate-600 mt-1">
+                  {selectedPending.student_grade || '学年・クラス情報は未設定'}
+                </p>
+              </div>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-700 max-h-48 overflow-y-auto whitespace-pre-wrap">
+              {selectedPending.student_self_intro || '自己紹介はまだ登録されていません。'}
+            </div>
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>申請日時: {formatDateTime(selectedPending.linked_at)}</span>
+              <span>プロフィール更新: {formatDateTime(selectedPending.student_profile_updated_at)}</span>
+            </div>
+            {pendingActionError && (
+              <p className="text-sm text-red-600 text-center">{pendingActionError}</p>
+            )}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={handleRejectPending}
+                disabled={pendingActionLoading}
+                className="flex-1 rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {pendingActionLoading ? '処理中...' : '拒否する'}
+              </button>
+              <button
+                type="button"
+                onClick={handleApprovePending}
+                disabled={pendingActionLoading}
+                className="flex-1 rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {pendingActionLoading ? '処理中...' : '承認する'}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => openPendingModal(null)}
+              className="w-full text-sm text-slate-500 hover:text-slate-700"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
+      {initialSetupLink && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4 py-10">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">生徒の初期設定</h3>
+              <button
+                type="button"
+                onClick={() => setInitialSetupLink(null)}
+                className="text-slate-500 hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-slate-600">
+              承認した生徒の表示名やタグ、メモをここでまとめて設定できます。（あとから生徒一覧でも変更できます）
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-slate-800">表示名</label>
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                  value={initialSetupForm.custom_display_name}
+                  onChange={(e) => setInitialSetupForm({ ...initialSetupForm, custom_display_name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-800">ローカルコード</label>
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                  value={initialSetupForm.local_student_code}
+                  onChange={(e) => setInitialSetupForm({ ...initialSetupForm, local_student_code: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-800">タグ（カンマ区切り）</label>
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                  value={initialSetupForm.tags}
+                  onChange={(e) => setInitialSetupForm({ ...initialSetupForm, tags: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-800">並び替え用かな</label>
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                  value={initialSetupForm.kana_for_sort}
+                  onChange={(e) => setInitialSetupForm({ ...initialSetupForm, kana_for_sort: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-800">色コード</label>
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                  placeholder="#RRGGBB"
+                  value={initialSetupForm.color}
+                  onChange={(e) => setInitialSetupForm({ ...initialSetupForm, color: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-sm font-medium text-slate-800">メモ</label>
+                <textarea
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                  rows={3}
+                  value={initialSetupForm.private_note}
+                  onChange={(e) => setInitialSetupForm({ ...initialSetupForm, private_note: e.target.value })}
+                />
+              </div>
+            </div>
+            {initialSetupError && (
+              <p className="text-sm text-red-600">{initialSetupError}</p>
+            )}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => setInitialSetupLink(null)}
+                className="flex-1 rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                スキップ
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!initialSetupLink) return;
+                  setInitialSetupError(null);
+                  try {
+                    setInitialSetupSaving(true);
+                    await apiPatch('/api/teacher/students/', {
+                      student_teacher_link_id: initialSetupLink.student_teacher_link_id,
+                      custom_display_name: initialSetupForm.custom_display_name,
+                      local_student_code: initialSetupForm.local_student_code,
+                      tags: initialSetupForm.tags
+                        .split(',')
+                        .map((t) => t.trim())
+                        .filter(Boolean),
+                      private_note: initialSetupForm.private_note,
+                      kana_for_sort: initialSetupForm.kana_for_sort,
+                      color: initialSetupForm.color,
+                    });
+                    setInitialSetupLink(null);
+                    setActionMessage('生徒の初期設定を保存しました');
+                  } catch (err) {
+                    console.error('Initial setup save error:', err);
+                    setInitialSetupError('初期設定の保存に失敗しました。時間をおいて再試行してください。');
+                  } finally {
+                    setInitialSetupSaving(false);
+                  }
+                }}
+                disabled={initialSetupSaving}
+                className="flex-1 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {initialSetupSaving ? '保存中...' : '保存して完了'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Actions */}
       <section className="bg-gradient-to-r from-indigo-500 to-blue-500 rounded-xl shadow-lg p-6 text-white">
