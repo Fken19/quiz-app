@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiGet, apiPost } from '@/lib/api-utils';
+import { buildFocusQuestionOptions, FOCUS_MAX_LIMIT } from '@/lib/focus-utils';
 import type {
   FocusQuestionsResponse,
   FocusQuizSessionResponse,
@@ -57,6 +58,14 @@ const initialSummary: StudentDashboardSummary = {
   pending_tests: 0,
 };
 
+type FocusDialogState = {
+  statusKey: LearningStatusKey;
+  availableCount: number;
+  options: number[];
+  selection: number;
+  vocabIds: string[];
+};
+
 export default function DashboardPage() {
   const { status, data } = useSession();
   const router = useRouter();
@@ -66,9 +75,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [focusMessage, setFocusMessage] = useState<string | null>(null);
   const [focusLoading, setFocusLoading] = useState<LearningStatusKey | null>(null);
-  const [focusModal, setFocusModal] = useState<{ statusKey: LearningStatusKey; response: FocusQuestionsResponse } | null>(
-    null,
-  );
+  const [focusDialog, setFocusDialog] = useState<FocusDialogState | null>(null);
   const [heatmapColumnSize, setHeatmapColumnSize] = useState(24);
   const HEATMAP_GAP_PX = 4; // gap-1 相当
   const heatmapViewportRef = useRef<HTMLDivElement | null>(null);
@@ -194,15 +201,23 @@ export default function DashboardPage() {
     fetchSummary();
   }, [status, data, router]);
 
-  const requestFocusQuestions = async (statusKey: LearningStatusKey, opts?: { supplement?: boolean }) => {
-    const query = `/api/focus-questions/?status=${statusKey}&limit=10${
+  const requestFocusQuestions = async (
+    statusKey: LearningStatusKey,
+    opts?: { supplement?: boolean; limit?: number },
+  ) => {
+    const limit = Math.min(Math.max(opts?.limit ?? 10, 1), FOCUS_MAX_LIMIT);
+    const query = `/api/focus-questions/?status=${statusKey}&limit=${limit}${
       opts?.supplement ? '&supplement=true' : ''
     }`;
     return (await apiGet(query)) as FocusQuestionsResponse;
   };
 
   const beginFocusSession = async (statusKey: LearningStatusKey, vocabularyIds: string[]) => {
-    const payload = { vocabulary_ids: vocabularyIds.slice(0, 10), status: statusKey };
+    if (!vocabularyIds.length) {
+      setFocusMessage('フォーカス学習対象の語彙が見つかりませんでした。');
+      return;
+    }
+    const payload = { vocabulary_ids: vocabularyIds, status: statusKey };
     const session = (await apiPost('/api/focus-quiz-sessions/', payload)) as FocusQuizSessionResponse;
     if (session && session.quiz_id) {
       router.push(`/student/quiz/play?quizId=${session.quiz_id}`);
@@ -215,37 +230,30 @@ export default function DashboardPage() {
     try {
       setFocusLoading(statusKey);
       setFocusMessage(null);
-      const res = await requestFocusQuestions(statusKey);
-      if (res.available_count === 0) {
+      const res = await requestFocusQuestions(statusKey, { limit: FOCUS_MAX_LIMIT });
+      const available = res.available_count || res.vocabulary_ids.length;
+      if (!available) {
         setFocusMessage(`「${statusLabels[statusKey]}」の語が見つかりません。別のステータスを選んでください。`);
         return;
       }
-      if (res.available_count < res.requested_limit) {
-        setFocusModal({ statusKey, response: res });
+      const capped = Math.min(available, FOCUS_MAX_LIMIT);
+      const options = buildFocusQuestionOptions(capped);
+      if (!options.length) {
+        setFocusMessage('フォーカス学習の対象が足りません。');
         return;
       }
-      await beginFocusSession(statusKey, res.vocabulary_ids);
-    } catch (err) {
-      console.error(err);
-      setFocusMessage('フォーカス対象の取得に失敗しました。');
-    } finally {
-      setFocusLoading(null);
-    }
-  };
-
-  const handleFocusModalAction = async (mode: 'as-is' | 'supplement') => {
-    if (!focusModal) return;
-    const { statusKey, response } = focusModal;
-    try {
-      setFocusLoading(statusKey);
-      setFocusMessage(null);
-      let vocabIds = response.vocabulary_ids;
-      if (mode === 'supplement') {
-        const supplemented = await requestFocusQuestions(statusKey, { supplement: true });
-        vocabIds = supplemented.vocabulary_ids;
-      }
-      await beginFocusSession(statusKey, vocabIds);
-      setFocusModal(null);
+      const vocabIds = Array.isArray(res.vocabulary_ids) ? res.vocabulary_ids : [];
+      const defaultSelectionCandidate = Math.min(10, capped);
+      const initialSelection = options.includes(defaultSelectionCandidate)
+        ? defaultSelectionCandidate
+        : options[options.length - 1];
+      setFocusDialog({
+        statusKey,
+        availableCount: available,
+        options,
+        selection: initialSelection,
+        vocabIds,
+      });
     } catch (err) {
       console.error(err);
       setFocusMessage('フォーカス対象の取得に失敗しました。');
@@ -255,6 +263,28 @@ export default function DashboardPage() {
   };
 
   const formatTimeMinutes = (ms: number) => `${Math.round(ms / 600) / 10}分`;
+
+  const startFocusDialogSession = async () => {
+    if (!focusDialog) return;
+    const { statusKey, selection, vocabIds } = focusDialog;
+    try {
+      setFocusLoading(statusKey);
+      setFocusMessage(null);
+      let vocabIdsToUse = vocabIds;
+      if (selection > vocabIds.length) {
+        const refreshed = await requestFocusQuestions(statusKey, { limit: selection });
+        vocabIdsToUse = refreshed.vocabulary_ids;
+      }
+      const selectedIds = vocabIdsToUse.slice(0, selection);
+      await beginFocusSession(statusKey, selectedIds);
+      setFocusDialog(null);
+    } catch (err) {
+      console.error(err);
+      setFocusMessage('フォーカス学習の開始に失敗しました。');
+    } finally {
+      setFocusLoading(null);
+    }
+  };
 
   const todayTotals = useMemo(() => {
     const correct = summary.today_summary.correct_count;
@@ -434,7 +464,7 @@ export default function DashboardPage() {
                   disabled={focusLoading === statusKey}
                   className="mt-auto inline-flex justify-center rounded-md border border-indigo-500 text-indigo-600 text-sm font-semibold px-3 py-2 hover:bg-indigo-50 disabled:opacity-50"
                 >
-                  {focusLoading === statusKey ? '準備中...' : '10問に挑戦'}
+                  {focusLoading === statusKey ? '準備中...' : 'クイズに挑戦'}
                 </button>
               </div>
             ))}
@@ -577,56 +607,60 @@ export default function DashboardPage() {
         )}
       </section>
 
-      {focusModal && (
+      {focusDialog && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6 space-y-4">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">フォーカス対象が不足しています</h3>
-              <p className="text-sm text-slate-600 mt-1">
-                「{statusLabels[focusModal.statusKey]}」は {focusModal.response.available_count} 件
-                （必要{focusModal.response.requested_limit}件）でした。
-              </p>
-              {focusModal.response.filled_from && focusModal.response.filled_from.length > 0 && (
-                <p className="text-xs text-slate-500 mt-1">
-                  補充候補: {focusModal.response.filled_from.map((f) => `${statusLabels[f.status]}+${f.count}件`).join(' / ')}
-                </p>
-              )}
-            </div>
-            <div className="space-y-2 text-sm text-slate-700">
-              <p>どうしますか？</p>
-              <ul className="list-disc list-inside text-slate-600">
-                <li>そのまま始める: 今ある分だけで開始</li>
-                <li>不足を埋める: 他ステータスから補充して開始</li>
-              </ul>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-3">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">フォーカス学習を開始</h3>
               <button
                 type="button"
-                onClick={() => handleFocusModalAction('as-is')}
-                disabled={focusLoading !== null}
-                className="flex-1 rounded-md bg-slate-100 text-slate-900 px-4 py-2 font-semibold hover:bg-slate-200 disabled:opacity-60"
+                onClick={() => setFocusDialog(null)}
+                className="text-slate-500 hover:text-slate-700 text-sm"
               >
-                この件数で始める
+                閉じる
+              </button>
+            </div>
+            <p className="text-sm text-slate-700">
+              「{statusLabels[focusDialog.statusKey]}」の語から出題します。問題数を選んでください。
+            </p>
+            <p className="text-xs text-slate-500">
+              対象: {focusDialog.availableCount}問（最大{FOCUS_MAX_LIMIT}問まで選択可能）
+            </p>
+            <div className="max-h-52 overflow-y-auto rounded-lg border border-slate-200 divide-y">
+              {focusDialog.options.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setFocusDialog((prev) => (prev ? { ...prev, selection: opt } : prev))}
+                  className={`w-full px-4 py-3 text-left ${
+                    focusDialog.selection === opt ? 'bg-amber-50 text-amber-700 font-semibold' : 'bg-white text-slate-800'
+                  }`}
+                >
+                  {opt}問
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setFocusDialog(null)}
+                className="px-4 py-2 text-sm rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                キャンセル
               </button>
               <button
                 type="button"
-                onClick={() => handleFocusModalAction('supplement')}
-                disabled={focusLoading !== null}
-                className="flex-1 rounded-md bg-indigo-600 text-white px-4 py-2 font-semibold hover:bg-indigo-700 disabled:opacity-60"
+                onClick={startFocusDialogSession}
+                disabled={focusLoading === focusDialog.statusKey}
+                className="px-4 py-2 text-sm rounded-md bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
               >
-                不足を埋めて始める
+                {focusLoading === focusDialog.statusKey ? '開始中...' : '開始する'}
               </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setFocusModal(null)}
-              className="w-full text-sm text-slate-500 hover:text-slate-700"
-            >
-              やめる
-            </button>
           </div>
         </div>
       )}
+
     </div>
   );
 }
