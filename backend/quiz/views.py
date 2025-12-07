@@ -105,6 +105,7 @@ class AvatarUploadView(APIView):
         filename = f"avatars/{request.user.id}/{uuid.uuid4()}{suffix}"
         saved_path = default_storage.save(filename, file)
         public_url = default_storage.url(saved_path)
+        absolute_url = request.build_absolute_uri(public_url)
 
         if upload_for == "teacher":
             if not is_teacher_whitelisted(request.user.email):
@@ -119,7 +120,7 @@ class AvatarUploadView(APIView):
             profile, _ = models.TeacherProfile.objects.get_or_create(teacher=teacher)
             profile.avatar_url = public_url
             profile.save(update_fields=["avatar_url"])
-            return Response({"avatar_url": public_url})
+            return Response({"avatar_url": absolute_url})
 
         profile, _ = models.UserProfile.objects.get_or_create(
             user=request.user,
@@ -127,7 +128,7 @@ class AvatarUploadView(APIView):
         )
         profile.avatar_url = public_url
         profile.save(update_fields=["avatar_url"])
-        return Response({"avatar_url": public_url})
+        return Response({"avatar_url": absolute_url})
 
 
 class TeacherViewSet(BaseModelViewSet):
