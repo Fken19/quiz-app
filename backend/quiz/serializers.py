@@ -27,6 +27,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     user = serializers.UUIDField(source="user_id", read_only=True)
+    avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = models.UserProfile
@@ -39,6 +40,20 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["user", "updated_at"]
+
+    def get_avatar_url(self, obj):
+        url = obj.avatar_url
+        if not url:
+            return None
+        if isinstance(url, str) and url.startswith(("http://", "https://")):
+            return url
+        request = self.context.get("request")
+        if request:
+            try:
+                return request.build_absolute_uri(url)
+            except Exception:
+                return url
+        return url
 
 
 class TeacherSerializer(serializers.ModelSerializer):
@@ -61,6 +76,8 @@ class TeacherSerializer(serializers.ModelSerializer):
 
 
 class TeacherProfileSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.SerializerMethodField()
+
     class Meta:
         model = models.TeacherProfile
         fields = [
@@ -72,6 +89,20 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["teacher", "updated_at"]
+
+    def get_avatar_url(self, obj):
+        url = obj.avatar_url
+        if not url:
+            return None
+        if isinstance(url, str) and url.startswith(("http://", "https://")):
+            return url
+        request = self.context.get("request")
+        if request:
+            try:
+                return request.build_absolute_uri(url)
+            except Exception:
+                return url
+        return url
 
 
 class TeacherWhitelistSerializer(serializers.ModelSerializer):
