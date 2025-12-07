@@ -1,9 +1,25 @@
 """新スキーマ用シリアライザー"""
 
+from typing import Optional
+
+from django.http import HttpRequest
 from rest_framework import serializers
 
 from . import models
 from .utils import is_teacher_whitelisted
+
+
+def build_absolute_media_url(request: Optional[HttpRequest], url: Optional[str]):
+    if not url:
+        return None
+    if isinstance(url, str) and url.startswith(("http://", "https://")):
+        return url
+    if request:
+        try:
+            return request.build_absolute_uri(url)
+        except Exception:
+            return url
+    return url
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -42,18 +58,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ["user", "updated_at"]
 
     def get_avatar_url(self, obj):
-        url = obj.avatar_url
-        if not url:
-            return None
-        if isinstance(url, str) and url.startswith(("http://", "https://")):
-            return url
-        request = self.context.get("request")
-        if request:
-            try:
-                return request.build_absolute_uri(url)
-            except Exception:
-                return url
-        return url
+        return build_absolute_media_url(self.context.get("request"), getattr(obj, "avatar_url", None))
 
 
 class TeacherSerializer(serializers.ModelSerializer):
@@ -91,18 +96,7 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ["teacher", "updated_at"]
 
     def get_avatar_url(self, obj):
-        url = obj.avatar_url
-        if not url:
-            return None
-        if isinstance(url, str) and url.startswith(("http://", "https://")):
-            return url
-        request = self.context.get("request")
-        if request:
-            try:
-                return request.build_absolute_uri(url)
-            except Exception:
-                return url
-        return url
+        return build_absolute_media_url(self.context.get("request"), getattr(obj, "avatar_url", None))
 
 
 class TeacherWhitelistSerializer(serializers.ModelSerializer):
@@ -209,7 +203,7 @@ class StudentTeacherLinkSerializer(serializers.ModelSerializer):
 
     def get_student_avatar_url(self, obj):
         profile = self._student_profile(obj)
-        return profile.avatar_url if profile else None
+        return build_absolute_media_url(self.context.get("request"), profile.avatar_url if profile else None)
 
     def get_student_profile_updated_at(self, obj):
         profile = self._student_profile(obj)
@@ -220,9 +214,16 @@ class StudentTeacherPublicProfileSerializer(serializers.Serializer):
     teacher_id = serializers.UUIDField(read_only=True)
     display_name = serializers.CharField(read_only=True)
     affiliation = serializers.CharField(allow_null=True, allow_blank=True, read_only=True)
-    avatar_url = serializers.CharField(allow_null=True, allow_blank=True, read_only=True)
+    avatar_url = serializers.SerializerMethodField()
     bio = serializers.CharField(allow_null=True, allow_blank=True, read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
+
+    def get_avatar_url(self, obj):
+        if isinstance(obj, dict):
+            url = obj.get("avatar_url")
+        else:
+            url = getattr(obj, "avatar_url", None)
+        return build_absolute_media_url(self.context.get("request"), url)
 
 
 class TeacherStudentListSerializer(serializers.ModelSerializer):
@@ -261,7 +262,7 @@ class TeacherStudentListSerializer(serializers.ModelSerializer):
 
     def get_avatar_url(self, obj):
         profile = self._safe_profile(obj.student)
-        return profile.avatar_url if profile else ""
+        return build_absolute_media_url(self.context.get("request"), profile.avatar_url if profile else None)
 
 
 class RosterFolderSerializer(serializers.ModelSerializer):
@@ -359,7 +360,7 @@ class RosterMembershipSerializer(serializers.ModelSerializer):
 
     def get_avatar_url(self, obj):
         profile = self._safe_profile(obj.student)
-        return profile.avatar_url if profile else ""
+        return build_absolute_media_url(self.context.get("request"), profile.avatar_url if profile else None)
 
     def get_status(self, obj):
         link = self._get_teacher_link(obj)
