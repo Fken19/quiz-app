@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { apiGet, apiPatch, apiPost } from '@/lib/api-utils';
 import type { ApiUser, UserProfile, StudentTeacherLink } from '@/types/quiz';
+import QRScanner from '@/components/QRScanner';
 
 interface ProfileSummary {
   user: ApiUser | null;
@@ -58,8 +59,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
-  const [scanMessage, setScanMessage] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
+  const [showQRScanner, setShowQRScanner] = useState(false);
   const [invitePreview, setInvitePreview] = useState<InvitePreviewResult | null>(null);
   const [previewingInvite, setPreviewingInvite] = useState(false);
   const [redeemingInvite, setRedeemingInvite] = useState(false);
@@ -214,7 +214,7 @@ export default function ProfilePage() {
     try {
       setPreviewingInvite(true);
       setLinkMessage(null);
-      const preview = await apiPost<InvitePreviewResult>('/api/invitation-codes/preview/', { invitation_code: inviteCode.trim() });
+      const preview = await apiPost('/api/invitation-codes/preview/', { invitation_code: inviteCode.trim() }) as InvitePreviewResult;
       setInvitePreview(preview);
     } catch (err) {
       console.error(err);
@@ -245,6 +245,24 @@ export default function ProfilePage() {
     setInvitePreview(null);
   };
 
+  const handleQRScanSuccess = async (code: string) => {
+    setShowQRScanner(false);
+    setInviteCode(code);
+    setLinkMessage('QRコードから招待コードを取得しました。内容を確認して登録してください。');
+    
+    // 自動的にプレビューを実行
+    try {
+      setPreviewingInvite(true);
+      const preview = await apiPost('/api/invitation-codes/preview/', { invitation_code: code.trim() }) as InvitePreviewResult;
+      setInvitePreview(preview);
+    } catch (err) {
+      console.error(err);
+      setLinkMessage('招待コードの確認に失敗しました。');
+    } finally {
+      setPreviewingInvite(false);
+    }
+  };
+
   const invitePreviewProfile = invitePreview?.teacher_profile;
   let inviteStatusMessage: string | null = null;
   if (invitePreview) {
@@ -259,70 +277,6 @@ export default function ProfilePage() {
       inviteStatusMessage = 'この招待コードでは現在申請できません。';
     }
   }
-
-  const decodeQrWithBarcodeDetector = async (image: HTMLImageElement) => {
-    // BarcodeDetectorは対応ブラウザのみ利用
-    // @ts-ignore
-    if (typeof window === 'undefined' || !('BarcodeDetector' in window)) {
-      throw new Error('BarcodeDetectorに対応していません');
-    }
-    // @ts-ignore
-    const supported = await window.BarcodeDetector.getSupportedFormats();
-    if (!supported.includes('qr_code')) {
-      throw new Error('QRコードの読み取りに対応していません');
-    }
-    // @ts-ignore
-    const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-    const canvas = document.createElement('canvas');
-    canvas.width = image.naturalWidth || image.width;
-    canvas.height = image.naturalHeight || image.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('QRコードの解析に失敗しました');
-    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const results = await detector.detect(canvas);
-    if (!results.length) throw new Error('QRコードが見つかりませんでした');
-    return results[0].rawValue;
-  };
-
-  const handleScanFile = async (file: File) => {
-    setScanMessage(null);
-    setScanning(true);
-    try {
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        try {
-          const dataUrl = ev.target?.result as string;
-          const img = new Image();
-          img.onload = async () => {
-            try {
-              const text = await decodeQrWithBarcodeDetector(img);
-              setInviteCode(text);
-              setScanMessage('QRからコードを取得しました。内容を確認して登録してください。');
-            } catch (e) {
-              console.error(e);
-              setScanMessage(e instanceof Error ? e.message : 'QRコードの解析に失敗しました。');
-            } finally {
-              setScanning(false);
-            }
-          };
-          img.onerror = () => {
-            setScanMessage('画像の読み込みに失敗しました。');
-            setScanning(false);
-          };
-          img.src = dataUrl;
-        } catch (e) {
-          console.error(e);
-          setScanMessage('QRコードの解析に失敗しました。');
-          setScanning(false);
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      console.error(err);
-      setScanMessage('QRコードの読み取りに失敗しました。');
-      setScanning(false);
-    }
-  };
 
   const handleRevoke = async (link: StudentTeacherLink) => {
     if (link.status === 'revoked') return;
@@ -440,26 +394,15 @@ export default function ProfilePage() {
           </button>
         </div>
         <div className="flex flex-wrap gap-2">
-          <label
-            className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 cursor-pointer"
+          <button
+            type="button"
+            onClick={() => setShowQRScanner(true)}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
           >
-            カメラ/画像から読み取る
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleScanFile(file);
-                e.target.value = '';
-              }}
-              disabled={scanning}
-            />
-          </label>
+            📷 カメラ/画像から読み取る
+          </button>
         </div>
         {linkMessage && <p className="text-sm text-slate-600">{linkMessage}</p>}
-        {scanMessage && <p className="text-sm text-slate-600">{scanMessage}</p>}
 
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-slate-700">紐付け状況</h3>
@@ -540,6 +483,13 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showQRScanner && (
+        <QRScanner
+          onScanSuccess={handleQRScanSuccess}
+          onClose={() => setShowQRScanner(false)}
+        />
       )}
 
     </div>

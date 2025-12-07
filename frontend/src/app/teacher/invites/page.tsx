@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { apiGet, apiPost } from '@/lib/api-utils';
 import type { InvitationCode } from '@/types/quiz';
+import QRCode from 'qrcode';
 
 export default function TeacherInvitesPage() {
   const [invites, setInvites] = useState<InvitationCode[]>([]);
@@ -14,6 +15,9 @@ export default function TeacherInvitesPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [qrFor, setQrFor] = useState<{ id: string; code: string } | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrGenerating, setQrGenerating] = useState(false);
+  const [qrError, setQrError] = useState<string | null>(null);
 
   const fetchInvites = async () => {
     try {
@@ -60,8 +64,28 @@ export default function TeacherInvitesPage() {
     }
   };
 
-  const qrUrl = (code: string) =>
-    `https://chart.googleapis.com/chart?chs=220x220&cht=qr&chl=${encodeURIComponent(code)}&choe=UTF-8`;
+  useEffect(() => {
+    const generate = async () => {
+      if (!qrFor) {
+        setQrDataUrl(null);
+        setQrError(null);
+        return;
+      }
+      try {
+        setQrGenerating(true);
+        setQrError(null);
+        const dataUrl = await QRCode.toDataURL(qrFor.code, { width: 320, margin: 2 });
+        setQrDataUrl(dataUrl);
+      } catch (err) {
+        console.error(err);
+        setQrError('QRコードの生成に失敗しました');
+      } finally {
+        setQrGenerating(false);
+      }
+    };
+
+    generate();
+  }, [qrFor]);
 
   if (loading) {
     return (
@@ -199,10 +223,28 @@ export default function TeacherInvitesPage() {
           className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4"
           onClick={() => setQrFor(null)}
         >
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full text-center space-y-4">
-            {/* TODO: 将来的に独自のQR生成（ライブラリ or サーバ側生成）に置き換える */}
-            <img src={qrUrl(qrFor.code)} alt="QR" className="mx-auto w-64 h-64 border rounded" />
-            <p className="text-sm text-slate-600">タップで閉じる</p>
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full text-center space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-slate-900">招待コードのQR</h3>
+            {qrGenerating && <p className="text-sm text-slate-600">生成中...</p>}
+            {qrError && <p className="text-sm text-red-600">{qrError}</p>}
+            {qrDataUrl && !qrGenerating && (
+              <img src={qrDataUrl} alt="QR" className="mx-auto w-64 h-64 border rounded" />
+            )}
+            <div className="text-sm text-slate-600 space-y-1">
+              <p>コード: <span className="font-mono select-all">{qrFor.code}</span></p>
+              <p>タップで閉じる / 画像を長押しで保存できます</p>
+            </div>
+            <div className="flex justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setQrFor(null);
+                }}
+                className="px-4 py-2 text-sm rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                閉じる
+              </button>
+            </div>
           </div>
         </div>
       )}
