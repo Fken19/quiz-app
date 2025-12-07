@@ -12,6 +12,21 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: true,
+  images: {
+    remotePatterns: [
+      {
+        protocol: "http",
+        hostname: "localhost",
+        port: "8080",
+        pathname: "/media/**",
+      },
+      {
+        protocol: "https",
+        hostname: "quiz-backend-974259457412.asia-northeast1.run.app",
+        pathname: "/media/**",
+      },
+    ],
+  },
 };
 
 export default nextConfig;

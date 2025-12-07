@@ -236,7 +236,7 @@ class InvitationCodeViewSet(BaseModelViewSet):
         invite.save(update_fields=["revoked", "revoked_at"])
         return Response({"detail": "招待コードを失効しました。"})
 
-    def _serialize_teacher_profile(self, teacher):
+    def _serialize_teacher_profile(self, teacher, request):
         profile = getattr(teacher, "profile", None)
         data = {
             "teacher_id": teacher.id,
@@ -246,7 +246,7 @@ class InvitationCodeViewSet(BaseModelViewSet):
             "bio": profile.bio if profile and profile.bio else None,
             "updated_at": profile.updated_at if profile else teacher.updated_at,
         }
-        serializer = serializers.StudentTeacherPublicProfileSerializer(data)
+        serializer = serializers.StudentTeacherPublicProfileSerializer(data, context={"request": request})
         return serializer.data
 
     @action(detail=False, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="preview")
@@ -282,7 +282,7 @@ class InvitationCodeViewSet(BaseModelViewSet):
         existing_status = existing_link.status if existing_link else None
         can_redeem = not (existing_link and existing_link.status in [models.LinkStatus.PENDING, models.LinkStatus.ACTIVE])
 
-        teacher_profile = self._serialize_teacher_profile(code.issued_by)
+        teacher_profile = self._serialize_teacher_profile(code.issued_by, request)
         return Response(
             {
                 "teacher_profile": teacher_profile,
@@ -443,7 +443,7 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
             "bio": profile.bio if profile and profile.bio else None,
             "updated_at": (profile.updated_at if profile else link.teacher.updated_at),
         }
-        serializer = serializers.StudentTeacherPublicProfileSerializer(data)
+        serializer = serializers.StudentTeacherPublicProfileSerializer(data, context={"request": request})
         return Response(serializer.data)
 
     @action(detail=False, methods=["get", "patch"], permission_classes=[permissions.IsAuthenticated], url_path="by-teacher")
@@ -470,7 +470,8 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
                 if f in request.data:
                     setattr(link, f, request.data.get(f) or None)
             link.save(update_fields=fields + ["updated_at"])
-            return Response(serializers.TeacherStudentListSerializer(link).data)
+            serializer = serializers.TeacherStudentListSerializer(link, context={"request": request})
+            return Response(serializer.data)
 
         include_revoked = str(request.query_params.get("include_revoked", "false")).lower() in {"1", "true"}
         qs = (
@@ -480,7 +481,8 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
         )
         if not include_revoked:
             qs = qs.exclude(status=models.LinkStatus.REVOKED)
-        data = serializers.TeacherStudentListSerializer(qs, many=True).data
+        serializer = serializers.TeacherStudentListSerializer(qs, many=True, context={"request": request})
+        data = serializer.data
         return Response(data)
 
 
@@ -754,7 +756,7 @@ class TeacherStudentProgressView(APIView):
             "student_teacher_link_id": str(link.id),
             "display_name": link.custom_display_name or (profile.display_name if profile else ""),
             "status": link.status,
-            "avatar_url": profile.avatar_url if profile else "",
+            "avatar_url": serializers.build_absolute_media_url(request, profile.avatar_url if profile else None),
             "bio": getattr(profile, "self_intro", "") if profile else "",
             "last_activity": last_activity.isoformat() if last_activity else None,
             "groups": [{"roster_folder_id": str(g["roster_folder_id"]), "name": g["roster_folder__name"]} for g in groups],
@@ -855,7 +857,7 @@ class TeacherStudentProgressViewSet(viewsets.ViewSet):
             "student_teacher_link_id": str(link.id),
             "display_name": link.custom_display_name or (profile.display_name if profile else ""),
             "status": link.status,
-            "avatar_url": profile.avatar_url if profile else "",
+            "avatar_url": serializers.build_absolute_media_url(request, profile.avatar_url if profile else None),
             "bio": getattr(profile, "self_intro", "") if profile else "",
             "last_activity": last_activity.isoformat() if last_activity else None,
             "groups": [{"roster_folder_id": str(g["roster_folder_id"]), "name": g["roster_folder__name"]} for g in groups],
@@ -1133,7 +1135,7 @@ class TeacherGroupMemberSummaryView(APIView):
                 {
                     "student_teacher_link_id": str(link.id),
                     "display_name": link.custom_display_name or (profile.display_name if profile else ""),
-                    "avatar_url": profile.avatar_url if profile else "",
+                    "avatar_url": serializers.build_absolute_media_url(request, profile.avatar_url if profile else None),
                     "status": link.status,
                     "last_activity_at": last_at.isoformat() if last_at else None,
                     "total_answers": total_answers,
