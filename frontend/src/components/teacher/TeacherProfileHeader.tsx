@@ -1,5 +1,3 @@
-import Image from "next/image";
-
 type Props = {
   avatarUrl?: string | null;
   displayName: string;
@@ -26,11 +24,10 @@ export function TeacherProfileHeader({
         <div className="-mt-16 flex items-end gap-4">
           <div className="h-28 w-28 shrink-0 rounded-full border-4 border-white bg-white shadow-md md:h-32 md:w-32">
             {hasAvatar && avatarUrl ? (
-              <Image
+              // 生徒側と同様、通常の img で表示（next/image だとリサイズされるため）
+              <img
                 src={avatarUrl}
                 alt="プロフィール画像"
-                width={128}
-                height={128}
                 className="h-full w-full rounded-full object-cover"
               />
             ) : (
