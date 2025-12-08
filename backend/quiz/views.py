@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 import random
 import uuid
 from datetime import timedelta
@@ -12,6 +13,7 @@ from django.core.cache import caches
 from django.core.files.storage import default_storage
 from django.db.models import Count, Max, Prefetch, Q, Sum, F, OuterRef, Subquery, Exists
 from django.db.models.functions import TruncMonth, TruncWeek
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
@@ -104,8 +106,7 @@ class AvatarUploadView(APIView):
         suffix = ".png" if "png" in content_type else ".jpg"
         filename = f"avatars/{request.user.id}/{uuid.uuid4()}{suffix}"
         saved_path = default_storage.save(filename, file)
-        public_url = default_storage.url(saved_path)
-        absolute_url = request.build_absolute_uri(public_url)
+        absolute_url = serializers.build_absolute_media_url(request, saved_path)
 
         if upload_for == "teacher":
             if not is_teacher_whitelisted(request.user.email):
@@ -118,17 +119,34 @@ class AvatarUploadView(APIView):
                 },
             )
             profile, _ = models.TeacherProfile.objects.get_or_create(teacher=teacher)
-            profile.avatar_url = public_url
+            profile.avatar_url = saved_path
             profile.save(update_fields=["avatar_url"])
             return Response({"avatar_url": absolute_url})
 
         profile, _ = models.UserProfile.objects.get_or_create(
             user=request.user,
-            defaults={"display_name": request.user.email, "avatar_url": public_url},
+            defaults={"display_name": request.user.email, "avatar_url": saved_path},
         )
-        profile.avatar_url = public_url
+        profile.avatar_url = saved_path
         profile.save(update_fields=["avatar_url"])
         return Response({"avatar_url": absolute_url})
+
+
+def media_serve(request, path: str):
+    """default_storage上のファイルを/media/プレフィックスで配信する。"""
+
+    if ".." in path or path.startswith("/"):
+        raise Http404()
+    normalized = path.lstrip("/")
+    if not normalized:
+        raise Http404()
+    if not default_storage.exists(normalized):
+        raise Http404()
+    file_obj = default_storage.open(normalized, "rb")
+    content_type, _ = mimetypes.guess_type(normalized)
+    response = FileResponse(file_obj, content_type=content_type or "application/octet-stream")
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 class TeacherViewSet(BaseModelViewSet):
@@ -242,7 +260,7 @@ class InvitationCodeViewSet(BaseModelViewSet):
             "teacher_id": teacher.id,
             "display_name": profile.display_name if profile and profile.display_name else teacher.email,
             "affiliation": profile.affiliation if profile and profile.affiliation else None,
-            "avatar_url": profile.avatar_url if profile and profile.avatar_url else None,
+            "avatar_url": serializers.build_absolute_media_url(request, profile.avatar_url if profile else None),
             "bio": profile.bio if profile and profile.bio else None,
             "updated_at": profile.updated_at if profile else teacher.updated_at,
         }
@@ -439,7 +457,7 @@ class StudentTeacherLinkViewSet(BaseModelViewSet):
             "teacher_id": link.teacher_id,
             "display_name": (profile.display_name if profile and profile.display_name else "名前未設定"),
             "affiliation": profile.affiliation if profile and profile.affiliation else None,
-            "avatar_url": profile.avatar_url if profile and profile.avatar_url else None,
+            "avatar_url": serializers.build_absolute_media_url(request, profile.avatar_url if profile else None),
             "bio": profile.bio if profile and profile.bio else None,
             "updated_at": (profile.updated_at if profile else link.teacher.updated_at),
         }

@@ -1,7 +1,9 @@
 """新スキーマ用シリアライザー"""
 
 from typing import Optional
+from urllib.parse import urljoin
 
+from django.conf import settings
 from django.http import HttpRequest
 from rest_framework import serializers
 
@@ -9,17 +11,15 @@ from . import models
 from .utils import is_teacher_whitelisted
 
 
-def build_absolute_media_url(request: Optional[HttpRequest], url: Optional[str]):
-    if not url:
+def build_absolute_media_url(request: Optional[HttpRequest], relative_path: Optional[str]):
+    if not relative_path:
         return None
-    if isinstance(url, str) and url.startswith(("http://", "https://")):
-        return url
-    if request:
-        try:
-            return request.build_absolute_uri(url)
-        except Exception:
-            return url
-    return url
+    if isinstance(relative_path, str) and relative_path.startswith(("http://", "https://")):
+        return relative_path
+    joined = urljoin(settings.MEDIA_URL, relative_path.lstrip("/"))
+    if request is None:
+        return joined
+    return request.build_absolute_uri(joined)
 
 
 class UserSerializer(serializers.ModelSerializer):
