@@ -1,5 +1,14 @@
 import type { NextConfig } from "next";
 
+const backendOrigin = process.env.NEXT_PUBLIC_BACKEND_ORIGIN ?? "http://localhost:8080";
+let backendUrl: URL;
+
+try {
+  backendUrl = new URL(backendOrigin);
+} catch {
+  backendUrl = new URL("http://localhost:8080");
+}
+
 const nextConfig: NextConfig = {
   // Temporarily ignore ESLint and TypeScript build errors inside Docker
   // so CI/development images can still produce `.next` artifacts.
@@ -15,15 +24,10 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       {
-        protocol: "http",
-        hostname: "localhost",
-        port: "8080",
+        protocol: backendUrl.protocol.replace(":", ""),
+        hostname: backendUrl.hostname,
         pathname: "/media/**",
-      },
-      {
-        protocol: "https",
-        hostname: "quiz-backend-974259457412.asia-northeast1.run.app",
-        pathname: "/media/**",
+        ...(backendUrl.port ? { port: backendUrl.port } : {}),
       },
     ],
   },

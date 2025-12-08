@@ -3,13 +3,12 @@ URL configuration for quiz_backend project.
 """
 from django.contrib import admin
 from django.urls import path, include
-from django.conf import settings
-from django.conf.urls.static import static
+
+from quiz.views import media_serve
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('quiz.urls')),
     path('accounts/', include('allauth.urls')),
+    path('media/<path:path>', media_serve, name='media'),
 ]
-
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

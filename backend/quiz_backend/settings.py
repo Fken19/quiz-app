@@ -147,7 +147,18 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Media files (user uploaded)
 MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_ROOT = BASE_DIR / 'media'
+USE_GCS_MEDIA = os.getenv('USE_GCS_MEDIA', '0') == '1'
+
+if USE_GCS_MEDIA:
+    if 'storages' not in INSTALLED_APPS:
+        INSTALLED_APPS.append('storages')
+    DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
+    try:
+        GS_BUCKET_NAME = os.environ['GS_BUCKET_NAME']
+    except KeyError as exc:  # noqa: PERF203
+        raise RuntimeError('GS_BUCKET_NAME must be set when USE_GCS_MEDIA=1') from exc
+    GS_DEFAULT_ACL = None
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
