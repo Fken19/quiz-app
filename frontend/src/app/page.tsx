@@ -42,12 +42,18 @@ export default function Home() {
           <p className="mx-auto mt-6 max-w-2xl text-lg tracking-tight text-slate-700">
             Googleアカウントでログインして、英単語4択クイズに挑戦しましょう。あなたの成績を記録し、学習の進捗を可視化できます。
           </p>
-          <div className="mt-10 flex justify-center gap-x-6">
+          <div className="mt-10 flex flex-col items-center gap-4">
             <Link
               href="/auth/signin"
               className="group inline-flex items-center justify-center rounded-full py-3 px-6 text-sm font-semibold focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 focus-visible:outline-indigo-600"
             >
               Googleでログイン
+            </Link>
+            <Link
+              href="/about"
+              className="text-sm text-indigo-600 hover:text-indigo-800 underline underline-offset-4"
+            >
+              このアプリについて
             </Link>
           </div>
         </div>
