@@ -9,6 +9,11 @@ export async function middleware(request: NextRequest) {
   const host = request.headers.get('host')?.toLowerCase();
   const url = request.nextUrl.clone();
 
+  // /about は常に公開（認証不要）
+  if (url.pathname === '/about') {
+    return NextResponse.next();
+  }
+
   if (teacherDomain && host === teacherDomain) {
     if (!url.pathname.startsWith('/teacher') && !url.pathname.startsWith('/api')) {
       url.pathname = `/teacher${url.pathname}`.replace(/\/+$/, '');
