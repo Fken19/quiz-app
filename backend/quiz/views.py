@@ -3306,6 +3306,23 @@ class StudentAttemptSubmitView(APIView):
                     
                     vocab = question.vocabulary
                     
+                    # 未回答の場合（choice_id が null）
+                    if choice_id is None:
+                        # 未回答は不正解扱い
+                        detail = models.TestResultDetail.objects.create(
+                            test_result=test_result,
+                            question_order=question_order,
+                            vocabulary=vocab,
+                            selected_choice=None,
+                            selected_text=None,
+                            is_correct=False,
+                            reaction_time_ms=reaction_time_ms,
+                        )
+                        result_details.append(detail)
+                        if reaction_time_ms:
+                            total_time_ms += reaction_time_ms
+                        continue
+                    
                     # 選択肢を取得
                     try:
                         choice = models.VocabChoice.objects.get(id=choice_id, vocabulary=vocab)
@@ -3358,7 +3375,7 @@ class StudentAttemptSubmitView(APIView):
                 "question_order": detail.question_order,
                 "vocabulary_id": str(detail.vocabulary_id),
                 "vocabulary_text_en": detail.vocabulary.text_en,
-                "selected_text": detail.selected_text,
+                "selected_text": detail.selected_text or "(未回答)",
                 "is_correct": detail.is_correct,
                 "reaction_time_ms": detail.reaction_time_ms,
             })
@@ -3448,7 +3465,7 @@ class StudentAttemptResultView(APIView):
                 "vocabulary_id": str(vocab.id),
                 "english_word": vocab.text_en,
                 "selected_choice_id": str(detail.selected_choice_id) if detail.selected_choice_id else None,
-                "selected_text_ja": detail.selected_text,
+                "selected_text_ja": detail.selected_text or "(未回答)",
                 "is_correct": detail.is_correct,
                 "correct_text_ja": correct_text_ja,  # 正解の訳（結果画面で表示可）
                 "reaction_time_ms": detail.reaction_time_ms,

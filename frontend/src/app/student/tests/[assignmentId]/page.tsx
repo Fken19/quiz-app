@@ -14,6 +14,7 @@ export default function TestDetailPage() {
   const [detail, setDetail] = useState<StudentTestDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);  // 二重開始防止
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -168,11 +169,13 @@ export default function TestDetailPage() {
       <div className="flex gap-4 pt-6 border-t border-slate-200">
         <button
           onClick={() => {
+            setIsStarting(true);
             router.push(`/student/tests/${assignmentId}/attempt`);
           }}
-          className="px-6 py-3 rounded-lg font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition"
+          disabled={isStarting}
+          className="px-6 py-3 rounded-lg font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          受験を開始する
+          {isStarting ? '開始中...' : '受験を開始する'}
         </button>
         <Link
           href="/student/tests"
