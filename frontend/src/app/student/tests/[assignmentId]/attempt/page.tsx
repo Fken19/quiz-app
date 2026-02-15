@@ -25,6 +25,12 @@ export default function AttemptStartRedirectPage() {
     const startTest = async () => {
       try {
         const response = await startAttempt(assignmentId);
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(
+            `attempt_start:${response.attempt_id}`,
+            JSON.stringify(response)
+          );
+        }
         // 受験画面にリダイレクト
         router.push(
           `/student/tests/${assignmentId}/attempt/${response.attempt_id}`

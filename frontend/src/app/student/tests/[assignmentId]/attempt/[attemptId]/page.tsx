@@ -19,6 +19,7 @@ interface AttemptState {
   reactionTimes: Map<number, number>;  // question_order -> ms
   isSubmitting: boolean;
   error: string | null;
+  announcement?: string | null;
 }
 
 export default function AttemptPage() {
@@ -32,13 +33,30 @@ export default function AttemptPage() {
   const [isLoading, setIsLoading] = useState(true);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const questionStartTimeRef = useRef<number>(0);
+  const submitLockRef = useRef(false);
 
   // 受験開始（まだ開始されていない場合）
   useEffect(() => {
     const initializeAttempt = async () => {
       try {
         setIsLoading(true);
-        const response: AttemptStartResponse = await startAttempt(assignmentId);
+
+        let response: AttemptStartResponse | null = null;
+        if (typeof window !== 'undefined') {
+          const cached = sessionStorage.getItem(`attempt_start:${attemptIdParam}`);
+          if (cached) {
+            try {
+              response = JSON.parse(cached) as AttemptStartResponse;
+            } catch {
+              response = null;
+            }
+            sessionStorage.removeItem(`attempt_start:${attemptIdParam}`);
+          }
+        }
+
+        if (!response) {
+          response = await startAttempt(assignmentId);
+        }
 
         const initialState: AttemptState = {
           attemptId: response.attempt_id,
@@ -50,6 +68,7 @@ export default function AttemptPage() {
           reactionTimes: new Map(),
           isSubmitting: false,
           error: null,
+          announcement: response.announcement?.message || null,
         };
 
         setState(initialState);
@@ -88,7 +107,7 @@ export default function AttemptPage() {
   }, [state, timeRemaining]);
 
   const handleTimeUp = async () => {
-    if (!state) return;
+    if (!state || submitLockRef.current) return;
     // タイムアップ時は自動提出
     await handleSubmit();
   };
@@ -146,7 +165,13 @@ export default function AttemptPage() {
   };
 
   const handleSubmit = async () => {
-    if (!state || state.isSubmitting) return;
+    if (!state || state.isSubmitting || submitLockRef.current) return;
+
+    submitLockRef.current = true;
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
 
     setState(prev => {
       if (!prev) return prev;
@@ -169,6 +194,7 @@ export default function AttemptPage() {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : '提出に失敗しました';
       console.error('Error submitting answers:', err);
+      submitLockRef.current = false;
       setState(prev => {
         if (!prev) return prev;
         return { ...prev, error: errorMsg, isSubmitting: false };
@@ -205,6 +231,7 @@ export default function AttemptPage() {
   }
 
   const currentQuestion = state.questions[state.currentQuestionIndex];
+  const currentChoices = currentQuestion?.vocabulary?.choices ?? [];
   const isAnswered = state.selectedAnswers.has(currentQuestion.question_order);
   const selectedChoiceId = state.selectedAnswers.get(currentQuestion.question_order);
 
@@ -224,27 +251,33 @@ export default function AttemptPage() {
             <div className={`text-2xl font-bold ${
               timeRemaining < 60 ? 'text-red-600' : 'text-blue-600'
             }`}>
-              ⏱ {formatTimer(timeRemaining)}
+                ⏱ {formatTimer(timeRemaining)}
+                <div className="text-xs text-gray-500 font-normal">制限時間（全体）</div>
             </div>
           </div>
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-gray-900 font-semibold">
             問題 {state.currentQuestionIndex + 1} / {state.questions.length}
           </div>
+          {state.announcement && (
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {state.announcement}
+            </div>
+          )}
         </div>
 
         {/* 問題 */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">
-            {currentQuestion.vocabulary.english_word}
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">
+            {currentQuestion.vocabulary.text_en}
           </h2>
 
           {/* 選択肢 */}
           <div className="space-y-2">
-            {currentQuestion.choices.map(choice => (
+            {currentChoices.map(choice => (
               <label
-                key={choice.choice_id}
+                key={choice.id}
                 className={`flex items-center p-3 border rounded cursor-pointer transition ${
-                  selectedChoiceId === choice.choice_id
+                  selectedChoiceId === choice.id
                     ? 'border-blue-600 bg-blue-50'
                     : 'border-gray-300 hover:border-gray-400'
                 }`}
@@ -252,12 +285,12 @@ export default function AttemptPage() {
                 <input
                   type="radio"
                   name="choices"
-                  value={choice.choice_id}
-                  checked={selectedChoiceId === choice.choice_id}
-                  onChange={() => handleSelectChoice(choice.choice_id)}
+                  value={choice.id}
+                  checked={selectedChoiceId === choice.id}
+                  onChange={() => handleSelectChoice(choice.id)}
                   className="mr-3"
                 />
-                <span className="text-lg">{choice.choice_ja}</span>
+                <span className="text-lg text-gray-900 font-medium">{choice.text_ja}</span>
               </label>
             ))}
           </div>
@@ -296,7 +329,7 @@ export default function AttemptPage() {
 
         {/* 進捗バー */}
         <div className="bg-white rounded-lg shadow-md p-4">
-          <div className="mb-2 text-sm text-gray-600 font-semibold">回答状況</div>
+          <div className="mb-2 text-sm text-gray-900 font-semibold">回答状況</div>
           <div className="flex flex-wrap gap-2">
             {state.questions.map((q, idx) => {
               const isAnsweredQ = state.selectedAnswers.has(q.question_order);

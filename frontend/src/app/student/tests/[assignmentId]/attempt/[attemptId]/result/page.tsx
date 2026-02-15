@@ -87,7 +87,7 @@ export default function ResultPage() {
                 }`}>
                   {Math.round(result.score)}
                 </div>
-                <p className="text-gray-600 text-sm mt-2">スコア</p>
+                <p className="text-gray-900 text-sm mt-2 font-semibold">スコア</p>
               </div>
 
               {/* 正解数 */}
@@ -95,7 +95,7 @@ export default function ResultPage() {
                 <div className="text-4xl font-bold text-blue-600">
                   {result.correct_count}/{result.total_questions}
                 </div>
-                <p className="text-gray-600 text-sm mt-2">正解数</p>
+                <p className="text-gray-900 text-sm mt-2 font-semibold">正解数</p>
               </div>
 
               {/* 時間 */}
@@ -103,12 +103,12 @@ export default function ResultPage() {
                 <div className="text-2xl font-bold text-purple-600">
                   {mins}:{secs.toString().padStart(2, '0')}
                 </div>
-                <p className="text-gray-600 text-sm mt-2">所要時間</p>
+                <p className="text-gray-900 text-sm mt-2 font-semibold">所要時間（全体）</p>
               </div>
             </div>
 
             {/* メタ情報 */}
-            <div className="text-sm text-gray-500 space-y-1">
+            <div className="text-sm text-gray-700 font-medium space-y-1">
               <p>受験日時: {new Date(result.completed_at).toLocaleString('ja-JP')}</p>
               <p>受験回数: {result.attempt_no}回目</p>
             </div>
@@ -130,10 +130,10 @@ export default function ResultPage() {
             >
               <div className="flex justify-between items-start mb-3">
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-800">
+                  <h3 className="text-lg font-bold text-gray-900">
                     問題 {detail.question_order}
                   </h3>
-                  <p className="text-xl text-gray-700 font-semibold mt-2">
+                  <p className="text-2xl text-gray-900 font-bold mt-2">
                     {detail.english_word}
                   </p>
                 </div>
@@ -146,7 +146,7 @@ export default function ResultPage() {
 
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-gray-600 font-semibold mb-1">あなたの答え:</p>
+                  <p className="text-gray-900 font-bold mb-1">あなたの答え:</p>
                   <p className={`text-lg font-semibold ${
                     detail.is_correct ? 'text-green-700' : 'text-red-700'
                   }`}>
@@ -156,7 +156,7 @@ export default function ResultPage() {
 
                 {!detail.is_correct && (
                   <div>
-                    <p className="text-gray-600 font-semibold mb-1">正解:</p>
+                    <p className="text-gray-900 font-bold mb-1">正解:</p>
                     <p className="text-lg font-semibold text-blue-700">
                       {detail.correct_text_ja}
                     </p>
@@ -164,8 +164,8 @@ export default function ResultPage() {
                 )}
 
                 <div>
-                  <p className="text-gray-600 font-semibold mb-1">回答時間:</p>
-                  <p className="text-lg font-semibold text-gray-700">
+                  <p className="text-gray-900 font-bold mb-1">回答時間:</p>
+                  <p className="text-lg font-semibold text-gray-800">
                     {detail.reaction_time_ms
                       ? `${Math.round(detail.reaction_time_ms / 1000)}秒`
                       : '不明'}
@@ -188,7 +188,7 @@ export default function ResultPage() {
             onClick={() => router.push(`/student/tests/${assignmentId}`)}
             className="flex-1 px-4 py-3 bg-gray-600 text-white rounded hover:bg-gray-700 font-semibold"
           >
-            詳細を見る
+            テスト内容を見る
           </button>
         </div>
       </div>

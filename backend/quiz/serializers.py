@@ -647,6 +647,7 @@ class LearningSummaryDailySerializer(serializers.ModelSerializer):
 
 class TestSerializer(serializers.ModelSerializer):
     test_id = serializers.UUIDField(source="id", read_only=True)
+    question_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = models.Test
@@ -658,6 +659,7 @@ class TestSerializer(serializers.ModelSerializer):
             "due_at",
             "max_attempts_per_student",
             "archived_at",
+            "question_count",
             "created_at",
             "updated_at",
         ]
@@ -814,6 +816,62 @@ class StudentVocabListSerializer(serializers.ModelSerializer):
             "last_result": status_obj.last_result,
             "last_answered_at": status_obj.last_answered_at,
         }
+
+
+class TeacherVocabListSerializer(serializers.ModelSerializer):
+    """講師用語彙一覧シリアライザー"""
+    vocabulary_id = serializers.UUIDField(source="id", read_only=True)
+    primary_translation = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.Vocabulary
+        fields = [
+            "vocabulary_id",
+            "text_en",
+            "part_of_speech",
+            "primary_translation",
+        ]
+
+    def get_primary_translation(self, obj) -> str | None:
+        primary_list = getattr(obj, "primary_translation_list", None)
+        if primary_list and len(primary_list) > 0:
+            return primary_list[0].text_ja
+        return None
+
+
+class TeacherVocabTranslationSerializer(serializers.ModelSerializer):
+    vocab_translation_id = serializers.UUIDField(source="id", read_only=True)
+
+    class Meta:
+        model = models.VocabTranslation
+        fields = ["vocab_translation_id", "text_ja", "is_primary"]
+
+
+class TeacherVocabChoiceSerializer(serializers.ModelSerializer):
+    vocab_choice_id = serializers.UUIDField(source="id", read_only=True)
+
+    class Meta:
+        model = models.VocabChoice
+        fields = ["vocab_choice_id", "text_ja", "is_correct"]
+
+
+class TeacherVocabDetailSerializer(serializers.ModelSerializer):
+    vocabulary_id = serializers.UUIDField(source="id", read_only=True)
+    translations = TeacherVocabTranslationSerializer(many=True, read_only=True)
+    choices = TeacherVocabChoiceSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = models.Vocabulary
+        fields = [
+            "vocabulary_id",
+            "text_en",
+            "part_of_speech",
+            "explanation",
+            "example_en",
+            "example_ja",
+            "translations",
+            "choices",
+        ]
 
 
 class StudentVocabAliasSerializer(serializers.ModelSerializer):

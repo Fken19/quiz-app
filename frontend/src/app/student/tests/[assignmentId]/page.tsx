@@ -24,7 +24,7 @@ export default function TestDetailPage() {
         setDetail(response);
       } catch (err) {
         console.error(err);
-        setError('テスト詳細の取得に失敗しました');
+        setError(err instanceof Error ? err.message : 'テスト詳細の取得に失敗しました');
       } finally {
         setLoading(false);
       }
@@ -34,6 +34,7 @@ export default function TestDetailPage() {
       fetchDetail();
     }
   }, [assignmentId]);
+
 
   if (loading) {
     return (
@@ -54,6 +55,13 @@ export default function TestDetailPage() {
 
   const { test, questions } = detail;
 
+  const formatSeconds = (seconds?: number) => {
+    if (!seconds || seconds <= 0) return '未設定';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}分${secs.toString().padStart(2, '0')}秒`;
+  };
+
   return (
     <div className="max-w-4xl mx-auto py-10 px-4 space-y-6">
       {/* ヘッダー */}
@@ -61,18 +69,38 @@ export default function TestDetailPage() {
         <Link href="/student/tests" className="text-indigo-600 font-semibold mb-4 inline-block">← テスト一覧へ戻る</Link>
         <h1 className="text-3xl font-bold text-slate-900 mb-2">{test.title}</h1>
         {test.description && <p className="text-slate-600">{test.description}</p>}
+        {detail.announcement?.message && (
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {detail.announcement.message}
+          </div>
+        )}
+        {detail.is_paused && (
+          <div className="mt-3 text-sm font-semibold text-amber-700">現在この配信は停止中です。</div>
+        )}
       </div>
 
       {/* テスト情報 */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div>
-            <span className="text-sm font-semibold text-slate-600">最大受験回数</span>
+            <span className="text-sm font-bold text-slate-700">最大受験回数</span>
             <p className="text-2xl font-bold text-slate-900">{test.max_attempts}回</p>
           </div>
           <div>
-            <span className="text-sm font-semibold text-slate-600">出題数</span>
+            <span className="text-sm font-bold text-slate-700">出題数</span>
             <p className="text-2xl font-bold text-slate-900">{questions.length}問</p>
+          </div>
+          <div>
+            <span className="text-sm font-bold text-slate-700">制限時間（全体）</span>
+            <p className="text-2xl font-bold text-slate-900">{formatSeconds(test.time_limit_seconds)}</p>
+          </div>
+          <div>
+            <span className="text-sm font-bold text-slate-700">合格正答率</span>
+            <p className="text-2xl font-bold text-slate-900">
+              {test.passing_percentage !== null && test.passing_percentage !== undefined
+                ? `${test.passing_percentage}%`
+                : '未設定'}
+            </p>
           </div>
         </div>
       </div>
@@ -99,55 +127,38 @@ export default function TestDetailPage() {
                 <div className="bg-slate-50 rounded p-4 mb-4 space-y-2">
                   {q.vocabulary.part_of_speech && (
                     <div>
-                      <span className="text-xs font-semibold text-slate-500 uppercase">品詞</span>
-                      <p className="text-slate-700">{q.vocabulary.part_of_speech}</p>
+                      <span className="text-xs font-bold text-slate-700 uppercase">品詞</span>
+                      <p className="text-slate-900 font-medium">{q.vocabulary.part_of_speech}</p>
                     </div>
                   )}
 
                   {q.vocabulary.explanation && (
                     <div>
-                      <span className="text-xs font-semibold text-slate-500 uppercase">説明</span>
-                      <p className="text-slate-700">{q.vocabulary.explanation}</p>
+                      <span className="text-xs font-bold text-slate-700 uppercase">説明</span>
+                      <p className="text-slate-900 font-medium">{q.vocabulary.explanation}</p>
                     </div>
                   )}
 
                   {(q.vocabulary.example_en || q.vocabulary.example_ja) && (
                     <div>
-                      <span className="text-xs font-semibold text-slate-500 uppercase">例文</span>
-                      {q.vocabulary.example_en && <p className="text-slate-700 italic">{q.vocabulary.example_en}</p>}
-                      {q.vocabulary.example_ja && <p className="text-slate-600">{q.vocabulary.example_ja}</p>}
+                      <span className="text-xs font-bold text-slate-700 uppercase">例文</span>
+                      {q.vocabulary.example_en && <p className="text-slate-900 italic font-medium">{q.vocabulary.example_en}</p>}
+                      {q.vocabulary.example_ja && <p className="text-slate-800">{q.vocabulary.example_ja}</p>}
                     </div>
                   )}
                 </div>
 
                 {/* 訳 */}
                 <div className="mb-4">
-                  <span className="text-xs font-semibold text-slate-500 uppercase">日本語訳</span>
+                  <span className="text-xs font-bold text-slate-700 uppercase">日本語訳</span>
                   <div className="flex gap-2 flex-wrap mt-2">
                     {q.vocabulary.translations.map((t, idx) => (
                       <div
                         key={idx}
-                        className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          t.is_primary ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-700'
-                        } ${t.is_override ? 'border-2 border-blue-500' : ''}`}
+                        className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-300 text-slate-900"
                       >
                         {t.text_ja}
                         {t.is_override && <span className="ml-1 text-xs">(カスタム)</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 選択肢 */}
-                <div>
-                  <span className="text-xs font-semibold text-slate-500 uppercase">選択肢</span>
-                  <div className="grid grid-cols-1 gap-2 mt-2">
-                    {q.vocabulary.choices.map((choice, idx) => (
-                      <div
-                        key={choice.id}
-                        className="px-4 py-3 border border-slate-300 rounded-lg bg-white text-slate-700 font-medium hover:bg-slate-50 transition"
-                      >
-                        {String.fromCharCode(65 + idx)}) {choice.text_ja}
                       </div>
                     ))}
                   </div>
@@ -172,10 +183,10 @@ export default function TestDetailPage() {
             setIsStarting(true);
             router.push(`/student/tests/${assignmentId}/attempt`);
           }}
-          disabled={isStarting}
+          disabled={isStarting || detail.is_paused}
           className="px-6 py-3 rounded-lg font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isStarting ? '開始中...' : '受験を開始する'}
+          {detail.is_paused ? '停止中' : isStarting ? '開始中...' : '受験を開始する'}
         </button>
         <Link
           href="/student/tests"

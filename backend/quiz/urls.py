@@ -40,6 +40,7 @@ urlpatterns = [
     path("student/dashboard-summary/", views.StudentDashboardSummaryView.as_view(), name="student-dashboard-summary"),
     path("student/tests/", views.StudentTestListView.as_view(), name="student-test-list"),
     path("student/tests/<uuid:assignment_id>/", views.StudentTestDetailView.as_view(), name="student-test-detail"),
+    path("student/tests/<uuid:assignment_id>/results", views.StudentAssignmentResultsView.as_view(), name="student-assignment-results"),
     path("student/tests/<uuid:assignment_id>/attempts/start", views.StudentAttemptStartView.as_view(), name="student-attempt-start"),
     path("student/attempts/<uuid:attempt_id>/submit", views.StudentAttemptSubmitView.as_view(), name="student-attempt-submit"),
     path("student/attempts/<uuid:attempt_id>/result", views.StudentAttemptResultView.as_view(), name="student-attempt-result"),
@@ -48,6 +49,8 @@ urlpatterns = [
     path("student/vocab/<uuid:id>/report/", views.StudentVocabReportView.as_view(), name="student-vocab-report"),
     path("teacher/test-assignments/<uuid:assignment_id>/results", views.TeacherAssignmentResultsView.as_view(), name="teacher-assignment-results"),
     path("teacher/test-assignments/<uuid:assignment_id>/results.csv", views.TeacherAssignmentResultsCSVView.as_view(), name="teacher-assignment-results-csv"),
+    path("teacher/vocabularies/", views.TeacherVocabListView.as_view(), name="teacher-vocab-list"),
+    path("teacher/vocabularies/<uuid:vocab_id>/", views.TeacherVocabDetailView.as_view(), name="teacher-vocab-detail"),
     path(
         "teacher/groups/<uuid:folder_id>/member-summaries/",
         views.TeacherGroupMemberSummaryView.as_view(),

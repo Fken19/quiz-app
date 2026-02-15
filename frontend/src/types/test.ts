@@ -42,6 +42,16 @@ export interface TestAssignmentRunParamsV1 {
   override_translations?: Record<string, Record<string, string>>; // vocab_id -> {lang: translation}
   ui?: Record<string, unknown>;
   targets_snapshot?: TestTargetsSnapshot;
+  control?: {
+    paused?: boolean;
+  };
+  announcement?: {
+    message?: string | null;
+    updated_at?: string | null;
+  };
+  passing?: {
+    percentage?: number | null;
+  };
 }
 
 /** Test テンプレート */
@@ -49,9 +59,11 @@ export interface Test {
   test_id: string;
   teacher: string; // teacher ID
   title: string;
-  description?: string;
+  description?: string | null;
   due_at?: string | null;
   max_attempts_per_student?: number;
+  archived_at?: string | null;
+  question_count?: number;
   created_at: string;
   updated_at: string;
 }
@@ -72,7 +84,7 @@ export interface TestAssignment {
   test: string; // test ID
   assigned_by_teacher: string; // teacher ID
   assigned_at: string;
-  note?: string;
+  note?: string | null;
   run_params?: TestAssignmentRunParamsV1;
 }
 
@@ -135,6 +147,18 @@ export interface CreateTestQuestionsRequest {
   }>;
 }
 
+/** Test 作成 + 問題セット作成リクエスト */
+export interface CreateTestWithQuestionsRequest {
+  title: string;
+  description?: string | null;
+  vocabulary_ids: string[];
+}
+
+/** Test 問題セット差し替えリクエスト */
+export interface ReplaceTestQuestionsRequest {
+  vocabulary_ids: string[];
+}
+
 /** Test Assignment 作成リクエスト */
 export interface CreateTestAssignmentRequest {
   test: string;
@@ -158,9 +182,23 @@ export interface AvailableTest {
   attempts_remaining: number;
   attempts_completed: number;
   is_available: boolean;
+  is_paused?: boolean;
+  passing_percentage?: number | null;
+  best_score?: number | null;
+  latest_score?: number | null;
+  is_passed?: boolean | null;
+  show_test_content?: boolean;
+  announcement?: {
+    message: string | null;
+    updated_at: string | null;
+  } | null;
   assignment_schedule?: {
     start_at: string;
     end_at: string;
+  } | null;
+  assignment_schedule_display?: {
+    start_at: string | null;
+    end_at: string | null;
   } | null;
 }
 
@@ -208,7 +246,14 @@ export interface StudentTestDetailResponse {
     title: string;
     description: string;
     max_attempts: number;
+    time_limit_seconds?: number;
+    passing_percentage?: number | null;
   };
+  is_paused?: boolean;
+  announcement?: {
+    message: string | null;
+    updated_at: string | null;
+  } | null;
   questions: StudentTestQuestion[];
 }
 
@@ -240,12 +285,38 @@ export interface AttemptResultResponse {
   details: AttemptResultDetail[];
 }
 
+/** 学生用 - 配信ごとの受験結果一覧レスポンス */
+export interface StudentAssignmentResultsResponse {
+  assignment_id: string;
+  test_id: string;
+  test_title: string;
+  passing_percentage?: number | null;
+  results: Array<{
+    attempt_id: string;
+    attempt_no: number;
+    started_at: string | null;
+    completed_at: string | null;
+    score: number | null;
+    total_questions: number;
+    correct_count: number;
+    total_time_ms: number;
+  }>;
+  announcement?: {
+    message: string | null;
+    updated_at: string | null;
+  } | null;
+}
+
 /** 受験開始レスポンス */
 export interface AttemptStartResponse {
   attempt_id: string;
   attempt_no: number;
   timer_seconds: number;
   questions: StudentTestQuestion[];
+  announcement?: {
+    message: string | null;
+    updated_at: string | null;
+  } | null;
 }
 
 /** 回答入力 */
@@ -312,6 +383,41 @@ export interface TeacherAssignmentResultsResponse {
     unattempted_count: number;
   };
   rows: TeacherAssignmentResult[];
+}
+
+/** 講師用 語彙一覧アイテム */
+export interface TeacherVocabularyListItem {
+  vocabulary_id: string;
+  text_en: string;
+  part_of_speech?: string | null;
+  primary_translation?: string | null;
+}
+
+export interface TeacherVocabularyTranslation {
+  vocab_translation_id: string;
+  text_ja: string;
+  is_primary: boolean;
+}
+
+export interface TeacherVocabularyChoice {
+  vocab_choice_id: string;
+  text_ja: string;
+  is_correct: boolean;
+}
+
+export interface TeacherVocabularyDetail {
+  vocabulary_id: string;
+  text_en: string;
+  part_of_speech?: string | null;
+  explanation?: string | null;
+  example_en?: string | null;
+  example_ja?: string | null;
+  translations: TeacherVocabularyTranslation[];
+  choices: TeacherVocabularyChoice[];
+}
+
+export interface TestQuestionSummaryResponse {
+  questions: TeacherVocabularyListItem[];
 }
 
 // ============================================================================

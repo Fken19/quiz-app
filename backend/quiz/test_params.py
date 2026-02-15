@@ -117,6 +117,22 @@ class Attempts:
 
 
 @dataclass
+class PassingCriteria:
+    """合格判定設定（割合）"""
+    percentage: Optional[int] = None
+
+    def validate(self) -> None:
+        if self.percentage is None:
+            return
+        if not isinstance(self.percentage, int) or not 0 <= self.percentage <= 100:
+            raise TestParamsValidationError(
+                "passing.percentage は 0〜100 の整数である必要があります"
+            )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"percentage": self.percentage} if self.percentage is not None else {}
+
+@dataclass
 class OverrideTranslation:
     """単語訳の上書き"""
     ja: str
@@ -205,6 +221,9 @@ class TestAssignmentParamsV1:
     ))
     timer: Timer = field(default_factory=Timer)
     attempts: Attempts = field(default_factory=Attempts)
+    passing: PassingCriteria = field(default_factory=PassingCriteria)
+    announcement: Dict[str, Any] = field(default_factory=dict)
+    control: Dict[str, Any] = field(default_factory=dict)
     override_translations: Dict[str, OverrideTranslation] = field(default_factory=dict)
     ui: Dict[str, str] = field(default_factory=lambda: {"theme": "test_yellow_orange"})
     targets_snapshot: Optional[TargetsSnapshot] = field(default_factory=TargetsSnapshot)
@@ -248,6 +267,22 @@ class TestAssignmentParamsV1:
             source_of_truth=attempts_data.get("source_of_truth", "testassignee"),
         )
 
+        # passing
+        passing_data = data.get("passing", {})
+        passing = PassingCriteria(
+            percentage=passing_data.get("percentage")
+            if isinstance(passing_data, dict)
+            else None
+        )
+
+        announcement = data.get("announcement", {})
+        if not isinstance(announcement, dict):
+            announcement = {}
+
+        control = data.get("control", {})
+        if not isinstance(control, dict):
+            control = {}
+
         # override_translations
         override_data = data.get("override_translations", {})
         override_translations = {}
@@ -286,6 +321,9 @@ class TestAssignmentParamsV1:
             schedule=schedule,
             timer=timer,
             attempts=attempts,
+            passing=passing,
+            announcement=announcement,
+            control=control,
             override_translations=override_translations,
             ui=ui,
             targets_snapshot=targets_snapshot,
@@ -296,6 +334,7 @@ class TestAssignmentParamsV1:
         self.schedule.validate()
         self.timer.validate()
         self.attempts.validate()
+        self.passing.validate()
         for override in self.override_translations.values():
             override.validate()
         if self.targets_snapshot:
@@ -349,6 +388,9 @@ class TestAssignmentParamsV1:
             "schedule": self.schedule.to_dict(),
             "timer": asdict(self.timer),
             "attempts": self.attempts.to_dict(),
+            "passing": self.passing.to_dict(),
+            "announcement": self.announcement,
+            "control": self.control,
             "override_translations": {
                 k: v.to_dict() for k, v in self.override_translations.items()
             },

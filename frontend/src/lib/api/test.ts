@@ -4,13 +4,15 @@
 
 'use client';
 
-import { apiGet, apiPost } from '../api-utils';
+import { apiGet, apiPatch, apiPost } from '../api-utils';
 import type {
   Test,
   TestQuestion,
   TestAssignment,
+  CreateTestWithQuestionsRequest,
   CreateTestRequest,
   CreateTestQuestionsRequest,
+  ReplaceTestQuestionsRequest,
   CreateTestAssignmentRequest,
   AssignStudentsRequest,
   StudentTestListResponse,
@@ -19,8 +21,13 @@ import type {
   SubmitAnswersRequest,
   SubmitAnswersResponse,
   AttemptResultResponse,
+  StudentAssignmentResultsResponse,
   TeacherAssignmentResultsResponse,
+  TeacherVocabularyListItem,
+  TeacherVocabularyDetail,
+  TestQuestionSummaryResponse,
 } from '@/types/test';
+import type { PaginatedResponse } from '@/types/quiz';
 
 // ============================================================================
 // 講師向け API
@@ -32,6 +39,16 @@ import type {
  */
 export async function createTest(payload: CreateTestRequest): Promise<Test> {
   return apiPost('/tests/', payload);
+}
+
+/**
+ * テスト + 問題セットを作成
+ * POST /api/tests/create-with-questions
+ */
+export async function createTestWithQuestions(
+  payload: CreateTestWithQuestionsRequest
+): Promise<Test> {
+  return apiPost('/tests/create-with-questions/', payload);
 }
 
 /**
@@ -51,6 +68,49 @@ export async function getTeacherTests(): Promise<{ results: Test[] }> {
 }
 
 /**
+ * 講師用語彙一覧を取得
+ * GET /api/teacher/vocabularies/
+ */
+export async function getTeacherVocabularies(params: {
+  q?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<PaginatedResponse<TeacherVocabularyListItem>> {
+  const query = new URLSearchParams();
+  if (params.q) query.set('q', params.q);
+  if (params.page) query.set('page', String(params.page));
+  if (params.page_size) query.set('page_size', String(params.page_size));
+  const suffix = query.toString();
+  return apiGet(`/teacher/vocabularies/${suffix ? `?${suffix}` : ''}`);
+}
+
+/**
+ * 講師用語彙詳細を取得
+ * GET /api/teacher/vocabularies/{vocab_id}/
+ */
+export async function getTeacherVocabularyDetail(
+  vocabularyId: string
+): Promise<TeacherVocabularyDetail> {
+  return apiGet(`/teacher/vocabularies/${vocabularyId}/`);
+}
+
+/**
+ * テストを更新
+ * PATCH /api/tests/{id}/
+ */
+export async function updateTest(testId: string, payload: Partial<Test>): Promise<Test> {
+  return apiPatch(`/tests/${testId}/`, payload);
+}
+
+/**
+ * テストを複製
+ * POST /api/tests/{id}/duplicate
+ */
+export async function duplicateTest(testId: string, title?: string): Promise<Test> {
+  return apiPost(`/tests/${testId}/duplicate/`, title ? { title } : {});
+}
+
+/**
  * テストに問題を追加
  * POST /api/tests/{id}/questions/create
  */
@@ -61,6 +121,27 @@ export async function createTestQuestions(
   const response = await apiPost(`/tests/${testId}/questions/create/`, payload);
   // レスポンスが配列の場合と、ラップされている場合に対応
   return Array.isArray(response) ? response : response.results || [response];
+}
+
+/**
+ * テストの問題セットを取得
+ * GET /api/tests/{id}/questions
+ */
+export async function getTestQuestionSummaries(testId: string): Promise<TeacherVocabularyListItem[]> {
+  const response = (await apiGet(`/tests/${testId}/questions/`)) as TestQuestionSummaryResponse;
+  if (Array.isArray(response)) return response;
+  return response?.questions || [];
+}
+
+/**
+ * テストの問題セットを差し替え
+ * POST /api/tests/{id}/questions/replace
+ */
+export async function replaceTestQuestions(
+  testId: string,
+  payload: ReplaceTestQuestionsRequest
+): Promise<Test> {
+  return apiPost(`/tests/${testId}/questions/replace/`, payload);
 }
 
 /**
@@ -94,6 +175,17 @@ export async function getTeacherTestAssignments(): Promise<{ results: TestAssign
 }
 
 /**
+ * テスト配信を更新
+ * PATCH /api/test-assignments/{id}/
+ */
+export async function updateTestAssignment(
+  assignmentId: string,
+  payload: Partial<TestAssignment>
+): Promise<TestAssignment> {
+  return apiPatch(`/test-assignments/${assignmentId}/`, payload);
+}
+
+/**
  * テスト配信で学生に配信
  * POST /api/test-assignments/{id}/assign-students
  */
@@ -102,6 +194,17 @@ export async function assignStudents(
   payload: AssignStudentsRequest
 ): Promise<{ assigned_count: number }> {
   return apiPost(`/test-assignments/${assignmentId}/assign-students/`, payload);
+}
+
+/**
+ * テスト配信の割当解除
+ * POST /api/test-assignments/{id}/unassign-students
+ */
+export async function unassignStudents(
+  assignmentId: string,
+  payload: { students: string[] }
+): Promise<{ unassigned_count: number }> {
+  return apiPost(`/test-assignments/${assignmentId}/unassign-students/`, payload);
 }
 
 /**
@@ -197,6 +300,16 @@ export async function getStudentAttemptResult(
   attemptId: string
 ): Promise<AttemptResultResponse> {
   return apiGet(`/student/attempts/${attemptId}/result/`);
+}
+
+/**
+ * 配信ごとの受験結果一覧を取得（学生）
+ * GET /api/student/tests/{assignment_id}/results
+ */
+export async function getStudentAssignmentResults(
+  assignmentId: string
+): Promise<StudentAssignmentResultsResponse> {
+  return apiGet(`/student/tests/${assignmentId}/results`);
 }
 
 // ============================================================================
