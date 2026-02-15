@@ -151,6 +151,7 @@ export interface AssignStudentsRequest {
 /** 学生用 - 利用可能テスト情報 */
 export interface AvailableTest {
   test_id: string;
+  assignment_id: string;  // ★ 詳細取得時に使用
   title: string;
   description: string;
   max_attempts: number;

@@ -2880,6 +2880,7 @@ class StudentTestListView(APIView):
         
         for assignee_data in assignees:
             test_id = assignee_data["test"]
+            assignee_id = assignee_data["id"]  # TestAssignee ID
             max_attempts = assignee_data["max_attempts"]
             test_assignment_id = assignee_data["test_assignment"]
             
@@ -2899,11 +2900,12 @@ class StudentTestListView(APIView):
                 logger.warning(f"Failed to parse run_params for test_assignment {test_assignment_id}: {e}")
                 is_available = True  # フォールバック：常に利用可能
             
-            # 試行回数を計算
+            # 試行回数を計算（assignment単位）
             effective_max_attempts = max_attempts if max_attempts is not None else (test.max_attempts_per_student or 1)
+            # TestAssignee に紐付けられた TestResult をカウント
+            from django.db.models import Q
             completed_count = models.TestResult.objects.filter(
-                test=test,
-                student=student
+                test_assignee_id=assignee_id
             ).count()
             attempts_remaining = max(0, effective_max_attempts - completed_count)
             
@@ -2917,6 +2919,7 @@ class StudentTestListView(APIView):
             
             available_tests.append({
                 "test_id": str(test.id),
+                "assignment_id": str(test_assignment_id),
                 "title": test.title,
                 "description": test.description or "",
                 "max_attempts": effective_max_attempts,
@@ -2933,8 +2936,8 @@ class StudentTestListView(APIView):
 
 class StudentTestDetailView(APIView):
     """
-    テスト詳細と問題一覧を取得
-    GET /api/student/tests/{test_id}
+    テスト詳細と問題一覧を取得（assignment単位）
+    GET /api/student/tests/{assignment_id}/
     
     Response:
     {
@@ -2946,7 +2949,7 @@ class StudentTestDetailView(APIView):
                     "id": "uuid",
                     "text_en": "word",
                     "translations": [{"text_ja": "訳"}],
-                    "choices": [{"text_ja": "選択肢", "is_correct": true}]
+                    "choices": [{"text_ja": "選択肢"}]
                 },
                 "timer_seconds": 10
             }
@@ -2955,22 +2958,25 @@ class StudentTestDetailView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request, test_id):
+    def get(self, request, assignment_id):
         from .test_params import TestAssignmentParamsV1
         
         student = request.user
         
         try:
-            test = models.Test.objects.get(id=test_id)
-        except models.Test.DoesNotExist:
+            test_assignment = models.TestAssignment.objects.select_related("test").get(id=assignment_id)
+        except models.TestAssignment.DoesNotExist:
             return Response(
-                {"detail": "テストが見つかりません。"},
+                {"detail": "テスト配信が見つかりません。"},
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # この学生がこのテストに配信されているか確認
+        test = test_assignment.test
+        
+        # この学生がこの配信の対象か確認（TestAssignment単位）
         assignee = models.TestAssignee.objects.filter(
             test=test,
+            test_assignment=test_assignment,
             student=student
         ).select_related("test_assignment").first()
         
@@ -3026,10 +3032,15 @@ class StudentTestDetailView(APIView):
                 ]
             
             # 選択肢を取得（is_correct は学生に表示しない）
+            # ★ ポイント: is_correct を含めずに、かつシャッフルして正解の位置を推測不可にする
             choices = models.VocabChoice.objects.filter(
                 vocabulary=vocab
             ).values("id", "text_ja").order_by("created_at")
             choices_data = [{"id": str(c["id"]), "text_ja": c["text_ja"]} for c in choices]
+            
+            # 選択肢をシャッフル（毎回異なる順序にしてパターン化を防止）
+            import random
+            random.shuffle(choices_data)
             
             questions_data.append({
                 "question_order": q.question_order,

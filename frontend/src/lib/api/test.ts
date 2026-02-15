@@ -109,12 +109,12 @@ export async function getStudentTests(): Promise<StudentTestListResponse> {
 
 /**
  * テスト詳細と問題一覧を取得（学生）
- * GET /api/student/tests/{test_id}/
+ * GET /api/student/tests/{assignment_id}/
  */
 export async function getStudentTestDetail(
-  testId: string
+  assignmentId: string
 ): Promise<StudentTestDetailResponse> {
-  return apiGet(`/student/tests/${testId}/`);
+  return apiGet(`/student/tests/${assignmentId}/`);
 }
 
 // ============================================================================
