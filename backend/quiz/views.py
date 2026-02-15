@@ -13,8 +13,9 @@ from django.core.cache import caches
 from django.core.files.storage import default_storage
 from django.db.models import Count, Max, Prefetch, Q, Sum, F, OuterRef, Subquery, Exists
 from django.db.models.functions import TruncMonth, TruncWeek
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
@@ -2595,13 +2596,13 @@ class TestViewSet(BaseModelViewSet):
         # 講師は自分のテストのみ表示
         user = self.request.user
         if is_teacher_whitelisted(user.email):
-            return super().get_queryset().filter(teacher__user=user)
+            return super().get_queryset().filter(teacher__email=user.email)
         return models.Test.objects.none()
 
     def perform_create(self, serializer):  # type: ignore[override]
         user = self.request.user
         try:
-            teacher = models.Teacher.objects.get(user=user)
+            teacher = models.Teacher.objects.get(email=user.email)
         except models.Teacher.DoesNotExist:
             raise PermissionDenied(detail="講師アカウントが見つかりません。")
         serializer.save(teacher=teacher)
@@ -2689,7 +2690,7 @@ class TestAssignmentViewSet(BaseModelViewSet):
         user = self.request.user
         if is_teacher_whitelisted(user.email):
             try:
-                teacher = models.Teacher.objects.get(user=user)
+                teacher = models.Teacher.objects.get(email=user.email)
                 return super().get_queryset().filter(assigned_by_teacher=teacher)
             except models.Teacher.DoesNotExist:
                 return models.TestAssignment.objects.none()
@@ -2703,7 +2704,7 @@ class TestAssignmentViewSet(BaseModelViewSet):
     def perform_create(self, serializer):  # type: ignore[override]
         user = self.request.user
         try:
-            teacher = models.Teacher.objects.get(user=user)
+            teacher = models.Teacher.objects.get(email=user.email)
         except models.Teacher.DoesNotExist:
             raise PermissionDenied(detail="講師アカウントが見つかりません。")
         serializer.save(assigned_by_teacher=teacher)
@@ -2728,8 +2729,10 @@ class TestAssignmentViewSet(BaseModelViewSet):
         test_assignment = self.get_object()
         
         # アクセス権限チェック
-        if test_assignment.assigned_by_teacher.user_id != request.user.id:
+        if not test_assignment.assigned_by_teacher or test_assignment.assigned_by_teacher.email != request.user.email:
             raise PermissionDenied(detail="この配信を編集する権限がありません。")
+
+        teacher = test_assignment.assigned_by_teacher
         
         students = request.data.get("students", [])
         groups = request.data.get("groups", [])
@@ -2752,13 +2755,21 @@ class TestAssignmentViewSet(BaseModelViewSet):
                             {"detail": f"Student {student_id} が見つかりません。"},
                             status=status.HTTP_400_BAD_REQUEST
                         )
+
+                    link_exists = models.StudentTeacherLink.objects.filter(
+                        teacher=teacher,
+                        student=student,
+                        status=models.LinkStatus.ACTIVE,
+                    ).exists()
+                    if not link_exists:
+                        raise PermissionDenied(detail="対象の生徒は講師に紐づいていません。")
                     
                     assignee, created = models.TestAssignee.objects.get_or_create(
                         test=test_assignment.test,
                         student=student,
                         test_assignment=test_assignment,
                         defaults={
-                            "source_type": "direct",
+                            "source_type": "manual",
                             "assigned_by_teacher": test_assignment.assigned_by_teacher,
                             "assigned_at": timezone.now(),
                         },
@@ -2775,6 +2786,9 @@ class TestAssignmentViewSet(BaseModelViewSet):
                             {"detail": f"RosterFolder {group_id} が見つかりません。"},
                             status=status.HTTP_400_BAD_REQUEST
                         )
+
+                    if group.owner_teacher_id != teacher.id:
+                        raise PermissionDenied(detail="このグループを割り当てる権限がありません。")
                     
                     memberships = models.RosterMembership.objects.filter(
                         roster_folder=group,
@@ -2782,6 +2796,13 @@ class TestAssignmentViewSet(BaseModelViewSet):
                     )
                     
                     for membership in memberships:
+                        link_exists = models.StudentTeacherLink.objects.filter(
+                            teacher=teacher,
+                            student=membership.student,
+                            status=models.LinkStatus.ACTIVE,
+                        ).exists()
+                        if not link_exists:
+                            raise PermissionDenied(detail="対象の生徒は講師に紐づいていません。")
                         assignee, created = models.TestAssignee.objects.get_or_create(
                             test=test_assignment.test,
                             student=membership.student,
@@ -3511,7 +3532,7 @@ class TeacherAssignmentResultsView(APIView):
         # TestAssignment を取得
         try:
             assignment = models.TestAssignment.objects.select_related(
-                "test", "assigned_by_teacher__user"
+                "test", "assigned_by_teacher"
             ).get(id=assignment_id)
         except models.TestAssignment.DoesNotExist:
             return Response(
@@ -3520,7 +3541,7 @@ class TeacherAssignmentResultsView(APIView):
             )
         
         # 権限確認（講師本人のみ）
-        if assignment.assigned_by_teacher.user_id != user.id:
+        if assignment.assigned_by_teacher.email != user.email:
             return Response(
                 {"detail": "この配信へのアクセス権限がありません。"},
                 status=status.HTTP_403_FORBIDDEN
@@ -3534,17 +3555,19 @@ class TeacherAssignmentResultsView(APIView):
         try:
             params = TestAssignmentParamsV1.from_json(run_params_data)
             params.validate()
-            start_at = params.available_from
-            end_at = params.available_until
+            start_at = parse_datetime(params.schedule.start_at)
+            end_at = parse_datetime(params.schedule.end_at)
+            default_max_attempts = params.attempts.default_max_attempts
         except Exception as e:
             logger.warning(f"Failed to parse run_params: {e}")
             start_at = None
             end_at = None
+            default_max_attempts = None
         
         # TestAssignee を母集団として取得
         assignees = models.TestAssignee.objects.filter(
             test_assignment=assignment
-        ).select_related("student").order_by("student__name")
+        ).select_related("student", "student__profile").order_by("student_id")
         
         # TestResult を全取得（assignment単位）
         results = models.TestResult.objects.filter(
@@ -3596,14 +3619,25 @@ class TeacherAssignmentResultsView(APIView):
                 latest_completed_at = latest_result.completed_at
             
             # remaining_attempts
-            effective_max_attempts = assignee.max_attempts or test.max_attempts_per_student or 1
+            effective_max_attempts = (
+                assignee.max_attempts
+                or default_max_attempts
+                or test.max_attempts_per_student
+                or 1
+            )
             remaining_attempts = max(effective_max_attempts - attempt_count, 0)
             
+            try:
+                student_display_name = assignee.student.profile.display_name
+            except models.UserProfile.DoesNotExist:
+                student_display_name = None
+
+            safe_name = student_display_name or f"Student #{str(assignee.student_id)[-4:]}"
+
             rows.append({
                 "assignee_id": str(assignee.id),
                 "student_id": str(assignee.student_id),
-                "student_name": assignee.student.name,
-                "student_email": assignee.student.email,
+                "student_name": safe_name,
                 "status": status_val,
                 "attempt_count": attempt_count,
                 "completed_count": completed_count,
@@ -3657,7 +3691,7 @@ class TeacherAssignmentResultsCSVView(APIView):
         # TestAssignment を取得
         try:
             assignment = models.TestAssignment.objects.select_related(
-                "test", "assigned_by_teacher__user"
+                "test", "assigned_by_teacher"
             ).get(id=assignment_id)
         except models.TestAssignment.DoesNotExist:
             return Response(
@@ -3666,7 +3700,7 @@ class TeacherAssignmentResultsCSVView(APIView):
             )
         
         # 権限確認（講師本人のみ）
-        if assignment.assigned_by_teacher.user_id != user.id:
+        if assignment.assigned_by_teacher.email != user.email:
             return Response(
                 {"detail": "この配信へのアクセス権限がありません。"},
                 status=status.HTTP_403_FORBIDDEN
@@ -3680,17 +3714,19 @@ class TeacherAssignmentResultsCSVView(APIView):
         try:
             params = TestAssignmentParamsV1.from_json(run_params_data)
             params.validate()
-            start_at = params.available_from
-            end_at = params.available_until
+            start_at = parse_datetime(params.schedule.start_at)
+            end_at = parse_datetime(params.schedule.end_at)
+            default_max_attempts = params.attempts.default_max_attempts
         except Exception as e:
             logger.warning(f"Failed to parse run_params: {e}")
             start_at = None
             end_at = None
+            default_max_attempts = None
         
         # TestAssignee を母集団として取得（同じロジック）
         assignees = models.TestAssignee.objects.filter(
             test_assignment=assignment
-        ).select_related("student").order_by("student__name")
+        ).select_related("student", "student__profile").order_by("student__email")
         
         results = models.TestResult.objects.filter(
             test_assignee__in=assignees
@@ -3716,7 +3752,6 @@ class TeacherAssignmentResultsCSVView(APIView):
             'テストタイトル',
             '学生ID',
             '学生名',
-            'メールアドレス',
             '状態',
             '受験回数',
             '完了回数',
@@ -3755,7 +3790,12 @@ class TeacherAssignmentResultsCSVView(APIView):
                 latest_score = latest_result.score
                 latest_completed_at = latest_result.completed_at
             
-            effective_max_attempts = assignee.max_attempts or test.max_attempts_per_student or 1
+            effective_max_attempts = (
+                assignee.max_attempts
+                or default_max_attempts
+                or test.max_attempts_per_student
+                or 1
+            )
             remaining_attempts = max(effective_max_attempts - attempt_count, 0)
             
             # 日時をJST文字列に変換
@@ -3763,12 +3803,18 @@ class TeacherAssignmentResultsCSVView(APIView):
             start_at_str = start_at.strftime('%Y-%m-%d %H:%M:%S') if start_at else ''
             end_at_str = end_at.strftime('%Y-%m-%d %H:%M:%S') if end_at else ''
             
+            try:
+                student_display_name = assignee.student.profile.display_name
+            except models.UserProfile.DoesNotExist:
+                student_display_name = None
+
+            safe_name = student_display_name or f"Student #{str(assignee.student_id)[-4:]}"
+
             writer.writerow([
                 str(assignment.id),
                 test.title,
                 str(assignee.student_id),
-                assignee.student.name,
-                assignee.student.email,
+                safe_name,
                 status_val,
                 attempt_count,
                 completed_count,

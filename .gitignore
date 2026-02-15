@@ -19,6 +19,11 @@ ENV/
 htmlcov/
 backend/local_settings.py
 
+# --- One-off scripts / local dev files ---
+backend/run_duplicate_test.py
+backend/scripts/create_*.py
+backend/*.py.local
+
 # --- Node.js/Next.js ---
 node_modules/
 .next/

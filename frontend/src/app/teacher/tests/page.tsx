@@ -60,20 +60,29 @@ export default function TeacherTestsPage() {
       </div>
 
       <div className="bg-white shadow rounded-lg divide-y">
-        <div className="grid grid-cols-5 gap-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+        <div className="grid grid-cols-6 gap-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
           <span>ID</span>
           <span>タイトル</span>
           <span>締切</span>
           <span>最大受験回数</span>
           <span>状態</span>
+          <span className="text-right">操作</span>
         </div>
         {tests.map((test) => (
-          <div key={test.test_id} className="grid grid-cols-5 gap-4 px-6 py-3 text-sm text-slate-700">
+          <div key={test.test_id} className="grid grid-cols-6 gap-4 px-6 py-3 text-sm text-slate-700">
             <span className="truncate">{test.test_id}</span>
             <span>{test.title}</span>
             <span>{test.due_at ? new Date(test.due_at).toLocaleString() : '設定なし'}</span>
             <span>{test.max_attempts_per_student}</span>
             <span>{test.archived_at ? 'アーカイブ済み' : '公開中'}</span>
+            <span className="text-right">
+              <Link
+                href={`/teacher/tests/${test.test_id}`}
+                className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium"
+              >
+                詳細
+              </Link>
+            </span>
           </div>
         ))}
         {tests.length === 0 && (

@@ -228,6 +228,7 @@ class StudentTeacherPublicProfileSerializer(serializers.Serializer):
 
 class TeacherStudentListSerializer(serializers.ModelSerializer):
     student_teacher_link_id = serializers.UUIDField(source="id", read_only=True)
+    student_id = serializers.UUIDField(read_only=True)
     display_name = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
 
@@ -241,6 +242,7 @@ class TeacherStudentListSerializer(serializers.ModelSerializer):
         model = models.StudentTeacherLink
         fields = [
             "student_teacher_link_id",
+            "student_id",
             "display_name",
             "status",
             "linked_at",
@@ -258,7 +260,9 @@ class TeacherStudentListSerializer(serializers.ModelSerializer):
         if obj.custom_display_name:
             return obj.custom_display_name
         profile = self._safe_profile(obj.student)
-        return profile.display_name if profile and profile.display_name else ""
+        if profile and profile.display_name:
+            return profile.display_name
+        return f"Student #{str(obj.student_id)[-4:]}"
 
     def get_avatar_url(self, obj):
         profile = self._safe_profile(obj.student)
@@ -922,7 +926,7 @@ class TestAssignmentCreateSerializer(serializers.ModelSerializer):
         run_params を正規化して保存
         """
         run_params = validated_data.get("run_params")
-        if isinstance(run_params, TestAssignmentParamsV1):
+        if isinstance(run_params, self.TestAssignmentParamsV1):
             # Serializer から TestAssignmentParamsV1 インスタンスが来た場合
             validated_data["run_params"] = run_params.to_dict()
         return super().create(validated_data)

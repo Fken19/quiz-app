@@ -311,8 +311,8 @@ class TestAssignmentParamsV1:
             end_dt = isoparse(self.schedule.end_at)
 
             # UTC → +09:00 に変換（astimezone で JST に変換）
-            import pytz
-            jst = pytz.timezone("Asia/Tokyo")
+            from zoneinfo import ZoneInfo
+            jst = ZoneInfo("Asia/Tokyo")
             start_jst = start_dt.astimezone(jst)
             end_jst = end_dt.astimezone(jst)
 

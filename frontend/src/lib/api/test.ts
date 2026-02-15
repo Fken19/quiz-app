@@ -70,7 +70,11 @@ export async function createTestQuestions(
 export async function createTestAssignment(
   payload: CreateTestAssignmentRequest
 ): Promise<TestAssignment> {
-  return apiPost('/test-assignments/', payload);
+  const requestPayload = {
+    ...payload,
+    run_params: payload.run_params ? { run_params: payload.run_params } : undefined,
+  };
+  return apiPost('/test-assignments/', requestPayload);
 }
 
 /**
@@ -115,14 +119,14 @@ export async function getTeacherAssignmentResults(
  * GET /api/teacher/test-assignments/{assignment_id}/results.csv
  */
 export function downloadTeacherAssignmentResultsCSV(assignmentId: string): void {
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api';
-  const url = `${baseUrl}/teacher/test-assignments/${assignmentId}/results.csv`;
+  const url = `/api/teacher/test-assignments/${assignmentId}/results.csv`;
   
   // 認証トークンを取得
-  const token = localStorage.getItem('access_token');
+  const token = localStorage.getItem('access_token') || localStorage.getItem('quizapp.backend.token');
   
   // fetch でダウンロード
   fetch(url, {
+    credentials: 'include',
     headers: {
       'Authorization': token ? `Bearer ${token}` : '',
     },

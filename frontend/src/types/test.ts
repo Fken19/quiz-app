@@ -286,7 +286,6 @@ export interface TeacherAssignmentResult {
   assignee_id: string;
   student_id: string;
   student_name: string;
-  student_email: string;
   status: 'attempted' | 'unattempted' | 'expired_unattempted';
   attempt_count: number;
   completed_count: number;

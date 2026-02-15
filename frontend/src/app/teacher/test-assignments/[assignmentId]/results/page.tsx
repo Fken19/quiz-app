@@ -284,7 +284,6 @@ export default function TeacherAssignmentResultsPage() {
                   <tr key={row.assignee_id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{row.student_name}</div>
-                      <div className="text-sm text-gray-500">{row.student_email}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(row.status)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
