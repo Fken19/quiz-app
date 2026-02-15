@@ -15,6 +15,10 @@ import type {
   AssignStudentsRequest,
   StudentTestListResponse,
   StudentTestDetailResponse,
+  AttemptStartResponse,
+  SubmitAnswersRequest,
+  SubmitAnswersResponse,
+  AttemptResultResponse,
 } from '@/types/test';
 
 // ============================================================================
@@ -115,6 +119,35 @@ export async function getStudentTestDetail(
   assignmentId: string
 ): Promise<StudentTestDetailResponse> {
   return apiGet(`/student/tests/${assignmentId}/`);
+}
+
+/**
+ * 受験を開始
+ * POST /api/student/tests/{assignment_id}/attempts/start
+ */
+export async function startAttempt(assignmentId: string): Promise<AttemptStartResponse> {
+  return apiPost(`/student/tests/${assignmentId}/attempts/start/`, {});
+}
+
+/**
+ * 回答を提出（採点実行）
+ * POST /api/student/attempts/{attempt_id}/submit
+ */
+export async function submitAnswers(
+  attemptId: string,
+  payload: SubmitAnswersRequest
+): Promise<SubmitAnswersResponse> {
+  return apiPost(`/student/attempts/${attemptId}/submit/`, payload);
+}
+
+/**
+ * 受験結果を取得
+ * GET /api/student/attempts/{attempt_id}/result
+ */
+export async function getStudentAttemptResult(
+  attemptId: string
+): Promise<AttemptResultResponse> {
+  return apiGet(`/student/attempts/${attemptId}/result/`);
 }
 
 // ============================================================================

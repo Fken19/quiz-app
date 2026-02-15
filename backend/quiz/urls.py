@@ -42,6 +42,7 @@ urlpatterns = [
     path("student/tests/<uuid:assignment_id>/", views.StudentTestDetailView.as_view(), name="student-test-detail"),
     path("student/tests/<uuid:assignment_id>/attempts/start", views.StudentAttemptStartView.as_view(), name="student-attempt-start"),
     path("student/attempts/<uuid:attempt_id>/submit", views.StudentAttemptSubmitView.as_view(), name="student-attempt-submit"),
+    path("student/attempts/<uuid:attempt_id>/result", views.StudentAttemptResultView.as_view(), name="student-attempt-result"),
     path("student/vocab/", views.StudentVocabListView.as_view(), name="student-vocab-list"),
     path("student/vocab/<uuid:id>/", views.StudentVocabDetailView.as_view(), name="student-vocab-detail"),
     path("student/vocab/<uuid:id>/report/", views.StudentVocabReportView.as_view(), name="student-vocab-report"),

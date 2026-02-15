@@ -3373,6 +3373,109 @@ class StudentAttemptSubmitView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class StudentAttemptResultView(APIView):
+    """
+    テスト結果を取得
+    GET /api/student/attempts/{attempt_id}/result
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, attempt_id):
+        from .test_params import TestAssignmentParamsV1
+        
+        student = request.user
+        
+        try:
+            test_result = models.TestResult.objects.select_related(
+                "test", "test_assignee", "test_assignee__test_assignment"
+            ).prefetch_related(
+                "details"
+            ).get(id=attempt_id)
+        except models.TestResult.DoesNotExist:
+            return Response(
+                {"detail": "回答セッションが見つかりません。"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 本人確認
+        if test_result.student_id != student.id:
+            return Response(
+                {"detail": "このセッションへのアクセス権限がありません。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # まだ提出されていない場合
+        if test_result.completed_at is None:
+            return Response(
+                {"detail": "まだ完了していない試行です。"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        test = test_result.test
+        test_assignment = test_result.test_assignee.test_assignment
+        
+        # run_params を取得して override_translations を参照可能にする
+        run_params_data = test_assignment.run_params or {}
+        try:
+            params = TestAssignmentParamsV1.from_json(run_params_data)
+            params.validate()
+        except Exception as e:
+            logger.warning(f"Failed to parse run_params: {e}")
+            params = None
+        
+        # 結果詳細を構築
+        details_response = []
+        for detail in test_result.details.all().order_by("question_order"):
+            vocab = detail.vocabulary
+            
+            # 正解の日本語訳を取得（override対応）
+            correct_text_ja = None
+            if params and vocab.id in params.override_translations:
+                override_data = params.override_translations[str(vocab.id)]
+                if "ja" in override_data:
+                    correct_text_ja = override_data["ja"]
+            
+            if not correct_text_ja:
+                translation = models.VocabTranslation.objects.filter(
+                    vocabulary=vocab,
+                    is_primary=True
+                ).order_by("created_at").first()
+                if translation:
+                    correct_text_ja = translation.text_ja
+            
+            details_response.append({
+                "question_order": detail.question_order,
+                "vocabulary_id": str(vocab.id),
+                "english_word": vocab.text_en,
+                "selected_choice_id": str(detail.selected_choice_id) if detail.selected_choice_id else None,
+                "selected_text_ja": detail.selected_text,
+                "is_correct": detail.is_correct,
+                "correct_text_ja": correct_text_ja,  # 正解の訳（結果画面で表示可）
+                "reaction_time_ms": detail.reaction_time_ms,
+            })
+        
+        # 合計時間を計算
+        total_time_ms = sum(
+            d.reaction_time_ms or 0
+            for d in test_result.details.all()
+        )
+        
+        return Response({
+            "attempt_id": str(test_result.id),
+            "assignment_id": str(test_assignment.id),
+            "test_id": str(test.id),
+            "test_title": test.title,
+            "attempt_no": test_result.attempt_no,
+            "started_at": test_result.started_at.isoformat(),
+            "completed_at": test_result.completed_at.isoformat(),
+            "score": test_result.score,
+            "total_questions": test_result.details.count(),
+            "correct_count": sum(1 for d in test_result.details.all() if d.is_correct),
+            "total_time_ms": total_time_ms,
+            "details": details_response,
+        }, status=status.HTTP_200_OK)
+
+
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def debug_create_user(request):

@@ -168,8 +168,7 @@ export default function TestDetailPage() {
       <div className="flex gap-4 pt-6 border-t border-slate-200">
         <button
           onClick={() => {
-            // Phase 2 で実装：router.push(`/student/tests/${assignmentId}/attempt`)
-            alert('受験機能は現在準備中です');
+            router.push(`/student/tests/${assignmentId}/attempt`);
           }}
           className="px-6 py-3 rounded-lg font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition"
         >

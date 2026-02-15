@@ -212,6 +212,71 @@ export interface StudentTestDetailResponse {
   questions: StudentTestQuestion[];
 }
 
+/** 受験結果詳細 */
+export interface AttemptResultDetail {
+  question_order: number;
+  vocabulary_id: string;
+  english_word: string;
+  selected_choice_id: string | null;
+  selected_text_ja: string;
+  is_correct: boolean;
+  correct_text_ja: string | null;  // 正解の訳（結果表示時のみ）
+  reaction_time_ms: number | null;
+}
+
+/** 受験結果取得レスポンス */
+export interface AttemptResultResponse {
+  attempt_id: string;
+  assignment_id: string;
+  test_id: string;
+  test_title: string;
+  attempt_no: number;
+  started_at: string;  // ISO8601
+  completed_at: string;  // ISO8601
+  score: number;  // 100点満点
+  total_questions: number;
+  correct_count: number;
+  total_time_ms: number;
+  details: AttemptResultDetail[];
+}
+
+/** 受験開始レスポンス */
+export interface AttemptStartResponse {
+  attempt_id: string;
+  attempt_no: number;
+  timer_seconds: number;
+  questions: StudentTestQuestion[];
+}
+
+/** 回答入力 */
+export interface AnswerInput {
+  question_order: number;
+  choice_id: string | null;
+  reaction_time_ms: number | null;
+}
+
+/** 提出リクエスト */
+export interface SubmitAnswersRequest {
+  answers: AnswerInput[];
+}
+
+/** 提出レスポンス */
+export interface SubmitAnswersResponse {
+  attempt_id: string;
+  score: number;
+  total_questions: number;
+  correct_count: number;
+  total_time_ms: number;
+  answers: Array<{
+    question_order: number;
+    vocabulary_id: string;
+    vocabulary_text_en: string;
+    selected_text: string;
+    is_correct: boolean;
+    reaction_time_ms: number | null;
+  }>;
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
