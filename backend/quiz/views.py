@@ -2591,6 +2591,87 @@ class TestViewSet(BaseModelViewSet):
     serializer_class = serializers.TestSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):  # type: ignore[override]
+        # 講師は自分のテストのみ表示
+        user = self.request.user
+        if is_teacher_whitelisted(user.email):
+            return super().get_queryset().filter(teacher__user=user)
+        return models.Test.objects.none()
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        user = self.request.user
+        try:
+            teacher = models.Teacher.objects.get(user=user)
+        except models.Teacher.DoesNotExist:
+            raise PermissionDenied(detail="講師アカウントが見つかりません。")
+        serializer.save(teacher=teacher)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[permissions.IsAuthenticated],
+        url_path="questions/create",
+    )
+    def create_questions(self, request, pk=None):
+        """
+        テストに問題を一括追加
+        POST /api/tests/{id}/questions/create
+        
+        Request body:
+        {
+            "questions": [
+                {"vocabulary_id": "uuid", "question_order": 1, "timer_seconds": 10},
+                ...
+            ]
+        }
+        """
+        test = self.get_object()
+        
+        # アクセス権限チェック
+        if test.teacher.user_id != request.user.id:
+            raise PermissionDenied(detail="このテストを編集する権限がありません。")
+        
+        questions_data = request.data.get("questions", [])
+        if not questions_data:
+            return Response(
+                {"detail": "questions フィールドが必要です。"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        created_questions = []
+        try:
+            with transaction.atomic():
+                for q_data in questions_data:
+                    vocab_id = q_data.get("vocabulary_id")
+                    question_order = q_data.get("question_order")
+                    timer_seconds = q_data.get("timer_seconds", 10)
+                    
+                    # Vocabulary 存在確認
+                    try:
+                        vocab = models.Vocabulary.objects.get(id=vocab_id)
+                    except models.Vocabulary.DoesNotExist:
+                        return Response(
+                            {"detail": f"Vocabulary {vocab_id} が見つかりません。"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    question = models.TestQuestion.objects.create(
+                        test=test,
+                        vocabulary=vocab,
+                        question_order=question_order,
+                        timer_seconds=timer_seconds,
+                    )
+                    created_questions.append(question)
+        except Exception as e:
+            return Response(
+                {"detail": f"問題作成エラー: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = serializers.TestQuestionSerializer(created_questions, many=True)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
 
 class TestQuestionViewSet(BaseModelViewSet):
     queryset = models.TestQuestion.objects.select_related("test", "vocabulary").order_by("question_order")
@@ -2602,6 +2683,131 @@ class TestAssignmentViewSet(BaseModelViewSet):
     queryset = models.TestAssignment.objects.select_related("test", "assigned_by_teacher").order_by("-assigned_at")
     serializer_class = serializers.TestAssignmentSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):  # type: ignore[override]
+        # 講師は自分が配信したテストのみ表示
+        user = self.request.user
+        if is_teacher_whitelisted(user.email):
+            try:
+                teacher = models.Teacher.objects.get(user=user)
+                return super().get_queryset().filter(assigned_by_teacher=teacher)
+            except models.Teacher.DoesNotExist:
+                return models.TestAssignment.objects.none()
+        return models.TestAssignment.objects.none()
+
+    def get_serializer_class(self):  # type: ignore[override]
+        if self.action == "create":
+            return serializers.TestAssignmentCreateSerializer
+        return super().get_serializer_class()
+
+    def perform_create(self, serializer):  # type: ignore[override]
+        user = self.request.user
+        try:
+            teacher = models.Teacher.objects.get(user=user)
+        except models.Teacher.DoesNotExist:
+            raise PermissionDenied(detail="講師アカウントが見つかりません。")
+        serializer.save(assigned_by_teacher=teacher)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[permissions.IsAuthenticated],
+        url_path="assign-students",
+    )
+    def assign_students(self, request, pk=None):
+        """
+        テストを学生に配信（TestAssignee を生成）
+        POST /api/test-assignments/{id}/assign-students
+        
+        Request body:
+        {
+            "students": ["student_user_id_1", ...],
+            "groups": ["roster_folder_id_1", ...]
+        }
+        """
+        test_assignment = self.get_object()
+        
+        # アクセス権限チェック
+        if test_assignment.assigned_by_teacher.user_id != request.user.id:
+            raise PermissionDenied(detail="この配信を編集する権限がありません。")
+        
+        students = request.data.get("students", [])
+        groups = request.data.get("groups", [])
+        
+        if not students and not groups:
+            return Response(
+                {"detail": "students または groups 少なくとも1つが必要です。"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        created_assignees = []
+        try:
+            with transaction.atomic():
+                # 直接指定された学生
+                for student_id in students:
+                    try:
+                        student = models.User.objects.get(id=student_id)
+                    except models.User.DoesNotExist:
+                        return Response(
+                            {"detail": f"Student {student_id} が見つかりません。"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    assignee, created = models.TestAssignee.objects.get_or_create(
+                        test=test_assignment.test,
+                        student=student,
+                        test_assignment=test_assignment,
+                        defaults={
+                            "source_type": "direct",
+                            "assigned_by_teacher": test_assignment.assigned_by_teacher,
+                            "assigned_at": timezone.now(),
+                        },
+                    )
+                    if created:
+                        created_assignees.append(assignee)
+                
+                # グループ経由の学生
+                for group_id in groups:
+                    try:
+                        group = models.RosterFolder.objects.get(id=group_id)
+                    except models.RosterFolder.DoesNotExist:
+                        return Response(
+                            {"detail": f"RosterFolder {group_id} が見つかりません。"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    memberships = models.RosterMembership.objects.filter(
+                        roster_folder=group,
+                        removed_at__isnull=True,
+                    )
+                    
+                    for membership in memberships:
+                        assignee, created = models.TestAssignee.objects.get_or_create(
+                            test=test_assignment.test,
+                            student=membership.student,
+                            test_assignment=test_assignment,
+                            defaults={
+                                "source_type": "group",
+                                "source_folder": group,
+                                "assigned_by_teacher": test_assignment.assigned_by_teacher,
+                                "assigned_at": timezone.now(),
+                            },
+                        )
+                        if created:
+                            created_assignees.append(assignee)
+        
+        except Exception as e:
+            return Response(
+                {"detail": f"配信エラー: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = serializers.TestAssigneeSerializer(created_assignees, many=True)
+        return Response({
+            "assigned_count": len(created_assignees),
+            "assignees": serializer.data
+        }, status=status.HTTP_201_CREATED)
+
 
 
 class TestAssigneeViewSet(BaseModelViewSet):
@@ -2632,6 +2838,223 @@ class TestResultDetailViewSet(BaseModelViewSet):
         return models.TestResultDetail.objects.select_related("test_result", "vocabulary").filter(
             test_result__student=self.request.user
         ).order_by("question_order")
+
+
+class StudentTestListView(APIView):
+    """
+    学生に配信されたテスト一覧取得
+    GET /api/student/tests
+    
+    Response:
+    {
+        "available_tests": [
+            {
+                "test_id": "uuid",
+                "title": "...",
+                "description": "...",
+                "max_attempts": 1,
+                "attempts_remaining": 1,
+                "is_available": true,
+                "assignment_schedule": {
+                    "start_at": "2025-02-01T09:00:00+09:00",
+                    "end_at": "2025-02-28T23:59:59+09:00"
+                }
+            }
+        ]
+    }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .test_params import TestAssignmentParamsV1
+        
+        student = request.user
+        now = timezone.now()
+        
+        # この学生に配信されたテストの一覧を取得
+        assignees = models.TestAssignee.objects.filter(
+            student=student
+        ).select_related("test", "test_assignment").values("test", "max_attempts", "test_assignment")
+        
+        available_tests = []
+        
+        for assignee_data in assignees:
+            test_id = assignee_data["test"]
+            max_attempts = assignee_data["max_attempts"]
+            test_assignment_id = assignee_data["test_assignment"]
+            
+            try:
+                test = models.Test.objects.get(id=test_id)
+                test_assignment = models.TestAssignment.objects.get(id=test_assignment_id)
+            except (models.Test.DoesNotExist, models.TestAssignment.DoesNotExist):
+                continue
+            
+            # run_params から schedule 情報を取得
+            run_params_data = test_assignment.run_params or {}
+            try:
+                params = TestAssignmentParamsV1.from_json(run_params_data)
+                params.validate()
+                is_available = params.is_available(now)
+            except Exception as e:
+                logger.warning(f"Failed to parse run_params for test_assignment {test_assignment_id}: {e}")
+                is_available = True  # フォールバック：常に利用可能
+            
+            # 試行回数を計算
+            effective_max_attempts = max_attempts if max_attempts is not None else (test.max_attempts_per_student or 1)
+            completed_count = models.TestResult.objects.filter(
+                test=test,
+                student=student
+            ).count()
+            attempts_remaining = max(0, effective_max_attempts - completed_count)
+            
+            # Schedule 情報を抽出
+            schedule_info = None
+            if params and params.schedule:
+                schedule_info = {
+                    "start_at": params.schedule.start_at,
+                    "end_at": params.schedule.end_at,
+                }
+            
+            available_tests.append({
+                "test_id": str(test.id),
+                "title": test.title,
+                "description": test.description or "",
+                "max_attempts": effective_max_attempts,
+                "attempts_remaining": attempts_remaining,
+                "attempts_completed": completed_count,
+                "is_available": is_available and attempts_remaining > 0,
+                "assignment_schedule": schedule_info,
+            })
+        
+        return Response({
+            "available_tests": available_tests
+        }, status=status.HTTP_200_OK)
+
+
+class StudentTestDetailView(APIView):
+    """
+    テスト詳細と問題一覧を取得
+    GET /api/student/tests/{test_id}
+    
+    Response:
+    {
+        "test": {...},
+        "questions": [
+            {
+                "question_order": 1,
+                "vocabulary": {
+                    "id": "uuid",
+                    "text_en": "word",
+                    "translations": [{"text_ja": "訳"}],
+                    "choices": [{"text_ja": "選択肢", "is_correct": true}]
+                },
+                "timer_seconds": 10
+            }
+        ]
+    }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, test_id):
+        from .test_params import TestAssignmentParamsV1
+        
+        student = request.user
+        
+        try:
+            test = models.Test.objects.get(id=test_id)
+        except models.Test.DoesNotExist:
+            return Response(
+                {"detail": "テストが見つかりません。"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # この学生がこのテストに配信されているか確認
+        assignee = models.TestAssignee.objects.filter(
+            test=test,
+            student=student
+        ).select_related("test_assignment").first()
+        
+        if not assignee:
+            return Response(
+                {"detail": "このテストへのアクセス権限がありません。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # is_available チェック
+        now = timezone.now()
+        run_params_data = assignee.test_assignment.run_params or {}
+        try:
+            params = TestAssignmentParamsV1.from_json(run_params_data)
+            params.validate()
+            is_available = params.is_available(now)
+        except Exception as e:
+            logger.warning(f"Failed to parse run_params: {e}")
+            is_available = True
+        
+        if not is_available:
+            return Response(
+                {"detail": "このテストはまだ利用可能ではありません。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # 問題一覧を取得
+        questions = models.TestQuestion.objects.filter(
+            test=test
+        ).select_related("vocabulary").order_by("question_order")
+        
+        questions_data = []
+        for q in questions:
+            vocab = q.vocabulary
+            
+            # override_translations をチェック
+            vocab_translations = []
+            if params and vocab.id in params.override_translations:
+                override_data = params.override_translations[str(vocab.id)]
+                if "ja" in override_data:
+                    vocab_translations.append({
+                        "text_ja": override_data["ja"],
+                        "is_primary": True,
+                        "is_override": True,
+                    })
+            
+            # オーバーライドがなければデータベースから取得
+            if not vocab_translations:
+                db_translations = models.VocabTranslation.objects.filter(vocabulary=vocab).values("text_ja", "is_primary")
+                vocab_translations = [
+                    {"text_ja": t["text_ja"], "is_primary": t["is_primary"], "is_override": False}
+                    for t in db_translations
+                ]
+            
+            # 選択肢を取得（is_correct は学生に表示しない）
+            choices = models.VocabChoice.objects.filter(
+                vocabulary=vocab
+            ).values("id", "text_ja").order_by("created_at")
+            choices_data = [{"id": str(c["id"]), "text_ja": c["text_ja"]} for c in choices]
+            
+            questions_data.append({
+                "question_order": q.question_order,
+                "vocabulary": {
+                    "id": str(vocab.id),
+                    "text_en": vocab.text_en,
+                    "part_of_speech": vocab.part_of_speech,
+                    "explanation": vocab.explanation or "",
+                    "example_en": vocab.example_en or "",
+                    "example_ja": vocab.example_ja or "",
+                    "translations": vocab_translations,
+                    "choices": choices_data,
+                },
+                "timer_seconds": q.timer_seconds or 10,
+            })
+        
+        return Response({
+            "test": {
+                "test_id": str(test.id),
+                "title": test.title,
+                "description": test.description or "",
+                "max_attempts": assignee.max_attempts or test.max_attempts_per_student or 1,
+            },
+            "questions": questions_data,
+        }, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])

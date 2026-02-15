@@ -896,6 +896,38 @@ class StudentVocabDetailSerializer(serializers.ModelSerializer):
         return quiz_count + test_count
 
 
+class TestAssignmentCreateSerializer(serializers.ModelSerializer):
+    """
+    テスト配信作成用シリアライザ
+    run_params の検証を含む
+    """
+    from .test_params import TestAssignmentParamsSerializer, TestAssignmentParamsV1
+    
+    test_assignment_id = serializers.UUIDField(source="id", read_only=True)
+    run_params = TestAssignmentParamsSerializer(required=False)
+
+    class Meta:
+        model = models.TestAssignment
+        fields = [
+            "test_assignment_id",
+            "test",
+            "assigned_by_teacher",
+            "note",
+            "run_params",
+        ]
+        read_only_fields = ["test_assignment_id", "assigned_by_teacher"]
+
+    def create(self, validated_data):
+        """
+        run_params を正規化して保存
+        """
+        run_params = validated_data.get("run_params")
+        if isinstance(run_params, TestAssignmentParamsV1):
+            # Serializer から TestAssignmentParamsV1 インスタンスが来た場合
+            validated_data["run_params"] = run_params.to_dict()
+        return super().create(validated_data)
+
+
 class VocabReportSerializer(serializers.Serializer):
     """語彙誤り報告用シリアライザ"""
 
