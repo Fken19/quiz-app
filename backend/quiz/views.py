@@ -3068,6 +3068,311 @@ class StudentTestDetailView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class StudentAttemptStartView(APIView):
+    """
+    テスト受験を開始
+    POST /api/student/tests/{assignment_id}/attempts/start
+    
+    戻り値:
+    {
+        "attempt_id": "uuid",
+        "attempt_no": 1,
+        "timer_seconds": 10,
+        "questions": [...]  # 詳細ビューと同じ問題構造
+    }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, assignment_id):
+        from .test_params import TestAssignmentParamsV1
+        
+        student = request.user
+        now = timezone.now()
+        
+        # TestAssignment を取得
+        try:
+            test_assignment = models.TestAssignment.objects.select_related("test").get(id=assignment_id)
+        except models.TestAssignment.DoesNotExist:
+            return Response(
+                {"detail": "テスト配信が見つかりません。"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        test = test_assignment.test
+        
+        # この学生がこの配信の対象か確認
+        try:
+            assignee = models.TestAssignee.objects.get(
+                test=test,
+                test_assignment=test_assignment,
+                student=student
+            )
+        except models.TestAssignee.DoesNotExist:
+            return Response(
+                {"detail": "このテストへのアクセス権限がありません。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # 期限チェック
+        run_params_data = test_assignment.run_params or {}
+        try:
+            params = TestAssignmentParamsV1.from_json(run_params_data)
+            params.validate()
+            if not params.is_available(now):
+                return Response(
+                    {"detail": "このテストはまだ利用可能ではありません。"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        except Exception as e:
+            logger.warning(f"Failed to parse run_params: {e}")
+        
+        # 試行回数チェック
+        effective_max_attempts = assignee.max_attempts or test.max_attempts_per_student or 1
+        completed_count = models.TestResult.objects.filter(
+            test_assignee_id=assignee.id
+        ).count()
+        
+        if completed_count >= effective_max_attempts:
+            return Response(
+                {"detail": f"受験回数の上限（{effective_max_attempts}回）に達しています。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # TestResult を作成
+        attempt_no = completed_count + 1
+        try:
+            with transaction.atomic():
+                test_result = models.TestResult.objects.create(
+                    test=test,
+                    student=student,
+                    test_assignee=assignee,
+                    attempt_no=attempt_no,
+                    started_at=now
+                )
+        except Exception as e:
+            logger.error(f"Failed to create TestResult: {e}")
+            return Response(
+                {"detail": "受験開始に失敗しました。"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 問題一覧を取得（詳細ビューと同じロジック）
+        questions = models.TestQuestion.objects.filter(
+            test=test
+        ).select_related("vocabulary").order_by("question_order")
+        
+        questions_data = []
+        for q in questions:
+            vocab = q.vocabulary
+            
+            # override_translations をチェック
+            vocab_translations = []
+            if params and vocab.id in params.override_translations:
+                override_data = params.override_translations[str(vocab.id)]
+                if "ja" in override_data:
+                    vocab_translations.append({
+                        "text_ja": override_data["ja"],
+                        "is_primary": True,
+                        "is_override": True,
+                    })
+            
+            if not vocab_translations:
+                db_translations = models.VocabTranslation.objects.filter(vocabulary=vocab).values("text_ja", "is_primary")
+                vocab_translations = [
+                    {"text_ja": t["text_ja"], "is_primary": t["is_primary"], "is_override": False}
+                    for t in db_translations
+                ]
+            
+            # 選択肢を取得（固定順：シャッフルしない、採点のため）
+            choices = models.VocabChoice.objects.filter(
+                vocabulary=vocab
+            ).values("id", "text_ja").order_by("created_at")
+            choices_data = [{"id": str(c["id"]), "text_ja": c["text_ja"]} for c in choices]
+            
+            questions_data.append({
+                "question_order": q.question_order,
+                "vocabulary": {
+                    "id": str(vocab.id),
+                    "text_en": vocab.text_en,
+                    "part_of_speech": vocab.part_of_speech,
+                    "explanation": vocab.explanation or "",
+                    "example_en": vocab.example_en or "",
+                    "example_ja": vocab.example_ja or "",
+                    "translations": vocab_translations,
+                    "choices": choices_data,
+                },
+                "timer_seconds": q.timer_seconds or 10,
+            })
+        
+        return Response({
+            "attempt_id": str(test_result.id),
+            "attempt_no": attempt_no,
+            "timer_seconds": questions_data[0]["timer_seconds"] if questions_data else 10,
+            "questions": questions_data,
+        }, status=status.HTTP_201_CREATED)
+
+
+class StudentAttemptSubmitView(APIView):
+    """
+    テスト回答を提出して採点
+    POST /api/student/attempts/{attempt_id}/submit
+    
+    Request:
+    {
+        "answers": [
+            {"question_order": 1, "choice_id": "uuid", "reaction_time_ms": 8432},
+            ...
+        ]
+    }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, attempt_id):
+        from .test_params import TestAssignmentParamsV1
+        
+        student = request.user
+        
+        try:
+            test_result = models.TestResult.objects.select_related(
+                "test", "test_assignee", "test_assignee__test_assignment"
+            ).get(id=attempt_id)
+        except models.TestResult.DoesNotExist:
+            return Response(
+                {"detail": "回答セッションが見つかりません。"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 本人確認
+        if test_result.student_id != student.id:
+            return Response(
+                {"detail": "このセッションへのアクセス権限がありません。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # 既に提出済みか確認
+        if test_result.completed_at is not None:
+            return Response(
+                {"detail": "既に提出済みです。"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 期限チェック
+        now = timezone.now()
+        test_assignment = test_result.test_assignee.test_assignment
+        run_params_data = test_assignment.run_params or {}
+        try:
+            params = TestAssignmentParamsV1.from_json(run_params_data)
+            params.validate()
+            if not params.is_available(now):
+                return Response(
+                    {"detail": "テストの受験期限が切れました。"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        except Exception as e:
+            logger.warning(f"Failed to parse run_params: {e}")
+        
+        # 回答リストを検証
+        answers_data = request.data.get("answers", [])
+        if not answers_data:
+            return Response(
+                {"detail": "answers フィールドが必要です。"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 採点処理
+        test = test_result.test
+        correct_count = 0
+        total_time_ms = 0
+        result_details = []
+        
+        try:
+            with transaction.atomic():
+                for answer in answers_data:
+                    question_order = answer.get("question_order")
+                    choice_id = answer.get("choice_id")
+                    reaction_time_ms = answer.get("reaction_time_ms")
+                    
+                    # 問題を取得
+                    try:
+                        question = models.TestQuestion.objects.select_related("vocabulary").get(
+                            test=test,
+                            question_order=question_order
+                        )
+                    except models.TestQuestion.DoesNotExist:
+                        return Response(
+                            {"detail": f"問題 {question_order} が見つかりません。"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    vocab = question.vocabulary
+                    
+                    # 選択肢を取得
+                    try:
+                        choice = models.VocabChoice.objects.get(id=choice_id, vocabulary=vocab)
+                    except models.VocabChoice.DoesNotExist:
+                        return Response(
+                            {"detail": f"選択肢 {choice_id} が見つかりません。"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    # 採点
+                    is_correct = choice.is_correct
+                    if is_correct:
+                        correct_count += 1
+                    
+                    if reaction_time_ms:
+                        total_time_ms += reaction_time_ms
+                    
+                    # TestResultDetail を作成
+                    detail = models.TestResultDetail.objects.create(
+                        test_result=test_result,
+                        question_order=question_order,
+                        vocabulary=vocab,
+                        selected_choice=choice,
+                        selected_text=choice.text_ja,
+                        is_correct=is_correct,
+                        reaction_time_ms=reaction_time_ms,
+                    )
+                    result_details.append(detail)
+                
+                # スコアを計算（100点満点）
+                total_questions = models.TestQuestion.objects.filter(test=test).count()
+                score = (correct_count * 100) // max(total_questions, 1) if total_questions > 0 else 0
+                
+                # TestResult を更新
+                test_result.completed_at = now
+                test_result.score = score
+                test_result.save()
+        
+        except Exception as e:
+            logger.error(f"Failed to submit attempt: {e}")
+            return Response(
+                {"detail": "回答の提出に失敗しました。"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # レスポンス用に詳細情報を構築
+        answers_response = []
+        for detail in result_details:
+            answers_response.append({
+                "question_order": detail.question_order,
+                "vocabulary_id": str(detail.vocabulary_id),
+                "vocabulary_text_en": detail.vocabulary.text_en,
+                "selected_text": detail.selected_text,
+                "is_correct": detail.is_correct,
+                "reaction_time_ms": detail.reaction_time_ms,
+            })
+        
+        return Response({
+            "attempt_id": str(test_result.id),
+            "score": test_result.score,
+            "total_questions": total_questions,
+            "correct_count": correct_count,
+            "total_time_ms": total_time_ms,
+            "answers": answers_response,
+        }, status=status.HTTP_200_OK)
+
+
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def debug_create_user(request):

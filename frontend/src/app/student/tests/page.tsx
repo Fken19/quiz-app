@@ -2,16 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { apiGet } from '@/lib/api-utils';
-import type { Test, TestResult } from '@/types/quiz';
-
-interface TestRow {
-  test: Test;
-  attempts: number;
-}
+import { useRouter } from 'next/navigation';
+import { getStudentTests } from '@/lib/api/test';
+import type { AvailableTest } from '@/types/test';
 
 export default function AssignedTestsPage() {
-  const [rows, setRows] = useState<TestRow[]>([]);
+  const router = useRouter();
+  const [tests, setTests] = useState<AvailableTest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,22 +16,8 @@ export default function AssignedTestsPage() {
     const fetchTests = async () => {
       try {
         setLoading(true);
-        const testResponse = await apiGet('/api/tests/?page_size=100').catch(() => ({ results: [] }));
-        const tests: Test[] = Array.isArray(testResponse) ? testResponse : testResponse?.results || [];
-
-        const attemptsResponse = await apiGet('/api/test-results/?page_size=200').catch(() => ({ results: [] }));
-        const results: TestResult[] = Array.isArray(attemptsResponse) ? attemptsResponse : attemptsResponse?.results || [];
-        const attemptMap = new Map<string, number>();
-        results.forEach((result) => {
-          attemptMap.set(result.test, (attemptMap.get(result.test) ?? 0) + 1);
-        });
-
-        setRows(
-          tests.map((test) => ({
-            test,
-            attempts: attemptMap.get(test.test_id) ?? 0,
-          })),
-        );
+        const response = await getStudentTests();
+        setTests(response.available_tests);
       } catch (err) {
         console.error(err);
         setError('テスト情報の取得に失敗しました');
@@ -62,33 +45,101 @@ export default function AssignedTestsPage() {
     );
   }
 
+  const getStatusBadge = (test: AvailableTest) => {
+    if (!test.is_available) {
+      const now = new Date();
+      const start = test.assignment_schedule?.start_at ? new Date(test.assignment_schedule.start_at) : null;
+      const end = test.assignment_schedule?.end_at ? new Date(test.assignment_schedule.end_at) : null;
+      
+      if (start && now < start) {
+        return <span className="inline-block px-2 py-1 text-xs font-semibold text-blue-700 bg-blue-100 rounded">開始前</span>;
+      } else {
+        return <span className="inline-block px-2 py-1 text-xs font-semibold text-red-700 bg-red-100 rounded">期限切れ</span>;
+      }
+    }
+    
+    if (test.attempts_remaining === 0) {
+      return <span className="inline-block px-2 py-1 text-xs font-semibold text-gray-700 bg-gray-100 rounded">受験済</span>;
+    }
+    
+    return <span className="inline-block px-2 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded">受験可能</span>;
+  };
+
   return (
     <div className="max-w-5xl mx-auto py-10 space-y-6 px-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">割り当てテスト</h1>
-          <p className="text-slate-600">締切や残り受験回数を確認できます。</p>
+          <p className="text-slate-600">受験可能なテストが一覧表示されます。</p>
         </div>
         <Link href="/student/dashboard" className="text-indigo-600 font-semibold">← ダッシュボードへ戻る</Link>
       </div>
 
-      <div className="bg-white shadow rounded-lg divide-y">
-        <div className="grid grid-cols-4 gap-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-          <span>テスト名</span>
-          <span>締切</span>
-          <span>最大受験回数</span>
-          <span>受験済み回数</span>
-        </div>
-        {rows.map((row) => (
-          <div key={row.test.test_id} className="grid grid-cols-4 gap-4 px-6 py-3 text-sm text-slate-700">
-            <span>{row.test.title}</span>
-            <span>{row.test.due_at ? new Date(row.test.due_at).toLocaleString() : '---'}</span>
-            <span>{row.test.max_attempts_per_student}</span>
-            <span>{row.attempts}</span>
+      <div className="grid gap-4">
+        {tests.map((test) => (
+          <div
+            key={test.assignment_id}
+            className="bg-white shadow rounded-lg p-6 border-l-4 border-indigo-600 hover:shadow-lg transition-shadow"
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <h2 className="text-lg font-semibold text-slate-900">{test.title}</h2>
+                  {getStatusBadge(test)}
+                </div>
+                
+                {test.description && (
+                  <p className="text-slate-600 text-sm mb-3">{test.description}</p>
+                )}
+
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-slate-500">受験可能期間</span>
+                    <p className="text-slate-900 font-medium">
+                      {test.assignment_schedule ? (
+                        <>
+                          <div>{new Date(test.assignment_schedule.start_at).toLocaleString('ja-JP')}</div>
+                          <div className="text-xs text-slate-500">〜</div>
+                          <div>{new Date(test.assignment_schedule.end_at).toLocaleString('ja-JP')}</div>
+                        </>
+                      ) : '期間不定'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-500">最大受験回数</span>
+                    <p className="text-slate-900 font-medium">{test.max_attempts}回</p>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-500">残り受験回数</span>
+                    <p className={`font-medium ${test.attempts_remaining > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {test.attempts_remaining}回
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => router.push(`/student/tests/${test.assignment_id}`)}
+                disabled={!test.is_available || test.attempts_remaining === 0}
+                className="ml-4 px-4 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={
+                  test.is_available && test.attempts_remaining > 0
+                    ? { backgroundColor: '#4f46e5', color: 'white' }
+                    : { backgroundColor: '#e5e7eb', color: '#6b7280' }
+                }
+              >
+                詳細を見る
+              </button>
+            </div>
           </div>
         ))}
-        {rows.length === 0 && (
-          <div className="px-6 py-8 text-center text-slate-500">割り当てられたテストはありません。</div>
+
+        {tests.length === 0 && (
+          <div className="bg-white shadow rounded-lg p-8 text-center text-slate-500">
+            <p>割り当てられたテストはありません。</p>
+          </div>
         )}
       </div>
     </div>

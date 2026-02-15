@@ -965,3 +965,70 @@ class VocabReportSerializer(serializers.Serializer):
         required=True,
         help_text="詳細コメント",
     )
+
+# ============================================================================
+# Phase 2: Test Attempt / Submission Serializers
+# ============================================================================
+
+
+class TestAttemptStartSerializer(serializers.Serializer):
+    """
+    受験開始レスポンス用
+    """
+    attempt_id = serializers.UUIDField()
+    attempt_no = serializers.IntegerField()
+    timer_seconds = serializers.IntegerField()
+    questions = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="問題一覧（question_order, vocabulary, choices等）"
+    )
+
+
+class TestAnswerInputSerializer(serializers.Serializer):
+    """
+    回答送信用リクエスト
+    """
+    question_order = serializers.IntegerField()
+    choice_id = serializers.UUIDField()
+    reaction_time_ms = serializers.IntegerField(required=False, allow_null=True)
+
+
+class TestSubmissionSerializer(serializers.Serializer):
+    """
+    テスト提出リクエスト
+    """
+    answers = TestAnswerInputSerializer(many=True)
+
+
+class TestResultAnswerSerializer(serializers.ModelSerializer):
+    """
+    回答結果詳細（学生向け）
+    """
+    question_order = serializers.IntegerField()
+    vocabulary_id = serializers.UUIDField(source="vocabulary.id")
+    vocabulary_text_en = serializers.CharField(source="vocabulary.text_en")
+    selected_text = serializers.CharField()
+    is_correct = serializers.BooleanField()
+
+    class Meta:
+        model = models.TestResultDetail
+        fields = [
+            "question_order",
+            "vocabulary_id",
+            "vocabulary_text_en",
+            "selected_text",
+            "is_correct",
+            "reaction_time_ms",
+        ]
+
+
+class TestResultSubmissionResponseSerializer(serializers.Serializer):
+    """
+    テスト提出完了レスポンス
+    """
+    attempt_id = serializers.UUIDField()
+    score = serializers.IntegerField()
+    total_questions = serializers.IntegerField()
+    correct_count = serializers.IntegerField()
+    total_time_ms = serializers.IntegerField()
+    answers = TestResultAnswerSerializer(many=True)
