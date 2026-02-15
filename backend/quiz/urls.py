@@ -46,6 +46,8 @@ urlpatterns = [
     path("student/vocab/", views.StudentVocabListView.as_view(), name="student-vocab-list"),
     path("student/vocab/<uuid:id>/", views.StudentVocabDetailView.as_view(), name="student-vocab-detail"),
     path("student/vocab/<uuid:id>/report/", views.StudentVocabReportView.as_view(), name="student-vocab-report"),
+    path("teacher/test-assignments/<uuid:assignment_id>/results", views.TeacherAssignmentResultsView.as_view(), name="teacher-assignment-results"),
+    path("teacher/test-assignments/<uuid:assignment_id>/results.csv", views.TeacherAssignmentResultsCSVView.as_view(), name="teacher-assignment-results-csv"),
     path(
         "teacher/groups/<uuid:folder_id>/member-summaries/",
         views.TeacherGroupMemberSummaryView.as_view(),

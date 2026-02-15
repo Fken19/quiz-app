@@ -278,6 +278,44 @@ export interface SubmitAnswersResponse {
 }
 
 // ============================================================================
+// Teacher Result Views
+// ============================================================================
+
+/** 講師向け配信結果（1行） */
+export interface TeacherAssignmentResult {
+  assignee_id: string;
+  student_id: string;
+  student_name: string;
+  student_email: string;
+  status: 'attempted' | 'unattempted' | 'expired_unattempted';
+  attempt_count: number;
+  completed_count: number;
+  best_score: number | null;
+  latest_score: number | null;
+  latest_completed_at: string | null;
+  remaining_attempts: number;
+}
+
+/** 講師向け配信結果一覧レスポンス */
+export interface TeacherAssignmentResultsResponse {
+  assignment: {
+    id: string;
+    test_id: string;
+    title: string;
+    schedule: {
+      start_at: string | null;
+      end_at: string | null;
+    };
+  };
+  summary: {
+    assignee_count: number;
+    attempted_count: number;
+    unattempted_count: number;
+  };
+  rows: TeacherAssignmentResult[];
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 

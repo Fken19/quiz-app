@@ -3493,6 +3493,306 @@ class StudentAttemptResultView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class TeacherAssignmentResultsView(APIView):
+    """
+    講師向け：配信ごとの結果一覧（JSON）
+    GET /api/teacher/test-assignments/{assignment_id}/results
+    
+    母集団: TestAssignee（未受験者も含む）
+    集計: assignment単位（test_assignee_id）
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, assignment_id):
+        from .test_params import TestAssignmentParamsV1
+        
+        user = request.user
+        
+        # TestAssignment を取得
+        try:
+            assignment = models.TestAssignment.objects.select_related(
+                "test", "assigned_by_teacher__user"
+            ).get(id=assignment_id)
+        except models.TestAssignment.DoesNotExist:
+            return Response(
+                {"detail": "配信が見つかりません。"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 権限確認（講師本人のみ）
+        if assignment.assigned_by_teacher.user_id != user.id:
+            return Response(
+                {"detail": "この配信へのアクセス権限がありません。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        test = assignment.test
+        now = timezone.now()
+        
+        # run_params を解釈
+        run_params_data = assignment.run_params or {}
+        try:
+            params = TestAssignmentParamsV1.from_json(run_params_data)
+            params.validate()
+            start_at = params.available_from
+            end_at = params.available_until
+        except Exception as e:
+            logger.warning(f"Failed to parse run_params: {e}")
+            start_at = None
+            end_at = None
+        
+        # TestAssignee を母集団として取得
+        assignees = models.TestAssignee.objects.filter(
+            test_assignment=assignment
+        ).select_related("student").order_by("student__name")
+        
+        # TestResult を全取得（assignment単位）
+        results = models.TestResult.objects.filter(
+            test_assignee__in=assignees
+        ).order_by("test_assignee_id", "attempt_no")
+        
+        # test_assignee_id ごとに集計
+        results_by_assignee = {}
+        for result in results:
+            assignee_id = str(result.test_assignee_id)
+            if assignee_id not in results_by_assignee:
+                results_by_assignee[assignee_id] = []
+            results_by_assignee[assignee_id].append(result)
+        
+        # 集計実行
+        rows = []
+        attempted_count = 0
+        unattempted_count = 0
+        
+        for assignee in assignees:
+            assignee_id_str = str(assignee.id)
+            assignee_results = results_by_assignee.get(assignee_id_str, [])
+            
+            # 完了した試行のみを集計
+            completed_results = [r for r in assignee_results if r.completed_at is not None]
+            attempt_count = len(assignee_results)  # started も含む
+            completed_count = len(completed_results)
+            
+            # status 判定
+            if completed_count > 0:
+                status_val = "attempted"
+                attempted_count += 1
+            elif end_at and now > end_at:
+                status_val = "expired_unattempted"
+                unattempted_count += 1
+            else:
+                status_val = "unattempted"
+                unattempted_count += 1
+            
+            # best_score / latest_score
+            best_score = None
+            latest_score = None
+            latest_completed_at = None
+            
+            if completed_results:
+                best_score = max(r.score for r in completed_results if r.score is not None)
+                latest_result = completed_results[-1]
+                latest_score = latest_result.score
+                latest_completed_at = latest_result.completed_at
+            
+            # remaining_attempts
+            effective_max_attempts = assignee.max_attempts or test.max_attempts_per_student or 1
+            remaining_attempts = max(effective_max_attempts - attempt_count, 0)
+            
+            rows.append({
+                "assignee_id": str(assignee.id),
+                "student_id": str(assignee.student_id),
+                "student_name": assignee.student.name,
+                "student_email": assignee.student.email,
+                "status": status_val,
+                "attempt_count": attempt_count,
+                "completed_count": completed_count,
+                "best_score": best_score,
+                "latest_score": latest_score,
+                "latest_completed_at": latest_completed_at.isoformat() if latest_completed_at else None,
+                "remaining_attempts": remaining_attempts,
+            })
+        
+        # サマリー
+        summary = {
+            "assignee_count": assignees.count(),
+            "attempted_count": attempted_count,
+            "unattempted_count": unattempted_count,
+        }
+        
+        # assignment情報
+        assignment_info = {
+            "id": str(assignment.id),
+            "test_id": str(test.id),
+            "title": test.title,
+            "schedule": {
+                "start_at": start_at.isoformat() if start_at else None,
+                "end_at": end_at.isoformat() if end_at else None,
+            }
+        }
+        
+        return Response({
+            "assignment": assignment_info,
+            "summary": summary,
+            "rows": rows,
+        }, status=status.HTTP_200_OK)
+
+
+class TeacherAssignmentResultsCSVView(APIView):
+    """
+    講師向け：配信結果CSV出力
+    GET /api/teacher/test-assignments/{assignment_id}/results.csv
+    
+    BOM付きUTF-8で返却（Excel対応）
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, assignment_id):
+        import csv
+        from io import StringIO
+        from .test_params import TestAssignmentParamsV1
+        
+        user = request.user
+        
+        # TestAssignment を取得
+        try:
+            assignment = models.TestAssignment.objects.select_related(
+                "test", "assigned_by_teacher__user"
+            ).get(id=assignment_id)
+        except models.TestAssignment.DoesNotExist:
+            return Response(
+                {"detail": "配信が見つかりません。"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 権限確認（講師本人のみ）
+        if assignment.assigned_by_teacher.user_id != user.id:
+            return Response(
+                {"detail": "この配信へのアクセス権限がありません。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        test = assignment.test
+        now = timezone.now()
+        
+        # run_params を解釈
+        run_params_data = assignment.run_params or {}
+        try:
+            params = TestAssignmentParamsV1.from_json(run_params_data)
+            params.validate()
+            start_at = params.available_from
+            end_at = params.available_until
+        except Exception as e:
+            logger.warning(f"Failed to parse run_params: {e}")
+            start_at = None
+            end_at = None
+        
+        # TestAssignee を母集団として取得（同じロジック）
+        assignees = models.TestAssignee.objects.filter(
+            test_assignment=assignment
+        ).select_related("student").order_by("student__name")
+        
+        results = models.TestResult.objects.filter(
+            test_assignee__in=assignees
+        ).order_by("test_assignee_id", "attempt_no")
+        
+        results_by_assignee = {}
+        for result in results:
+            assignee_id = str(result.test_assignee_id)
+            if assignee_id not in results_by_assignee:
+                results_by_assignee[assignee_id] = []
+            results_by_assignee[assignee_id].append(result)
+        
+        # CSV生成
+        output = StringIO()
+        # BOM付きUTF-8
+        output.write('\ufeff')
+        
+        writer = csv.writer(output)
+        
+        # ヘッダー
+        writer.writerow([
+            '配信ID',
+            'テストタイトル',
+            '学生ID',
+            '学生名',
+            'メールアドレス',
+            '状態',
+            '受験回数',
+            '完了回数',
+            '最高得点',
+            '最新得点',
+            '最終完了日時',
+            '残り回数',
+            '開始日時',
+            '終了日時',
+        ])
+        
+        # データ行
+        for assignee in assignees:
+            assignee_id_str = str(assignee.id)
+            assignee_results = results_by_assignee.get(assignee_id_str, [])
+            
+            completed_results = [r for r in assignee_results if r.completed_at is not None]
+            attempt_count = len(assignee_results)
+            completed_count = len(completed_results)
+            
+            # status 判定
+            if completed_count > 0:
+                status_val = "受験済"
+            elif end_at and now > end_at:
+                status_val = "期限切れ未受験"
+            else:
+                status_val = "未受験"
+            
+            best_score = None
+            latest_score = None
+            latest_completed_at = None
+            
+            if completed_results:
+                best_score = max(r.score for r in completed_results if r.score is not None)
+                latest_result = completed_results[-1]
+                latest_score = latest_result.score
+                latest_completed_at = latest_result.completed_at
+            
+            effective_max_attempts = assignee.max_attempts or test.max_attempts_per_student or 1
+            remaining_attempts = max(effective_max_attempts - attempt_count, 0)
+            
+            # 日時をJST文字列に変換
+            latest_completed_at_str = latest_completed_at.strftime('%Y-%m-%d %H:%M:%S') if latest_completed_at else ''
+            start_at_str = start_at.strftime('%Y-%m-%d %H:%M:%S') if start_at else ''
+            end_at_str = end_at.strftime('%Y-%m-%d %H:%M:%S') if end_at else ''
+            
+            writer.writerow([
+                str(assignment.id),
+                test.title,
+                str(assignee.student_id),
+                assignee.student.name,
+                assignee.student.email,
+                status_val,
+                attempt_count,
+                completed_count,
+                best_score if best_score is not None else '',
+                latest_score if latest_score is not None else '',
+                latest_completed_at_str,
+                remaining_attempts,
+                start_at_str,
+                end_at_str,
+            ])
+        
+        # レスポンス生成
+        csv_content = output.getvalue()
+        output.close()
+        
+        timestamp = now.strftime('%Y%m%d_%H%M%S')
+        filename = f"test_results_{assignment_id}_{timestamp}.csv"
+        
+        response = HttpResponse(csv_content, content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+
+
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def debug_create_user(request):
@@ -3887,6 +4187,8 @@ __all__ = [
     "TestAssigneeViewSet",
     "TestResultViewSet",
     "TestResultDetailViewSet",
+    "TeacherAssignmentResultsView",
+    "TeacherAssignmentResultsCSVView",
     "debug_create_user",
     "TeacherStudentProgressViewSet",
     "TeacherGroupMemberSummaryView",

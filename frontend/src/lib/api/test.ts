@@ -19,6 +19,7 @@ import type {
   SubmitAnswersRequest,
   SubmitAnswersResponse,
   AttemptResultResponse,
+  TeacherAssignmentResultsResponse,
 } from '@/types/test';
 
 // ============================================================================
@@ -97,6 +98,50 @@ export async function assignStudents(
   payload: AssignStudentsRequest
 ): Promise<{ assigned_count: number }> {
   return apiPost(`/test-assignments/${assignmentId}/assign-students/`, payload);
+}
+
+/**
+ * 配信結果一覧を取得（講師）
+ * GET /api/teacher/test-assignments/{assignment_id}/results
+ */
+export async function getTeacherAssignmentResults(
+  assignmentId: string
+): Promise<TeacherAssignmentResultsResponse> {
+  return apiGet(`/teacher/test-assignments/${assignmentId}/results`);
+}
+
+/**
+ * 配信結果CSVをダウンロード（講師）
+ * GET /api/teacher/test-assignments/{assignment_id}/results.csv
+ */
+export function downloadTeacherAssignmentResultsCSV(assignmentId: string): void {
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api';
+  const url = `${baseUrl}/teacher/test-assignments/${assignmentId}/results.csv`;
+  
+  // 認証トークンを取得
+  const token = localStorage.getItem('access_token');
+  
+  // fetch でダウンロード
+  fetch(url, {
+    headers: {
+      'Authorization': token ? `Bearer ${token}` : '',
+    },
+  })
+    .then(response => response.blob())
+    .then(blob => {
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `test_results_${assignmentId}_${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    })
+    .catch(error => {
+      console.error('CSV download failed:', error);
+      alert('CSVのダウンロードに失敗しました');
+    });
 }
 
 // ============================================================================
