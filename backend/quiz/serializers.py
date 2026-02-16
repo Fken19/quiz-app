@@ -228,6 +228,7 @@ class StudentTeacherPublicProfileSerializer(serializers.Serializer):
 
 class TeacherStudentListSerializer(serializers.ModelSerializer):
     student_teacher_link_id = serializers.UUIDField(source="id", read_only=True)
+    student_id = serializers.UUIDField(read_only=True)
     display_name = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
 
@@ -241,6 +242,7 @@ class TeacherStudentListSerializer(serializers.ModelSerializer):
         model = models.StudentTeacherLink
         fields = [
             "student_teacher_link_id",
+            "student_id",
             "display_name",
             "status",
             "linked_at",
@@ -258,7 +260,9 @@ class TeacherStudentListSerializer(serializers.ModelSerializer):
         if obj.custom_display_name:
             return obj.custom_display_name
         profile = self._safe_profile(obj.student)
-        return profile.display_name if profile and profile.display_name else ""
+        if profile and profile.display_name:
+            return profile.display_name
+        return f"Student #{str(obj.student_id)[-4:]}"
 
     def get_avatar_url(self, obj):
         profile = self._safe_profile(obj.student)
@@ -643,6 +647,7 @@ class LearningSummaryDailySerializer(serializers.ModelSerializer):
 
 class TestSerializer(serializers.ModelSerializer):
     test_id = serializers.UUIDField(source="id", read_only=True)
+    question_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = models.Test
@@ -654,6 +659,7 @@ class TestSerializer(serializers.ModelSerializer):
             "due_at",
             "max_attempts_per_student",
             "archived_at",
+            "question_count",
             "created_at",
             "updated_at",
         ]
@@ -812,6 +818,62 @@ class StudentVocabListSerializer(serializers.ModelSerializer):
         }
 
 
+class TeacherVocabListSerializer(serializers.ModelSerializer):
+    """講師用語彙一覧シリアライザー"""
+    vocabulary_id = serializers.UUIDField(source="id", read_only=True)
+    primary_translation = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.Vocabulary
+        fields = [
+            "vocabulary_id",
+            "text_en",
+            "part_of_speech",
+            "primary_translation",
+        ]
+
+    def get_primary_translation(self, obj) -> str | None:
+        primary_list = getattr(obj, "primary_translation_list", None)
+        if primary_list and len(primary_list) > 0:
+            return primary_list[0].text_ja
+        return None
+
+
+class TeacherVocabTranslationSerializer(serializers.ModelSerializer):
+    vocab_translation_id = serializers.UUIDField(source="id", read_only=True)
+
+    class Meta:
+        model = models.VocabTranslation
+        fields = ["vocab_translation_id", "text_ja", "is_primary"]
+
+
+class TeacherVocabChoiceSerializer(serializers.ModelSerializer):
+    vocab_choice_id = serializers.UUIDField(source="id", read_only=True)
+
+    class Meta:
+        model = models.VocabChoice
+        fields = ["vocab_choice_id", "text_ja", "is_correct"]
+
+
+class TeacherVocabDetailSerializer(serializers.ModelSerializer):
+    vocabulary_id = serializers.UUIDField(source="id", read_only=True)
+    translations = TeacherVocabTranslationSerializer(many=True, read_only=True)
+    choices = TeacherVocabChoiceSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = models.Vocabulary
+        fields = [
+            "vocabulary_id",
+            "text_en",
+            "part_of_speech",
+            "explanation",
+            "example_en",
+            "example_ja",
+            "translations",
+            "choices",
+        ]
+
+
 class StudentVocabAliasSerializer(serializers.ModelSerializer):
     """エイリアス語彙の簡易表現"""
     id = serializers.UUIDField(source="pk", read_only=True)
@@ -896,6 +958,38 @@ class StudentVocabDetailSerializer(serializers.ModelSerializer):
         return quiz_count + test_count
 
 
+class TestAssignmentCreateSerializer(serializers.ModelSerializer):
+    """
+    テスト配信作成用シリアライザ
+    run_params の検証を含む
+    """
+    from .test_params import TestAssignmentParamsSerializer, TestAssignmentParamsV1
+    
+    test_assignment_id = serializers.UUIDField(source="id", read_only=True)
+    run_params = TestAssignmentParamsSerializer(required=False)
+
+    class Meta:
+        model = models.TestAssignment
+        fields = [
+            "test_assignment_id",
+            "test",
+            "assigned_by_teacher",
+            "note",
+            "run_params",
+        ]
+        read_only_fields = ["test_assignment_id", "assigned_by_teacher"]
+
+    def create(self, validated_data):
+        """
+        run_params を正規化して保存
+        """
+        run_params = validated_data.get("run_params")
+        if isinstance(run_params, self.TestAssignmentParamsV1):
+            # Serializer から TestAssignmentParamsV1 インスタンスが来た場合
+            validated_data["run_params"] = run_params.to_dict()
+        return super().create(validated_data)
+
+
 class VocabReportSerializer(serializers.Serializer):
     """語彙誤り報告用シリアライザ"""
 
@@ -933,3 +1027,70 @@ class VocabReportSerializer(serializers.Serializer):
         required=True,
         help_text="詳細コメント",
     )
+
+# ============================================================================
+# Phase 2: Test Attempt / Submission Serializers
+# ============================================================================
+
+
+class TestAttemptStartSerializer(serializers.Serializer):
+    """
+    受験開始レスポンス用
+    """
+    attempt_id = serializers.UUIDField()
+    attempt_no = serializers.IntegerField()
+    timer_seconds = serializers.IntegerField()
+    questions = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="問題一覧（question_order, vocabulary, choices等）"
+    )
+
+
+class TestAnswerInputSerializer(serializers.Serializer):
+    """
+    回答送信用リクエスト
+    """
+    question_order = serializers.IntegerField()
+    choice_id = serializers.UUIDField()
+    reaction_time_ms = serializers.IntegerField(required=False, allow_null=True)
+
+
+class TestSubmissionSerializer(serializers.Serializer):
+    """
+    テスト提出リクエスト
+    """
+    answers = TestAnswerInputSerializer(many=True)
+
+
+class TestResultAnswerSerializer(serializers.ModelSerializer):
+    """
+    回答結果詳細（学生向け）
+    """
+    question_order = serializers.IntegerField()
+    vocabulary_id = serializers.UUIDField(source="vocabulary.id")
+    vocabulary_text_en = serializers.CharField(source="vocabulary.text_en")
+    selected_text = serializers.CharField()
+    is_correct = serializers.BooleanField()
+
+    class Meta:
+        model = models.TestResultDetail
+        fields = [
+            "question_order",
+            "vocabulary_id",
+            "vocabulary_text_en",
+            "selected_text",
+            "is_correct",
+            "reaction_time_ms",
+        ]
+
+
+class TestResultSubmissionResponseSerializer(serializers.Serializer):
+    """
+    テスト提出完了レスポンス
+    """
+    attempt_id = serializers.UUIDField()
+    score = serializers.IntegerField()
+    total_questions = serializers.IntegerField()
+    correct_count = serializers.IntegerField()
+    total_time_ms = serializers.IntegerField()
+    answers = TestResultAnswerSerializer(many=True)

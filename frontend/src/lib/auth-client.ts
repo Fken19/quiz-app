@@ -81,7 +81,7 @@ export async function getBackendToken(): Promise<string> {
   };
 
   const tStart = now();
-  const res = await fetch(`${API_BASE_URL}/api/debug/create-user/`, {
+  const res = await fetch(`/api/debug/create-user/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

@@ -1,4 +1,3 @@
-import { API_BASE_URL } from './constants';
 import { getBackendToken } from './auth-client';
 
 export class ApiError extends Error {
@@ -12,6 +11,29 @@ export class ApiError extends Error {
     this.body = body;
   }
 }
+
+const ensureApiPath = (endpoint: string): string => {
+  if (/^https?:\/\//.test(endpoint)) return endpoint;
+  const normalized = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return normalized.startsWith('/api/') ? normalized : `/api${normalized}`;
+};
+
+const resolveUrl = (endpoint: string): string => {
+  const apiPath = ensureApiPath(endpoint);
+
+  // Browser must always call Next.js same-origin API routes.
+  if (typeof window !== 'undefined') {
+    return apiPath;
+  }
+
+  // Server-side may use internal Docker network base.
+  const internalBase = process.env.API_INTERNAL_BASE_URL;
+  if (internalBase && !/^https?:\/\//.test(apiPath)) {
+    return `${internalBase.replace(/\/$/, '')}${apiPath}`;
+  }
+
+  return apiPath;
+};
 
 const readBody = async (response: Response) => {
   const contentType = response.headers.get('content-type') || '';
@@ -48,8 +70,9 @@ export async function apiRequest(endpoint: string, options: RequestInit = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(resolveUrl(endpoint), {
     ...options,
+    credentials: 'include',
     headers: isFormData
       ? {
           ...(options.headers as Record<string, string> | undefined),

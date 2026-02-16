@@ -351,6 +351,7 @@ export interface Test {
   due_at?: string | null;
   max_attempts_per_student: number;
   archived_at?: string | null;
+  question_count?: number;
   created_at: string;
   updated_at: string;
 }
