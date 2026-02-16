@@ -95,7 +95,7 @@
 - ✅ 招待トークン発行・承認システム
 - ✅ 招待コードプレビューAPI（生徒が講師情報を事前確認可能）
 - ✅ 紐付け申請管理（pending/active/revoked ステータス管理、再紐付け対応）
-- ❌ テスト作成・配信機能（未実装）
+- ✅ テスト作成・配信機能（作成/配信/受験/結果/CSV）
 - ✅ Django管理画面（ホワイトリスト登録、データ管理）
 - ✅ アバター画像アップロード（GCS 対応、環境変数で切替可能）
 - ✅ メディアファイル配信（Cloud Run から非公開 GCS をプロキシ配信）
@@ -116,7 +116,7 @@
 - ✅ 招待コード入力時のプレビュー確認オーバーレイ（講師情報表示、申請/キャンセル選択）
 - ✅ QRコード生成・読み取り（招待コード配布・受取に対応）
 - ✅ 講師用UI（生徒管理、招待コード発行）
-- ❌ 講師用テスト作成・配信UI（未実装）
+- ✅ 講師用テスト作成・配信UI（作成/編集/配信/割当/結果/CSV）
 - ✅ 講師ダッシュボード（紐付け申請一覧、承認/拒否、初期設定モーダル）
 - ✅ 講師プロフィール表示ページ（生徒向け公開情報のみ表示）
 - ✅ アバター画像アップロード・表示（生徒・講師プロフィール）
@@ -126,7 +126,7 @@
 ### 🔴 未実装・検討中
 
 - ❌ 承認/解除履歴UI（タイムライン表示）
-- ❌ 講師テストの可変タイマー設定UI
+- ❌ 講師テストの高度なタイマー設定UI（複数モード/配点別）
 - ❌ 利用規約・プライバシー同意フロー
 - ❌ E2Eテスト（Playwright）
 - 🔵 LLM自動ダミー生成（将来検討）
@@ -268,6 +268,12 @@ docker-compose down
 - `POST /api/focus-quiz-sessions/` - フォーカスクイズセッション開始（問題数指定可能）
 - `POST /api/quiz-sessions/{id}/submit-answer/` - 回答送信
 - `POST /api/quiz-sessions/{id}/complete/` - セッション完了
+- `GET /api/student/tests/` - 配信テスト一覧
+- `GET /api/student/tests/{assignment_id}/` - テスト詳細/問題一覧
+- `POST /api/student/tests/{assignment_id}/attempts/start` - 受験開始
+- `POST /api/student/attempts/{attempt_id}/submit` - 回答提出
+- `GET /api/student/attempts/{attempt_id}/result` - 受験結果取得
+- `GET /api/student/tests/{assignment_id}/results` - 配信ごとの受験結果一覧
 - `GET /api/student/dashboard-summary/` - ダッシュボード統計（Streak、日/週/月集計）
 - `GET /api/learning-progress/` - 学習進捗取得
 - `GET /api/invitation-codes/preview/` - 招待コードプレビュー（講師情報事前確認）
@@ -285,7 +291,19 @@ docker-compose down
 - `PATCH /api/teacher/students/{id}/` - 生徒情報更新（表示名・タグ・メモ等）
 - `POST /api/teacher/students/{linkId}/approve/` - 紐付け申請承認
 - `POST /api/teacher/students/{linkId}/revoke/` - 紐付け解除
-- ❌ `POST /api/tests/` - テスト作成（未実装）
+- `GET /api/tests/` - テスト一覧（講師）
+- `POST /api/tests/` - テスト作成
+- `POST /api/tests/create-with-questions/` - テスト+問題セット作成
+- `GET /api/tests/{id}/questions/` - テスト問題セット取得
+- `POST /api/tests/{id}/questions/replace/` - テスト問題セット差し替え
+- `POST /api/tests/{id}/duplicate/` - テスト複製
+- `GET /api/test-assignments/` - 配信一覧（講師）
+- `POST /api/test-assignments/` - 配信作成
+- `PATCH /api/test-assignments/{id}/` - 配信更新
+- `POST /api/test-assignments/{id}/assign-students/` - 配信割当
+- `POST /api/test-assignments/{id}/unassign-students/` - 配信割当解除
+- `GET /api/teacher/test-assignments/{id}/results` - 配信結果一覧（JSON）
+- `GET /api/teacher/test-assignments/{id}/results.csv` - 配信結果CSV
 - `GET /api/student-progress/{student_id}/` - 生徒の学習状況（予定）
 
 ### 共通
@@ -365,8 +383,9 @@ docker-compose exec frontend npm run build
 3. 招待トークン発行 → QRコード生成 → 生徒に配布
 4. 紐付け申請を確認 → 申請詳細モーダルで生徒情報を確認 → 承認/拒否
 5. 承認後に初期設定モーダルで表示名・タグ・メモ等を一括設定
-6. 生徒一覧で学習状況・プロフィールを確認
-7. ⚠️ テスト作成・配信機能は現在未実装（将来実装予定）
+6. テスト作成（語彙選択）→ 配信作成（期間・回数・合格基準・メッセージ）
+7. 生徒割当（個別/グループ）→ 配信結果確認（一覧/CSV）
+8. 生徒一覧で学習状況・プロフィールを確認
 
 ---
 
